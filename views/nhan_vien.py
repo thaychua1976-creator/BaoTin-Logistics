@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder
+#from st_aggrid import AgGrid, GridOptionsBuilder
 import datetime
-import time
+import time, math
 from global_func import save_nhan_vien_transaction
 db = st.session_state['db']
 tab1, tab2, tab3 = st.tabs(["📋 Danh sách Nhân viên", "➕ Thêm Nhân viên Mới", "📝 Sửa thông tin & Thôi việc"])
@@ -29,30 +29,98 @@ current_user = st.session_state.get('username', 'Admin')
 # TAB 1: DANH SÁCH NHÂN VIÊN
 # ==========================================
 with tab1:
-    sql_nv = """
-        SELECT 
-            id AS 'Mã', ma_nhan_vien AS 'Mã NV', ho_ten AS 'Họ và Tên', 
-            so_dien_thoai AS 'Số ĐT', cccd AS 'CCCD', giay_phep_lai_xe AS 'GPLX', 
-            hang_gplx AS 'Hạng', han_gplx AS 'Hạn Bằng', han_the_tap_huan AS 'Hạn Tập Huấn',
-            loai_nhan_vien AS 'Chức vụ', trang_thai AS 'Tình trạng' 
-        FROM nhan_vien ORDER BY id ASC
-    """
-    df_nv_list = db.execute_query(sql_nv)
-    
-    if isinstance(df_nv_list, pd.DataFrame) and not df_nv_list.empty:
-        df_nv_list['Trạng thái'] = df_nv_list['Tình trạng'].apply(lambda x: "🟢 Đang làm việc" if x == "Dang_Lam_Viec" else "🔴 Đã nghỉ việc")
-        df_nv_list['Hạn Bằng'] = pd.to_datetime(df_nv_list['Hạn Bằng']).dt.strftime('%d-%m-%Y').fillna("---")
-        df_nv_list['Hạn Tập Huấn'] = pd.to_datetime(df_nv_list['Hạn Tập Huấn']).dt.strftime('%d-%m-%Y').fillna("---")
-        df_nv_list = df_nv_list.drop(columns=['Tình trạng'])
+    try:
+        sql_nv = """
+            SELECT 
+                id AS 'Mã', ma_nhan_vien AS 'Mã NV', ho_ten AS 'Họ và Tên', 
+                so_dien_thoai AS 'Số ĐT', cccd AS 'CCCD', giay_phep_lai_xe AS 'GPLX', 
+                hang_gplx AS 'Hạng', han_gplx AS 'Hạn Bằng', han_the_tap_huan AS 'Hạn Tập Huấn',
+                loai_nhan_vien AS 'Chức vụ', trang_thai AS 'Tình trạng' 
+            FROM nhan_vien ORDER BY id ASC
+        """
+        df_nv_list = db.execute_query(sql_nv)
         
-        gb = GridOptionsBuilder.from_dataframe(df_nv_list)
-        gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=140)
-        gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=10)
-        # 2. Đổi fit_columns_on_grid_load thành False ở hàm gọi AgGrid
-        #AgGrid(df_display, gridOptions=gb.build(), custom_css=custom_css, theme="streamlit", fit_columns_on_grid_load=False, width="100%")
-        AgGrid(df_nv_list, gridOptions=gb.build(), theme="streamlit", fit_columns_on_grid_load=False, width="100%")
-    else:
-        st.info("Chưa có dữ liệu nhân viên.")
+        if isinstance(df_nv_list, pd.DataFrame) and not df_nv_list.empty:
+            df_nv_list['Trạng thái'] = df_nv_list['Tình trạng'].apply(lambda x: "🟢 Đang làm việc" if x == "Dang_Lam_Viec" else "🔴 Đã nghỉ việc")
+            df_nv_list['Hạn Bằng'] = pd.to_datetime(df_nv_list['Hạn Bằng']).dt.strftime('%d-%m-%Y').fillna("---")
+            df_nv_list['Hạn Tập Huấn'] = pd.to_datetime(df_nv_list['Hạn Tập Huấn']).dt.strftime('%d-%m-%Y').fillna("---")
+            df_nv_list = df_nv_list.drop(columns=['Tình trạng'])
+            # Sử dụng st.dataframe thay cho AgGrid để mượt mà trên thiết bị di động
+            #st.dataframe(
+            #    df_nv_list,
+            #    use_container_width=True,  # Tự động giãn cột vừa khít màn hình
+            #    hide_index=True            # Ẩn cột số thứ tự (index) cho gọn gàng
+            #)
+            # --- BẮT ĐẦU XỬ LÝ PHÂN TRANG VÀ HIỂN THỊ TẤT CẢ ---
+        
+            # Tạo thanh chọn chế độ hiển thị (đặt ngang hàng để tiết kiệm diện tích)
+            col_opt1, col_opt2 = st.columns([1, 6])
+            with col_opt1:
+                che_do_xem = st.selectbox("Hiển thị:", ["10 dòng", "Tất cả"])
+            
+            if che_do_xem == "Tất cả":
+                # CHẾ ĐỘ 1: HIỂN THỊ TẤT CẢ (Không dùng nút phân trang)
+                st.caption(f"Đang hiển thị toàn bộ {len(df_nv_list)} nhân viên.")
+                st.dataframe(
+                    df_nv_list,
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                # CHẾ ĐỘ 2: PHÂN TRANG 10 DÒNG
+                rows_per_page = 10
+                total_rows = len(df_nv_list)
+                total_pages = math.ceil(total_rows / rows_per_page)
+                
+                if total_pages > 0:
+                    # Khởi tạo và bảo vệ biến nhớ
+                    if 'page_nv' not in st.session_state:
+                        st.session_state['page_nv'] = 1
+                        
+                    if st.session_state['page_nv'] < 1:
+                        st.session_state['page_nv'] = 1
+                    elif st.session_state['page_nv'] > total_pages:
+                        st.session_state['page_nv'] = total_pages
+                        
+                    # Dàn 3 cột cho nút bấm
+                    col1, col2, col3 = st.columns([1, 2, 1])
+                    
+                    with col1:
+                        if st.button("⬅️ Trước", key="btn_prev_nv", disabled=(st.session_state['page_nv'] <= 1)):
+                            if st.session_state['page_nv'] > 1:
+                                st.session_state['page_nv'] -= 1
+                                st.rerun()
+                            
+                    with col3:
+                        if st.button("Sau ➡️", key="btn_next_nv", disabled=(st.session_state['page_nv'] >= total_pages)):
+                            if st.session_state['page_nv'] < total_pages:
+                                st.session_state['page_nv'] += 1
+                                st.rerun()
+                            
+                    with col2:
+                        st.markdown(f"<div style='text-align: center; margin-top: 5px;'>Trang {st.session_state['page_nv']} / {total_pages}</div>", unsafe_allow_html=True)
+
+                    # Tính toán vị trí và cắt dữ liệu
+                    start_idx = (st.session_state['page_nv'] - 1) * rows_per_page
+                    end_idx = start_idx + rows_per_page
+                    df_page = df_nv_list.iloc[start_idx:end_idx]
+                    
+                    # In bảng 10 dòng ra màn hình
+                    st.dataframe(
+                        df_page,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+            #gb = GridOptionsBuilder.from_dataframe(df_nv_list)
+            #gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=140)
+            #gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=10)
+            # 2. Đổi fit_columns_on_grid_load thành False ở hàm gọi AgGrid
+            #AgGrid(df_display, gridOptions=gb.build(), custom_css=custom_css, theme="streamlit", fit_columns_on_grid_load=False, width="100%")
+            #AgGrid(df_nv_list, gridOptions=gb.build(), theme="streamlit", fit_columns_on_grid_load=False, width="100%")
+        else:
+            st.info("Chưa có dữ liệu nhân viên.")
+    except Exception as e:
+        st.error(f"⚠️ Không thể tải danh sách nhân viên. Lỗi: {e}")
 
 # ==========================================
 # TAB 2: THÊM NHÂN VIÊN

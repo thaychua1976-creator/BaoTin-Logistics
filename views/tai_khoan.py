@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 from st_aggrid import AgGrid, GridOptionsBuilder
 from global_func import handle_user_transaction_with_audit, ghi_log_he_thong
-import time,bcrypt
+import time, math
+import bcrypt
 db = st.session_state['db']
 
 # ==========================================
@@ -51,26 +52,83 @@ with tab1:
         df_users = db.execute_query(sql_users)
         
         if isinstance(df_users, pd.DataFrame) and not df_users.empty:
-            gb = GridOptionsBuilder.from_dataframe(df_users)
+            col_opt1, col_opt2 = st.columns([1, 6])
+            with col_opt1:
+                che_do_xem = st.selectbox("Hiển thị:", ["10 dòng", "Tất cả"])
+            
+            if che_do_xem == "Tất cả":
+                # CHẾ ĐỘ 1: HIỂN THỊ TẤT CẢ (Không dùng nút phân trang)
+                st.caption(f"Đang hiển thị toàn bộ {len(df_users)} nhân viên.")
+                st.dataframe(
+                    df_users,
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                # CHẾ ĐỘ 2: PHÂN TRANG 10 DÒNG
+                rows_per_page = 10
+                total_rows = len(df_users)
+                total_pages = math.ceil(total_rows / rows_per_page)
+                
+                if total_pages > 0:
+                    # Khởi tạo và bảo vệ biến nhớ
+                    if 'page_tk' not in st.session_state:
+                        st.session_state['page_tk'] = 1
+                        
+                    if st.session_state['page_tk'] < 1:
+                        st.session_state['page_tk'] = 1
+                    elif st.session_state['page_tk'] > total_pages:
+                        st.session_state['page_tk'] = total_pages
+                        
+                    # Dàn 3 cột cho nút bấm
+                    col1, col2, col3 = st.columns([1, 2, 1])
+                    
+                    with col1:
+                        if st.button("⬅️ Trước", key="btn_prev_tk", disabled=(st.session_state['page_tk'] <= 1)):
+                            if st.session_state['page_tk'] > 1:
+                                st.session_state['page_tk'] -= 1
+                                st.rerun()
+                            
+                    with col3:
+                        if st.button("Sau ➡️", key="btn_next_tk", disabled=(st.session_state['page_tk'] >= total_pages)):
+                            if st.session_state['page_tk'] < total_pages:
+                                st.session_state['page_tk'] += 1
+                                st.rerun()
+                            
+                    with col2:
+                        st.markdown(f"<div style='text-align: center; margin-top: 5px;'>Trang {st.session_state['page_tk']} / {total_pages}</div>", unsafe_allow_html=True)
+
+                    # Tính toán vị trí và cắt dữ liệu
+                    start_idx = (st.session_state['page_tk'] - 1) * rows_per_page
+                    end_idx = start_idx + rows_per_page
+                    df_page = df_users.iloc[start_idx:end_idx]
+                    
+                    # In bảng 10 dòng ra màn hình
+                    st.dataframe(
+                        df_page,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+            #gb = GridOptionsBuilder.from_dataframe(df_users)
             
             # Kích hoạt thanh trượt ngang giống như mục Chuyến đi và Báo cáo
-            gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=160)
-            gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=10)
-            gb.configure_column("Mã", width=80, minWidth=70)
+            #gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=160)
+            #gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=10)
+            #gb.configure_column("Mã", width=80, minWidth=70)
             
-            custom_css = {
-                ".ag-header-cell": {"background-color": "#0b5394 !important"},
-                ".ag-header-cell-text": {"color": "white !important", "font-weight": "bold !important"}
-            }
+            #custom_css = {
+            #    ".ag-header-cell": {"background-color": "#0b5394 !important"},
+            #    ".ag-header-cell-text": {"color": "white !important", "font-weight": "bold !important"}
+            #}
             
-            AgGrid(
-                df_users, 
-                gridOptions=gb.build(), 
-                custom_css=custom_css, 
-                theme="streamlit", 
-                fit_columns_on_grid_load=False, 
-                width="100%"
-            )
+            #AgGrid(
+            #    df_users, 
+            #    gridOptions=gb.build(), 
+            #    custom_css=custom_css, 
+            #    theme="streamlit", 
+            #    fit_columns_on_grid_load=False, 
+            #    width="100%"
+            #)
         else:
             st.info("Hệ thống chưa ghi nhận tài khoản người dùng nào.")
     except Exception as e:

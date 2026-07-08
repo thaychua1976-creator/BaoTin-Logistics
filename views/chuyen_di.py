@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
-import io
+import io,math
 from map_service import MapService
 from st_aggrid import AgGrid, GridOptionsBuilder
 import time 
@@ -110,16 +110,75 @@ with tab1:
             df_chuyen['Ngày'] = pd.to_datetime(df_chuyen['Ngày']).dt.strftime('%d/%m/%Y')
             for col_money in ['Lương chuyến', 'Thưởng thêm']:
                 df_chuyen[col_money] = df_chuyen[col_money].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
+            # --- BẮT ĐẦU XỬ LÝ PHÂN TRANG VÀ HIỂN THỊ TẤT CẢ CHO CHUYẾN ĐI ---
+    
+            # Thêm key="xem_chuyen" để Streamlit phân biệt với ô selectbox của nhân viên
+            col_opt1, col_opt2 = st.columns([1, 6]) 
+            with col_opt1:
+                che_do_xem_chuyen = st.selectbox("Hiển thị:", ["10 dòng", "Tất cả"], key="xem_chuyen")
             
-            gb = GridOptionsBuilder.from_dataframe(df_chuyen)
-            gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=140)
-            gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=12)
+            if che_do_xem_chuyen == "Tất cả":
+                st.caption(f"Đang hiển thị toàn bộ {len(df_chuyen)} chuyến đi.")
+                st.dataframe(
+                    df_chuyen,
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                rows_per_page = 10
+                total_rows = len(df_chuyen)
+                total_pages = math.ceil(total_rows / rows_per_page)
+                
+                if total_pages > 0:
+                    # DÙNG BIẾN NHỚ MỚI: 'page_chuyen' (thay vì 'page_nv')
+                    if 'page_chuyen' not in st.session_state:
+                        st.session_state['page_chuyen'] = 1
+                        
+                    if st.session_state['page_chuyen'] < 1:
+                        st.session_state['page_chuyen'] = 1
+                    elif st.session_state['page_chuyen'] > total_pages:
+                        st.session_state['page_chuyen'] = total_pages
+                        
+                    col1, col2, col3 = st.columns([1, 2, 1])
+                    
+                    with col1:
+                        # Thêm key="btn_prev_chuyen" cho nút
+                        if st.button("⬅️ Trước", key="btn_prev_chuyen", disabled=(st.session_state['page_chuyen'] <= 1)):
+                            if st.session_state['page_chuyen'] > 1:
+                                st.session_state['page_chuyen'] -= 1
+                                st.rerun()
+                            
+                    with col3:
+                        # Thêm key="btn_next_chuyen" cho nút
+                        if st.button("Sau ➡️", key="btn_next_chuyen", disabled=(st.session_state['page_chuyen'] >= total_pages)):
+                            if st.session_state['page_chuyen'] < total_pages:
+                                st.session_state['page_chuyen'] += 1
+                                st.rerun()
+                            
+                    with col2:
+                        st.markdown(f"<div style='text-align: center; margin-top: 5px;'>Trang {st.session_state['page_chuyen']} / {total_pages}</div>", unsafe_allow_html=True)
+
+                    # Tính toán vị trí và cắt dữ liệu
+                    start_idx = (st.session_state['page_chuyen'] - 1) * rows_per_page
+                    end_idx = start_idx + rows_per_page
+                    df_page_chuyen = df_chuyen.iloc[start_idx:end_idx]
+                    
+                    # In bảng 10 dòng ra màn hình
+                    st.dataframe(
+                        df_page_chuyen,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
+            #gb = GridOptionsBuilder.from_dataframe(df_chuyen)
+            #gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=140)
+            #gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=12)
             
-            custom_css = {
-                ".ag-header-cell": {"background-color": "#0b5394", "color": "white", "font-weight": "bold"},
-                ".ag-row-hover": {"background-color": "#eef2f5 !important"},
-            }
-            AgGrid(df_chuyen, gridOptions=gb.build(), custom_css=custom_css, allow_unsafe_jscode=True, theme='streamlit')
+            #custom_css = {
+            #    ".ag-header-cell": {"background-color": "#0b5394", "color": "white", "font-weight": "bold"},
+            #    ".ag-row-hover": {"background-color": "#eef2f5 !important"},
+            #}
+            #AgGrid(df_chuyen, gridOptions=gb.build(), custom_css=custom_css, allow_unsafe_jscode=True, theme='streamlit')
         else:
             st.info("Chưa có dữ liệu chuyến đi nào trong 7 ngày qua.")
     except Exception as e:

@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-import datetime, io, time
-from st_aggrid import AgGrid, GridOptionsBuilder
+import datetime, io, time, math
+#from st_aggrid import AgGrid, GridOptionsBuilder
 
 from global_func import  save_vehicle_transaction, delete_vehicle_transaction
 
@@ -44,10 +44,68 @@ with tab1:
         """
         df_xe = db.execute_query(sql_xe_list)
         if isinstance(df_xe, pd.DataFrame) and not df_xe.empty:
-            gb = GridOptionsBuilder.from_dataframe(df_xe)
-            gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=140)
-            gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=10)
-            AgGrid(df_xe, gridOptions=gb.build(), theme="streamlit", fit_columns_on_grid_load=False, width="100%")
+            # Tạo thanh chọn chế độ hiển thị (đặt ngang hàng để tiết kiệm diện tích)
+            col_opt1, col_opt2 = st.columns([1, 7])
+            with col_opt1:
+                che_do_xem = st.selectbox("Hiển thị:", ["10 dòng", "Tất cả"])
+            
+            if che_do_xem == "Tất cả":
+                # CHẾ ĐỘ 1: HIỂN THỊ TẤT CẢ (Không dùng nút phân trang)
+                st.caption(f"Đang hiển thị toàn bộ {len(df_xe)} nhân viên.")
+                st.dataframe(
+                    df_xe,
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                # CHẾ ĐỘ 2: PHÂN TRANG 10 DÒNG
+                rows_per_page = 10
+                total_rows = len(df_xe)
+                total_pages = math.ceil(total_rows / rows_per_page)
+                
+                if total_pages > 0:
+                    # Khởi tạo và bảo vệ biến nhớ
+                    if 'page_doixe' not in st.session_state:
+                        st.session_state['page_doixe'] = 1
+                        
+                    if st.session_state['page_doixe'] < 1:
+                        st.session_state['page_doixe'] = 1
+                    elif st.session_state['page_doixe'] > total_pages:
+                        st.session_state['page_doixe'] = total_pages
+                        
+                    # Dàn 3 cột cho nút bấm
+                    col1, col2, col3 = st.columns([1, 2, 1])
+                    
+                    with col1:
+                        if st.button("⬅️ Trước", key="btn_prev_dx", disabled=(st.session_state['page_doixe'] <= 1)):
+                            if st.session_state['page_doixe'] > 1:
+                                st.session_state['page_doixe'] -= 1
+                                st.rerun()
+                            
+                    with col3:
+                        if st.button("Sau ➡️", key="btn_next_dx", disabled=(st.session_state['page_doixe'] >= total_pages)):
+                            if st.session_state['page_doixe'] < total_pages:
+                                st.session_state['page_doixe'] += 1
+                                st.rerun()
+                            
+                    with col2:
+                        st.markdown(f"<div style='text-align: center; margin-top: 5px;'>Trang {st.session_state['page_doixe']} / {total_pages}</div>", unsafe_allow_html=True)
+
+                    # Tính toán vị trí và cắt dữ liệu
+                    start_idx = (st.session_state['page_doixe'] - 1) * rows_per_page
+                    end_idx = start_idx + rows_per_page
+                    df_page = df_xe.iloc[start_idx:end_idx]
+                    
+                    # In bảng 10 dòng ra màn hình
+                    st.dataframe(
+                        df_page,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+            #gb = GridOptionsBuilder.from_dataframe(df_xe)
+            #gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=140)
+            #gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=10)
+            #AgGrid(df_xe, gridOptions=gb.build(), theme="streamlit", fit_columns_on_grid_load=False, width="100%")
         else:
             st.info("Chưa có dữ liệu xe hoạt động.")
     except Exception as e: st.error(f"Lỗi: {e}")

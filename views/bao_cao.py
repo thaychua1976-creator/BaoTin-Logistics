@@ -51,7 +51,7 @@ st.divider()
 # ==========================================
 # 2. KHU VỰC HIỂN THỊ: CHIA 2 TAB BÁO CÁO
 # ==========================================
-tab_bc1, tab_bc2 = st.tabs(["📊 Báo Cáo Tài Chính & Quyết Toán", "⚠️ Cảnh Báo Xe Tồn Đọng / Quá Hạn"])
+tab_bc1, tab_bc2 = st.tabs(["📊 Báo cáo tài chính & Quyết toán", "⚠️ Cảnh báo Xe tồn đọng / Quá hạn"])
 
 # ---------------------------------------------------------
 # TAB 1: BÁO CÁO TÀI CHÍNH (CÁC CHUYẾN ĐÃ HOÀN THÀNH)
