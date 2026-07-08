@@ -54,7 +54,7 @@ with tab1:
             # --- BẮT ĐẦU XỬ LÝ PHÂN TRANG VÀ HIỂN THỊ TẤT CẢ ---
         
             # Tạo thanh chọn chế độ hiển thị (đặt ngang hàng để tiết kiệm diện tích)
-            col_opt1, col_opt2 = st.columns([1, 6])
+            col_opt1, col_opt2 = st.columns([1, 7])
             with col_opt1:
                 che_do_xem = st.selectbox("Hiển thị:", ["10 dòng", "Tất cả"])
             

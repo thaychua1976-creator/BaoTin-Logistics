@@ -51,7 +51,7 @@ with tab1:
             
             if che_do_xem == "Tất cả":
                 # CHẾ ĐỘ 1: HIỂN THỊ TẤT CẢ (Không dùng nút phân trang)
-                st.caption(f"Đang hiển thị toàn bộ {len(df_xe)} nhân viên.")
+                st.caption(f"Đang hiển thị toàn bộ {len(df_xe)} xe.")
                 st.dataframe(
                     df_xe,
                     use_container_width=True,

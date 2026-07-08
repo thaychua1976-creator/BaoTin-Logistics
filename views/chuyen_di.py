@@ -3,7 +3,7 @@ import pandas as pd
 import datetime
 import io,math
 from map_service import MapService
-from st_aggrid import AgGrid, GridOptionsBuilder
+#from st_aggrid import AgGrid, GridOptionsBuilder
 import time 
 import json
 import streamlit.components.v1 as components
@@ -113,7 +113,7 @@ with tab1:
             # --- BẮT ĐẦU XỬ LÝ PHÂN TRANG VÀ HIỂN THỊ TẤT CẢ CHO CHUYẾN ĐI ---
     
             # Thêm key="xem_chuyen" để Streamlit phân biệt với ô selectbox của nhân viên
-            col_opt1, col_opt2 = st.columns([1, 6]) 
+            col_opt1, col_opt2 = st.columns([1, 7]) 
             with col_opt1:
                 che_do_xem_chuyen = st.selectbox("Hiển thị:", ["10 dòng", "Tất cả"], key="xem_chuyen")
             

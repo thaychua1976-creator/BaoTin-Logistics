@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder
+#from st_aggrid import AgGrid, GridOptionsBuilder
 from global_func import handle_user_transaction_with_audit, ghi_log_he_thong
 import time, math
 import bcrypt
@@ -52,13 +52,13 @@ with tab1:
         df_users = db.execute_query(sql_users)
         
         if isinstance(df_users, pd.DataFrame) and not df_users.empty:
-            col_opt1, col_opt2 = st.columns([1, 6])
+            col_opt1, col_opt2 = st.columns([1, 7])
             with col_opt1:
                 che_do_xem = st.selectbox("Hiển thị:", ["10 dòng", "Tất cả"])
             
             if che_do_xem == "Tất cả":
                 # CHẾ ĐỘ 1: HIỂN THỊ TẤT CẢ (Không dùng nút phân trang)
-                st.caption(f"Đang hiển thị toàn bộ {len(df_users)} nhân viên.")
+                st.caption(f"Đang hiển thị toàn bộ {len(df_users)} tài khoản.")
                 st.dataframe(
                     df_users,
                     use_container_width=True,
