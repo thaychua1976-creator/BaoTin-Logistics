@@ -63,3 +63,37 @@ class Database:
                 cursor.close()
             if conn and conn.is_connected():
                 conn.close()
+    ######################
+    def get_recent_trips_for_edit(self):
+        """Lấy danh sách chuyến đi chưa hoàn thành hoặc gần đây để sửa"""
+        # 🔄 SỬA ĐỔI: Khởi tạo DataFrame trống trước khi truy vấn
+        df = pd.DataFrame()
+#ngay_chuyen_di, ten_khach_hang,dia_chi_khach_hang, xe_id, dia_diem_giao_nhan, so_km_thuc_te, khoi_luong_kg,the_tich_cbm, cong_chuyen, trang_thai_chuyen,ghi_chu) 
+        try:
+            sql = """
+                SELECT 
+                    c.id, c.ngay_chuyen_di, c.ten_khach_hang, c.dia_chi_khach_hang,
+                    c.xe_id, x.bien_so_xe,
+                    txc.tai_xe_id, nv.ho_ten as ten_tai_xe,
+                    c.dia_diem_giao_nhan, c.so_km_thuc_te, c.khoi_luong_kg, c.the_tich_cbm,
+                    c.cong_chuyen, c.trang_thai_chuyen, c.ghi_chu
+                FROM chuyen_di c
+                JOIN xe x ON c.xe_id = x.id
+                LEFT JOIN chuyen_di_tai_xe txc ON c.id = txc.chuyen_di_id
+                LEFT JOIN nhan_vien nv ON txc.tai_xe_id = nv.id
+                WHERE c.trang_thai_chuyen NOT IN ('Hoan_Thanh', 'Da_Huy')
+                   OR c.ngay_chuyen_di >= DATE_SUB(CURDATE(), INTERVAL 2 DAY)
+                ORDER BY c.ngay_chuyen_di DESC, c.id DESC
+                LIMIT 50;
+            """
+            # Giả sử self.execute_query có thể trả về DataFrame hoặc raise Exception
+            df = self.execute_query(sql)
+            if df is None:
+                # Ghi log lỗi (st.error chỉ là ghi log tạm thời, tốt nhất dùng logging)
+                # st.error(f"❌ Lỗi truy vấn cơ sở dữ liệu: ...") # logging tốt hơn st.error
+                return pd.DataFrame()
+            return df
+        except Exception as e:
+            # Ghi log lỗi chi tiết (st.error chỉ là ghi log tạm thời, tốt nhất dùng logging)
+            # st.error(f"❌ Lỗi truy vấn cơ sở dữ liệu: {e}") # logging tốt hơn st.error
+            return pd.DataFrame() # Trả về DataFrame trống

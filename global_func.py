@@ -60,7 +60,7 @@ def ghi_log_thao_tac(cursor, chuyen_di_id, nguoi_dung, hanh_dong, chi_tiet_dict)
 # 2. HÀM TRANSACTION ĐA BẢNG (Chống rác dữ liệu và chống kẹt ID)
 def save_trip_full_process(db_pool, trip_data, tai_xe_id):
     """
-    trip_data CẦN ĐÚNG 8 BIẾN: (ngay_chuyen_di, ten_khach_hang, xe_id, dia_diem_giao_nhan, so_km_thuc_te, khoi_luong_kg, cong_chuyen,ghi_chu, trang_thai_chuyen)
+    trip_data CẦN ĐÚNG 8 BIẾN: (ngay_chuyen_di, ten_khach_hang,dia-chi_khach_hang, xe_id, dia_diem_giao_nhan, so_km_thuc_te, khoi_luong_kg, cong_chuyen, trang_thai_chuyen,ghi_chu,)
     tai_xe_id: INT
     chi_phi_data: tuple (so_tien, loai_chi_phi, ghi_chu)
     """
@@ -71,8 +71,8 @@ def save_trip_full_process(db_pool, trip_data, tai_xe_id):
         
         # 1. Lưu chuyến đi (Đã bổ sung cột khoi_luong_kg)
         sql_trip = """INSERT INTO chuyen_di 
-            (ngay_chuyen_di, ten_khach_hang, xe_id, dia_diem_giao_nhan, so_km_thuc_te, khoi_luong_kg,the_tich_cbm, cong_chuyen, trang_thai_chuyen) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s,%s, %s)"""
+            (ngay_chuyen_di, ten_khach_hang,dia_chi_khach_hang, xe_id, dia_diem_giao_nhan, so_km_thuc_te, khoi_luong_kg,the_tich_cbm, cong_chuyen, trang_thai_chuyen,ghi_chu) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s,%s, %s,%s,%s)"""
         cursor.execute(sql_trip, trip_data)
         
         new_cid = cursor.lastrowid # Lấy ID vừa tạo an toàn
@@ -581,3 +581,57 @@ def update_trip_transaction(db_pool, data_chuyen_di: dict, trang_thai_enum: str,
         cursor.close()
         conn.close() # Trả kết nối về Pool
 ##########################################        
+
+#############################
+# Giả sử file database.py
+def update_trip_full_process(pool, trip_id, trip_data_tuple, tai_xe_id):
+    """
+    Transaction cập nhật thông tin chuyến đi và tài xế
+    Nhận vào 4 tham số khớp với Frontend: pool, id chuyến, tuple 11 trường, và id tài xế
+    """
+    conn = pool.get_connection()
+    cursor = conn.cursor()
+    try:
+        # 1. Bắt đầu Transaction
+        conn.start_transaction()
+
+        # 2. Cập nhật bảng chuyen_di
+        sql_update_chuyen = """
+            UPDATE chuyen_di 
+            SET 
+                ngay_chuyen_di = %s, 
+                ten_khach_hang = %s, 
+                dia_chi_khach_hang = %s,
+                xe_id = %s, 
+                dia_diem_giao_nhan = %s, 
+                so_km_thuc_te = %s,
+                khoi_luong_kg = %s, 
+                the_tich_cbm = %s, 
+                cong_chuyen = %s,
+                trang_thai_chuyen = %s, 
+                ghi_chu = %s
+            WHERE id = %s
+        """
+        # Cộng gộp Tuple 11 trường với tham số trip_id ở cuối cùng để đưa vào WHERE id = %s
+        params_chuyen = trip_data_tuple + (trip_id,)
+        cursor.execute(sql_update_chuyen, params_chuyen)
+
+        # 3. Cập nhật bảng chuyen_di_tai_xe (Tài xế chạy chuyến)
+        # Cách an toàn nhất để update là xoá bản ghi cũ của chuyến này và chèn bản ghi mới
+        sql_delete_tx = "DELETE FROM chuyen_di_tai_xe WHERE chuyen_di_id = %s"
+        cursor.execute(sql_delete_tx, (trip_id,))
+        
+        sql_insert_tx = "INSERT INTO chuyen_di_tai_xe (chuyen_di_id, tai_xe_id) VALUES (%s, %s)"
+        cursor.execute(sql_insert_tx, (trip_id, tai_xe_id))
+
+        # 4. Lưu thay đổi
+        conn.commit()
+        return True, "Cập nhật thành công"
+
+    except Exception as e:
+        # Hủy bỏ mọi thao tác nếu có lỗi
+        conn.rollback()
+        return False, str(e)
+    finally:
+        cursor.close()
+        conn.close()
