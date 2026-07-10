@@ -65,7 +65,7 @@ class Database:
                 conn.close()
     ######################
     def get_recent_trips_for_edit(self):
-        """Lấy danh sách chuyến đi chưa hoàn thành hoặc gần đây để sửa"""
+        """Lấy danh sách chuyến đi chưa hoàn thành hoặc gần đây để sửa ok"""
         # 🔄 SỬA ĐỔI: Khởi tạo DataFrame trống trước khi truy vấn
         df = pd.DataFrame()
 #ngay_chuyen_di, ten_khach_hang,dia_chi_khach_hang, xe_id, dia_diem_giao_nhan, so_km_thuc_te, khoi_luong_kg,the_tich_cbm, cong_chuyen, trang_thai_chuyen,ghi_chu) 
@@ -98,13 +98,4 @@ class Database:
             # st.error(f"❌ Lỗi truy vấn cơ sở dữ liệu: {e}") # logging tốt hơn st.error
             return pd.DataFrame() # Trả về DataFrame trống
     ####
-    def auto_fit_columns(worksheet, df):
-        for idx, col in enumerate(df.columns):
-        # BƯỚC BẢO VỆ: Lấp đầy các ô trống (NaN) bằng chuỗi rỗng "", 
-        # sau đó mới ép toàn bộ cột về kiểu chữ (str)
-            series_str = df[col].fillna("").astype(str)
-        # Lúc này 100% dữ liệu đã là chữ, hàm len() sẽ chạy mượt mà
-            max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
-                        
-        # Giới hạn độ rộng cột tối đa là 50 để tránh cột bị kéo ra quá dài
-            worksheet.set_column(idx, idx, min(max_len, 50))
+    
