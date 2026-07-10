@@ -11,7 +11,7 @@ def parse_money_input(val_str):
 def update_bonus_config_transaction(db_pool, updated_values: dict, nguoi_dung: str = "Admin"):
     """
     Cập nhật đồng loạt các tiêu chí thưởng bằng Transaction.
-    updated_values: Dictionary dạng {'GOP_CHUYEN': 100000, 'VE_KHUYA': 50000}
+    updated_values: Dictionary dạng {'GOP_CHUYEN': 100000, 'VE_KHUYA': 100000}
     """
     conn = db_pool.get_connection()
     cursor = conn.cursor()
