@@ -124,10 +124,16 @@ with tab_bc1:
                 df_excel_all = df_result[cols_excel].rename(columns={'Ngày hiển thị': 'Ngày Chạy'}).copy()
                 
                 def auto_fit_columns(worksheet, df):
-                    for idx, col in enumerate(df):
-                        series = df[col].astype(str)
-                        max_len = max(series.map(len).max() if not series.empty else 0, len(str(col))) + 2
+                    for idx, col in enumerate(df.columns):
+                    # BƯỚC BẢO VỆ: Lấp đầy các ô trống (NaN) bằng chuỗi rỗng "", 
+                    # sau đó mới ép toàn bộ cột về kiểu chữ (str)
+                        series_str = df[col].fillna("").astype(str)
+                    # Lúc này 100% dữ liệu đã là chữ, hàm len() sẽ chạy mượt mà
+                        max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
+                                    
+                    # Giới hạn độ rộng cột tối đa là 50 để tránh cột bị kéo ra quá dài
                         worksheet.set_column(idx, idx, min(max_len, 50))
+
                 
                 df_excel_all.to_excel(writer, sheet_name='Tổng Hợp', index=False)
                 worksheet_all = writer.sheets['Tổng Hợp']

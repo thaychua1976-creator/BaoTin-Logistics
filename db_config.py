@@ -97,3 +97,14 @@ class Database:
             # Ghi log lỗi chi tiết (st.error chỉ là ghi log tạm thời, tốt nhất dùng logging)
             # st.error(f"❌ Lỗi truy vấn cơ sở dữ liệu: {e}") # logging tốt hơn st.error
             return pd.DataFrame() # Trả về DataFrame trống
+    ####
+    def auto_fit_columns(worksheet, df):
+        for idx, col in enumerate(df.columns):
+        # BƯỚC BẢO VỆ: Lấp đầy các ô trống (NaN) bằng chuỗi rỗng "", 
+        # sau đó mới ép toàn bộ cột về kiểu chữ (str)
+            series_str = df[col].fillna("").astype(str)
+        # Lúc này 100% dữ liệu đã là chữ, hàm len() sẽ chạy mượt mà
+            max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
+                        
+        # Giới hạn độ rộng cột tối đa là 50 để tránh cột bị kéo ra quá dài
+            worksheet.set_column(idx, idx, min(max_len, 50))

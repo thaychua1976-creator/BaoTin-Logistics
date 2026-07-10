@@ -635,3 +635,4 @@ def update_trip_full_process(pool, trip_id, trip_data_tuple, tai_xe_id):
     finally:
         cursor.close()
         conn.close()
+###############################
