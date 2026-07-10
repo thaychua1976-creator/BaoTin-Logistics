@@ -64,11 +64,10 @@ class Database:
             if conn and conn.is_connected():
                 conn.close()
     ######################
+    
     def get_recent_trips_for_edit(self):
-        """Lấy danh sách chuyến đi chưa hoàn thành hoặc gần đây để sửa ok"""
-        # 🔄 SỬA ĐỔI: Khởi tạo DataFrame trống trước khi truy vấn
+        """Lấy danh sách chuyến đi chưa hoàn thành hoặc gần đây để sửa khong có ngày chỉ có tao mới"""
         df = pd.DataFrame()
-#ngay_chuyen_di, ten_khach_hang,dia_chi_khach_hang, xe_id, dia_diem_giao_nhan, so_km_thuc_te, khoi_luong_kg,the_tich_cbm, cong_chuyen, trang_thai_chuyen,ghi_chu) 
         try:
             sql = """
                 SELECT 
@@ -82,20 +81,13 @@ class Database:
                 LEFT JOIN chuyen_di_tai_xe txc ON c.id = txc.chuyen_di_id
                 LEFT JOIN nhan_vien nv ON txc.tai_xe_id = nv.id
                 WHERE c.trang_thai_chuyen NOT IN ('Hoan_Thanh', 'Da_Huy')
-                   OR c.ngay_chuyen_di >= DATE_SUB(CURDATE(), INTERVAL 2 DAY)
                 ORDER BY c.ngay_chuyen_di DESC, c.id DESC
                 LIMIT 50;
             """
-            # Giả sử self.execute_query có thể trả về DataFrame hoặc raise Exception
             df = self.execute_query(sql)
             if df is None:
-                # Ghi log lỗi (st.error chỉ là ghi log tạm thời, tốt nhất dùng logging)
-                # st.error(f"❌ Lỗi truy vấn cơ sở dữ liệu: ...") # logging tốt hơn st.error
                 return pd.DataFrame()
             return df
         except Exception as e:
-            # Ghi log lỗi chi tiết (st.error chỉ là ghi log tạm thời, tốt nhất dùng logging)
-            # st.error(f"❌ Lỗi truy vấn cơ sở dữ liệu: {e}") # logging tốt hơn st.error
-            return pd.DataFrame() # Trả về DataFrame trống
+            return pd.DataFrame()
     ####
-    

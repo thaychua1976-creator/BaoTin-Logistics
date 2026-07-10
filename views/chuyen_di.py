@@ -15,7 +15,32 @@ def get_map_service(): return MapService()
 map_srv = get_map_service()
 db = st.session_state['db']
 
-
+def get_recent_trips_for_edit(self):
+        """Lấy danh sách chuyến đi chưa hoàn thành hoặc gần đây để sửa ok"""
+        df = pd.DataFrame()
+        try:
+            sql = """
+                SELECT 
+                    c.id, c.ngay_chuyen_di, c.ten_khach_hang, c.dia_chi_khach_hang,
+                    c.xe_id, x.bien_so_xe,
+                    txc.tai_xe_id, nv.ho_ten as ten_tai_xe,
+                    c.dia_diem_giao_nhan, c.so_km_thuc_te, c.khoi_luong_kg, c.the_tich_cbm,
+                    c.cong_chuyen, c.trang_thai_chuyen, c.ghi_chu
+                FROM chuyen_di c
+                JOIN xe x ON c.xe_id = x.id
+                LEFT JOIN chuyen_di_tai_xe txc ON c.id = txc.chuyen_di_id
+                LEFT JOIN nhan_vien nv ON txc.tai_xe_id = nv.id
+                WHERE c.trang_thai_chuyen NOT IN ('Hoan_Thanh', 'Da_Huy')
+                ORDER BY c.ngay_chuyen_di DESC, c.id DESC
+                LIMIT 50;
+            """
+            df = self.execute_query(sql)
+            if df is None:
+                return pd.DataFrame()
+            return df
+        except Exception as e:
+            return pd.DataFrame()
+    ####
 # ==========================================
 # CSS ẨN HƯỚNG DẪN "PRESS ENTER TO SUBMIT"
 # ==========================================
@@ -388,7 +413,7 @@ with tab2:
         c6, c7, c8 = st.columns(3)
         so_cbm = c6.number_input(
             "Số CBM", 
-            min_value=0.1, 
+            min_value=0.0, 
             value=float(editing_data['the_tich_cbm']) if is_edit_mode else 1.0,
             key=f"cbm_{st.session_state['reset_tab2']}_{st.session_state['editing_trip_id']}"
         )
