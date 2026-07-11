@@ -102,32 +102,25 @@ def save_trip_full_process(db_pool, trip_data, tai_xe_id):
 ########################        
 def settle_trip_transaction(db_pool, data_chuyen_di: dict, trang_thai_enum: str, chuyen_di_id: int):
     """
-    Hàm Giao dịch Quyết toán dùng chung.
-    - data_chuyen_di: Truyền vào 1 Dictionary chứa tên cột và giá trị cần cập nhật.
-    - trang_thai_enum: Trạng thái chuẩn ENUM (vd: 'Hoan_Thanh').
+    Hàm Giao dịch Quyết toán dùng chung (Đã tích hợp đồng bộ Odometer).
     """
     conn = db_pool.get_connection()
     cursor = conn.cursor()
     try:
         conn.autocommit = False # Bắt đầu Transaction
         
-        # 1. Khởi tạo mảng linh hoạt để build câu lệnh SET
+        # 1. Lắp ráp SQL động từ Dictionary
         columns_to_set = []
         values = []
         
-        # Duyệt qua Dictionary để lắp ráp các cột cần Update
         for col_name, value in data_chuyen_di.items():
             columns_to_set.append(f"{col_name}=%s")
             values.append(value)
             
-        # Thêm cột trạng thái (bắt buộc luôn có)
         columns_to_set.append("trang_thai_chuyen=%s")
         values.append(trang_thai_enum)
-        
-        # Thêm ID cho điều kiện WHERE
         values.append(chuyen_di_id)
         
-        # 2. Lắp ráp chuỗi SQL hoàn chỉnh
         set_clause_str = ", ".join(columns_to_set)
         
         sql_update = f"""
@@ -136,29 +129,45 @@ def settle_trip_transaction(db_pool, data_chuyen_di: dict, trang_thai_enum: str,
             WHERE id=%s AND trang_thai_chuyen NOT IN ('Hoan_Thanh','Huy_Chuyen')
         """
         
-        # 3. Thực thi
+        # 2. Thực thi cập nhật chuyến đi
         cursor.execute(sql_update, tuple(values))
         
-        # 4. KIỂM TRA LỖI THÔNG MINH HƠN
+        # 3. KIỂM TRA LỖI THÔNG MINH (Phải đặt ngay sau execute UPDATE chuyen_di)
         if cursor.rowcount == 0:
-            # rowcount = 0 có 2 trường hợp: 
-            # 1. Chuyến đi thật sự không tồn tại
-            # 2. Tồn tại nhưng người dùng không thay đổi số liệu gì (dữ liệu mới y hệt cũ)
-            
-            # Ta truy vấn thử xem ID có thực sự tồn tại trong DB không
             cursor.execute("SELECT id FROM chuyen_di WHERE id = %s", (chuyen_di_id,))
             if cursor.fetchone() is None:
-                # Nếu không tìm thấy ID -> Lỗi thật
                 conn.rollback()
                 return False, f"Lỗi: Chuyến đi mã {chuyen_di_id} không tồn tại trong hệ thống."
+                
+        # 4. TÍNH NĂNG MỚI: CỘNG DỒN ODOMETER BẢO DƯỠNG XE
+        # Chỉ cộng khi trạng thái truyền vào là 'Hoan_Thanh'
+        if trang_thai_enum == 'Hoan_Thanh':
+            cursor.execute("SELECT xe_id FROM chuyen_di WHERE id = %s", (chuyen_di_id,))
+            result_xe = cursor.fetchone()
             
-            # Nếu tìm thấy ID -> Tức là người dùng không sửa gì mà vẫn bấm Lưu -> Cho qua (không cần Rollback)
+            # result_xe[0] để lấy giá trị đầu tiên của tuple
+            if result_xe and result_xe[0] is not None:
+                xe_id = result_xe[0]
+                # Lấy an toàn số km từ data_chuyen_di
+                so_km_str = data_chuyen_di.get('so_km_thuc_te', 0.0)
+                so_km = float(so_km_str) if so_km_str else 0.0
+                
+                if so_km > 0:
+                    sql_update_odo = """
+                        UPDATE xe 
+                        SET tong_km_hien_tai = COALESCE(tong_km_hien_tai, 0) + %s 
+                        WHERE id = %s
+                    """
+                    cursor.execute(sql_update_odo, (so_km, xe_id))
         
-        # [THÊM MỚI] Ghi log quyết toán/cập nhật
-        # (Giữ nguyên đoạn code ghi log của bạn ở bên dưới)
+        # 5. GHI LOG THAO TÁC
         hanh_dong = "CHOT_SO" if trang_thai_enum == "Hoan_Thanh" else "CAP_NHAT"
+        # Lưu ý: cần import thư viện Streamlit (st) ở đầu file nếu dùng st.session_state tại đây
+        import streamlit as st 
         ghi_log_thao_tac(cursor, chuyen_di_id, st.session_state['username'], hanh_dong, data_chuyen_di)    
-        conn.commit() # Lưu thành công
+        
+        # 6. LƯU THÀNH CÔNG
+        conn.commit() 
         return True, chuyen_di_id
         
     except Exception as e:
@@ -525,7 +534,7 @@ def save_nhan_vien_transaction(db_pool, action, nv_data=None, nv_id=None, curren
 ########################        
 def update_trip_transaction(db_pool, data_chuyen_di: dict, trang_thai_enum: str, chuyen_di_id: int):
     """
-    Hàm Giao dịch Quyết toán dùng chung.
+    Hàm Giao dịch Quyết toán dùng chung (Tích hợp sửa lỗi lệch đồng hồ Odometer).
     - data_chuyen_di: Truyền vào 1 Dictionary chứa tên cột và giá trị cần cập nhật.
     - trang_thai_enum: Trạng thái chuẩn ENUM (vd: 'Hoan_Thanh').
     """
@@ -533,6 +542,18 @@ def update_trip_transaction(db_pool, data_chuyen_di: dict, trang_thai_enum: str,
     cursor = conn.cursor()
     try:
         conn.autocommit = False # Bắt đầu Transaction
+        
+        # --- [THÊM MỚI] BƯỚC 0: LẤY SỐ KM CŨ TRƯỚC KHI GHI ĐÈ ---
+        cursor.execute("SELECT xe_id, so_km_thuc_te FROM chuyen_di WHERE id = %s", (chuyen_di_id,))
+        old_data = cursor.fetchone()
+        
+        if old_data is None:
+            conn.rollback()
+            return False, f"Chuyến đi mã {chuyen_di_id} không tồn tại trong hệ thống."
+            
+        xe_id = old_data[0]
+        # Lấy số km cũ an toàn (nếu null thì cho bằng 0)
+        old_km = float(old_data[1]) if old_data[1] is not None else 0.0
         
         # 1. Khởi tạo mảng linh hoạt để build câu lệnh SET
         columns_to_set = []
@@ -559,18 +580,39 @@ def update_trip_transaction(db_pool, data_chuyen_di: dict, trang_thai_enum: str,
             WHERE id=%s AND trang_thai_chuyen != 'Huy_Chuyen'
         """
         
-        # 3. Thực thi
+        # 3. Thực thi cập nhật chuyến đi
         cursor.execute(sql_update, tuple(values))
         
-        # Nếu không có dòng nào bị tác động (sai ID hoặc chuyến đã khóa)
+        # Nếu không có dòng nào bị tác động (do sai ID hoặc trùng lặp)
         if cursor.rowcount == 0:
-            conn.rollback()
-            return False, f"Chuyến đi mã {chuyen_di_id} không tồn tại hoặc đã được chốt từ trước."
-        
-        # [THÊM MỚI] Ghi log quyết toán/cập nhật
-        # Ta tận dụng luôn biến data_chuyen_di mà ta đã truyền vào hàm này
+            cursor.execute("SELECT id FROM chuyen_di WHERE id = %s", (chuyen_di_id,))
+            if cursor.fetchone() is None:
+                conn.rollback()
+                return False, f"Chuyến đi mã {chuyen_di_id} không tồn tại hoặc đã được chốt từ trước."
+
+        # --- [THÊM MỚI] BƯỚC 4: TÍNH TOÁN BÙ TRỪ ODOMETER CHO XE ---
+        # Chỉ can thiệp Odometer nếu chuyến này đang Hoàn Thành và người dùng có sửa số km
+        if trang_thai_enum == 'Hoan_Thanh' and 'so_km_thuc_te' in data_chuyen_di:
+            new_km_str = data_chuyen_di.get('so_km_thuc_te', 0.0)
+            new_km = float(new_km_str) if new_km_str else 0.0
+            
+            # Tính độ chênh lệch (VD: Lúc đầu quyết toán 100km, nay sửa thành 120km => Chênh lệch +20km)
+            km_diff = new_km - old_km
+            
+            if km_diff != 0 and xe_id is not None:
+                sql_update_odo = """
+                    UPDATE xe 
+                    SET tong_km_hien_tai = COALESCE(tong_km_hien_tai, 0) + %s 
+                    WHERE id = %s
+                """
+                # Nếu km_diff là âm (VD: sửa từ 150km xuống 100km), SQL vẫn tự động hiểu và trừ đi 50km
+                cursor.execute(sql_update_odo, (km_diff, xe_id))
+
+        # 5. Ghi log quyết toán/cập nhật
         hanh_dong = "CHOT_SO" if trang_thai_enum == "Hoan_Thanh" else "CAP_NHAT"
+        import streamlit as st
         ghi_log_thao_tac(cursor, chuyen_di_id, st.session_state['username'], hanh_dong, data_chuyen_di)    
+        
         conn.commit() # Lưu thành công
         return True, chuyen_di_id
         
@@ -580,7 +622,6 @@ def update_trip_transaction(db_pool, data_chuyen_di: dict, trang_thai_enum: str,
     finally:
         cursor.close()
         conn.close() # Trả kết nối về Pool
-##########################################        
 
 #############################
 # Giả sử file database.py
@@ -636,3 +677,72 @@ def update_trip_full_process(pool, trip_id, trip_data_tuple, tai_xe_id):
         cursor.close()
         conn.close()
 ###############################
+import pandas as pd
+
+def get_canh_bao_bao_duong(db_pool):
+    """Lấy danh sách xe và tính toán số KM đã chạy từ Odometer"""
+    sql = """
+        SELECT 
+            id AS xe_id,
+            bien_so_xe,
+            COALESCE(dinh_muc_bao_duong, 5000) AS dinh_muc_km,
+            ngay_bao_duong_gan_nhat AS ngay_bd_cuoi,
+            -- Số KM đã chạy = Tổng Odometer hiện tại - Mốc Odometer lúc bảo dưỡng
+            (COALESCE(tong_km_hien_tai, 0) - COALESCE(km_bao_duong_gan_nhat, 0)) AS km_da_chay
+        FROM xe
+        WHERE trang_thai = 'Dang_Hoat_Dong'
+        -- Sắp xếp: Ưu tiên những xe có tỷ lệ chạy/định mức cao nhất lên đầu
+        ORDER BY ( (COALESCE(tong_km_hien_tai, 0) - COALESCE(km_bao_duong_gan_nhat, 0)) / COALESCE(dinh_muc_bao_duong, 5000) ) DESC;
+    """
+    try:
+        # Tùy theo cách cấu hình class DB, dùng hàm tương ứng
+        conn = db_pool.get_connection()
+        df = pd.read_sql(sql, conn)
+        conn.close()
+        return df
+    except Exception as e:
+        print(f"Lỗi truy vấn bảo dưỡng: {e}")
+        return None
+############################################
+def save_lich_su_bao_duong(db_pool, data_dict):
+    """Lưu lịch sử và cập nhật đồng bộ mốc bảo dưỡng sang bảng Xe"""
+    try:
+        conn = db_pool.get_connection()
+        cursor = conn.cursor()
+        
+        # 1. Ghi vào bảng lịch sử bảo dưỡng
+        sql_insert = """
+            INSERT INTO lich_su_bao_duong 
+            (xe_id, ngay_bao_duong, km_thuc_te, hang_muc_sua_chua, chi_phi, don_vi_thuc_hien, loai_bao_duong, ghi_chu)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(sql_insert, (
+            data_dict['xe_id'], data_dict['ngay_bao_duong'], data_dict['km_thuc_te'],
+            data_dict['hang_muc_sua_chua'], data_dict['chi_phi'], data_dict['don_vi_thuc_hien'],
+            data_dict['loai_bao_duong'], data_dict['ghi_chu']
+        ))
+        
+        # 2. CHỈ RESET mốc bảo dưỡng trên bảng `xe` nếu đây là Bảo dưỡng Định kỳ
+        if data_dict['loai_bao_duong'] == 'Dinh_Ky':
+            sql_update_xe = """
+                UPDATE xe 
+                SET ngay_bao_duong_gan_nhat = %s,
+                    km_bao_duong_gan_nhat = %s,
+                    tong_km_hien_tai = %s -- Đồng bộ lại đồng hồ phần mềm theo đồng hồ thật của xe
+                WHERE id = %s
+            """
+            cursor.execute(sql_update_xe, (
+                data_dict['ngay_bao_duong'], 
+                data_dict['km_thuc_te'], 
+                data_dict['km_thuc_te'], 
+                data_dict['xe_id']
+            ))
+            
+        conn.commit()
+        return True, "✅ Đã lưu phiếu và đồng bộ thông số xe thành công!"
+    except Exception as e:
+        if 'conn' in locals() and conn: conn.rollback()
+        return False, f"❌ Lỗi Database: {str(e)}"
+    finally:
+        if 'cursor' in locals() and cursor: cursor.close()
+        if 'conn' in locals() and conn: conn.close()

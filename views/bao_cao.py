@@ -82,7 +82,7 @@ with tab_bc1:
                 CAST(COALESCE(cd.phi_hai_quan, 0) AS DECIMAL(15,2)) AS 'Phí Hải Quan',
                 CAST(COALESCE(cd.phi_boc_xep, 0) AS DECIMAL(15,2)) AS 'Phí Bốc Xếp',
                 CAST(COALESCE(cd.phi_khac, 0) AS DECIMAL(15,2)) AS 'Phí Khác',
-                cd.ghi_chu_quyet_toan AS 'Ghi chú'
+                cd.ghi_chu AS 'Ghi chú'
             FROM chuyen_di cd
             LEFT JOIN xe x ON cd.xe_id = x.id
             LEFT JOIN chuyen_di_tai_xe cdtx ON cd.id = cdtx.chuyen_di_id AND cdtx.loai_tai_xe = 'Tai_Chinh'

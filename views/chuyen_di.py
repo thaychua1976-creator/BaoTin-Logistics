@@ -15,32 +15,7 @@ def get_map_service(): return MapService()
 map_srv = get_map_service()
 db = st.session_state['db']
 
-def get_recent_trips_for_edit(self):
-        """Lấy danh sách chuyến đi chưa hoàn thành hoặc gần đây để sửa ok"""
-        df = pd.DataFrame()
-        try:
-            sql = """
-                SELECT 
-                    c.id, c.ngay_chuyen_di, c.ten_khach_hang, c.dia_chi_khach_hang,
-                    c.xe_id, x.bien_so_xe,
-                    txc.tai_xe_id, nv.ho_ten as ten_tai_xe,
-                    c.dia_diem_giao_nhan, c.so_km_thuc_te, c.khoi_luong_kg, c.the_tich_cbm,
-                    c.cong_chuyen, c.trang_thai_chuyen, c.ghi_chu
-                FROM chuyen_di c
-                JOIN xe x ON c.xe_id = x.id
-                LEFT JOIN chuyen_di_tai_xe txc ON c.id = txc.chuyen_di_id
-                LEFT JOIN nhan_vien nv ON txc.tai_xe_id = nv.id
-                WHERE c.trang_thai_chuyen NOT IN ('Hoan_Thanh', 'Da_Huy')
-                ORDER BY c.ngay_chuyen_di DESC, c.id DESC
-                LIMIT 50;
-            """
-            df = self.execute_query(sql)
-            if df is None:
-                return pd.DataFrame()
-            return df
-        except Exception as e:
-            return pd.DataFrame()
-    ####
+
 # ==========================================
 # CSS ẨN HƯỚNG DẪN "PRESS ENTER TO SUBMIT"
 # ==========================================
@@ -551,7 +526,7 @@ with tab3:
         SELECT cd.id, cd.ngay_chuyen_di, cd.ten_khach_hang, x.bien_so_xe, CAST(x.tai_trong_thiet_ke AS FLOAT) AS tai_trong,
                nv.ho_ten AS ten_tai_xe, cd.trang_thai_chuyen,
                cd.so_km_thuc_te, cd.so_lit_xang, cd.cong_chuyen, cd.tien_them,
-               cd.phi_hai_quan, cd.phi_boc_xep, cd.phi_khac, cd.ghi_chu_quyet_toan,
+               cd.phi_hai_quan, cd.phi_boc_xep, cd.phi_khac, cd.ghi_chu,
                cd.is_gop_chuyen, cd.is_ve_khuya
         FROM chuyen_di cd
         LEFT JOIN xe x ON cd.xe_id = x.id
@@ -626,7 +601,7 @@ with tab3:
             num_bx= parse_money_input(num_bx)
             num_k= parse_money_input(num_k)
             # Kiểm tra nếu là NaN hoặc trống thì gán bằng chuỗi rỗng "", ngược lại thì ép kiểu chuỗi
-            gia_tri_cu = row_sel['ghi_chu_quyet_toan']
+            gia_tri_cu = row_sel['ghi_chu']
             gc_hien_thi = "" if pd.isna(gia_tri_cu) else str(gia_tri_cu)
 
             edit_gc = st.text_input("Ghi chú quyết toán", value=gc_hien_thi)
@@ -753,7 +728,7 @@ with tab4:
         if loai_tim_kiem == "Theo Xe":
             sql_find_trips = """
                 SELECT id, dia_diem_giao_nhan, ten_khach_hang, cong_chuyen, so_km_thuc_te, 
-                       tien_them, phi_hai_quan, phi_boc_xep, phi_khac, ghi_chu_quyet_toan 
+                       tien_them, phi_hai_quan, phi_boc_xep, phi_khac, ghi_chu 
                 FROM chuyen_di 
                 WHERE ngay_chuyen_di = %s AND xe_id = %s 
                   AND trang_thai_chuyen = 'Hoan_Thanh'
@@ -762,7 +737,7 @@ with tab4:
         else:
             sql_find_trips = """
                 SELECT cd.id, cd.dia_diem_giao_nhan, cd.ten_khach_hang, cd.cong_chuyen, cd.so_km_thuc_te, 
-                       cd.tien_them, cd.phi_hai_quan, cd.phi_boc_xep, cd.phi_khac, cd.ghi_chu_quyet_toan 
+                       cd.tien_them, cd.phi_hai_quan, cd.phi_boc_xep, cd.phi_khac, cd.ghi_chu 
                 FROM chuyen_di cd
                 JOIN chuyen_di_tai_xe ctx ON cd.id = ctx.chuyen_di_id
                 WHERE cd.ngay_chuyen_di = %s AND ctx.tai_xe_id = %s 
@@ -864,7 +839,7 @@ with tab4:
                         
                         edit_ghi_chu = st.text_input(
                             "Ghi chú quyết toán (Lý do sửa)", 
-                            value="" if pd.isna(trip_info['ghi_chu_quyet_toan']) else str(trip_info['ghi_chu_quyet_toan']),
+                            value="" if pd.isna(trip_info['ghi_chu']) else str(trip_info['ghi_chu']),
                             key=f"gc_{chuyen_can_sua}"
                         )
                         
@@ -877,7 +852,7 @@ with tab4:
                                 'phi_hai_quan': parse_money(edit_hai_quan_str),
                                 'phi_boc_xep': parse_money(edit_boc_xep_str),
                                 'phi_khac': parse_money(edit_khac_str),
-                                'ghi_chu_quyet_toan': edit_ghi_chu
+                                'ghi_chu': edit_ghi_chu
                             }
                             
                             is_ok, msg = update_trip_transaction(db.pool, data_chuyen_di=data_update, trang_thai_enum='Hoan_Thanh', chuyen_di_id=chuyen_can_sua)
