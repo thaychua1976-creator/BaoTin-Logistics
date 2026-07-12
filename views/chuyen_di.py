@@ -7,7 +7,9 @@ from map_service import MapService
 import time 
 #import json
 import streamlit.components.v1 as components
-from global_func import  parse_money_input, delete_trip_safe, settle_trip_transaction, save_trip_full_process, update_trip_transaction, update_trip_full_process
+from trip_manager import  delete_trip_safe, settle_trip_transaction, save_trip_full_process, update_trip_transaction, update_trip_full_process
+from utils_core import parse_money_input
+
 # Khởi tạo dịch vụ
 @st.cache_resource
 def get_map_service(): return MapService()

@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 #from st_aggrid import AgGrid, GridOptionsBuilder
-from global_func import handle_user_transaction_with_audit, ghi_log_he_thong
+from hr_system_manager import handle_user_transaction_with_audit
+
 import time, math
 import bcrypt
 db = st.session_state['db']

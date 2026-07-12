@@ -3,7 +3,7 @@ import pandas as pd
 #from st_aggrid import AgGrid, GridOptionsBuilder
 import datetime
 import time, math
-from global_func import save_nhan_vien_transaction
+from hr_system_manager import save_nhan_vien_transaction
 db = st.session_state['db']
 tab1, tab2, tab3 = st.tabs(["📋 Danh sách Nhân viên", "➕ Thêm Nhân viên Mới", "📝 Sửa thông tin & Thôi việc"])
 

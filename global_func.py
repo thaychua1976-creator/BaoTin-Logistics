@@ -746,3 +746,90 @@ def save_lich_su_bao_duong(db_pool, data_dict):
     finally:
         if 'cursor' in locals() and cursor: cursor.close()
         if 'conn' in locals() and conn: conn.close()
+############################## 
+##### function thống kê bảo dưỡng xe, tiêu thụ nhiên liệu 12/7/2026
+
+def get_thong_ke_hoat_dong_xe(db_pool, xe_id, tu_ngay, den_ngay):
+    """Thống kê tổng KM và Lít dầu tiêu thụ (Hỗ trợ tra cứu Tất cả phương tiện)"""
+    try:
+        conn = db_pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Nếu xe_id == 0 nghĩa là chọn "Tất cả phương tiện"
+        if xe_id == 0:
+            sql = """
+                SELECT 
+                    COALESCE(SUM(so_km_thuc_te), 0) as tong_km,
+                    COALESCE(SUM(so_lit_xang), 0) as tong_nhien_lieu,
+                    COUNT(id) as tong_so_chuyen
+                FROM chuyen_di
+                WHERE trang_thai_chuyen = 'Hoan_Thanh'
+                  AND ngay_chuyen_di BETWEEN %s AND %s
+            """
+            cursor.execute(sql, (tu_ngay, den_ngay))
+        else:
+            sql = """
+                SELECT 
+                    COALESCE(SUM(so_km_thuc_te), 0) as tong_km,
+                    COALESCE(SUM(so_lit_xang), 0) as tong_nhien_lieu,
+                    COUNT(id) as tong_so_chuyen
+                FROM chuyen_di
+                WHERE xe_id = %s 
+                  AND trang_thai_chuyen = 'Hoan_Thanh'
+                  AND ngay_chuyen_di BETWEEN %s AND %s
+            """
+            cursor.execute(sql, (xe_id, tu_ngay, den_ngay))
+            
+        result = cursor.fetchone()
+        return result if result else {'tong_km': 0, 'tong_nhien_lieu': 0, 'tong_so_chuyen': 0}
+    except Exception as e:
+        print(f"Lỗi thống kê xe: {e}")
+        return {'tong_km': 0, 'tong_nhien_lieu': 0, 'tong_so_chuyen': 0}
+    finally:
+        if 'cursor' in locals() and cursor: cursor.close()
+        if 'conn' in locals() and conn: conn.close()
+##############################################################
+def get_chi_tiet_bao_duong_xe(db_pool, xe_id, tu_ngay, den_ngay):
+    """Lấy lịch sử bảo dưỡng chi tiết (Kèm Biển số xe và Tài xế cố định)"""
+    try:
+        conn = db_pool.get_connection()
+        
+        if xe_id == 0:
+            sql = """
+                SELECT 
+                    x.bien_so_xe, 
+                    nv.ho_ten AS ten_tai_xe,
+                    l.ngay_bao_duong, l.loai_bao_duong,
+                    l.km_thuc_te, l.hang_muc_sua_chua, l.don_vi_thuc_hien, 
+                    l.chi_phi, l.ghi_chu
+                FROM lich_su_bao_duong l
+                JOIN xe x ON l.xe_id = x.id
+                LEFT JOIN nhan_vien nv ON x.tai_xe_co_dinh_id = nv.id
+                WHERE l.ngay_bao_duong BETWEEN %s AND %s
+                ORDER BY l.ngay_bao_duong DESC
+            """
+            df = pd.read_sql(sql, conn, params=(tu_ngay, den_ngay))
+        else:
+            sql = """
+                SELECT 
+                    x.bien_so_xe, 
+                    nv.ho_ten AS ten_tai_xe,
+                    l.ngay_bao_duong, l.loai_bao_duong,
+                    l.km_thuc_te, l.hang_muc_sua_chua, l.don_vi_thuc_hien, 
+                    l.chi_phi, l.ghi_chu
+                FROM lich_su_bao_duong l
+                JOIN xe x ON l.xe_id = x.id
+                LEFT JOIN nhan_vien nv ON x.tai_xe_co_dinh_id = nv.id
+                WHERE l.xe_id = %s 
+                  AND l.ngay_bao_duong BETWEEN %s AND %s
+                ORDER BY l.ngay_bao_duong DESC
+            """
+            df = pd.read_sql(sql, conn, params=(xe_id, tu_ngay, den_ngay))
+            
+        return df
+    except Exception as e:
+        print(f"Lỗi chi tiết bảo dưỡng: {e}")
+        return pd.DataFrame()
+    finally:
+        if 'conn' in locals() and conn: conn.close()
+##################### ending thống kê #################### 12/07/2026
