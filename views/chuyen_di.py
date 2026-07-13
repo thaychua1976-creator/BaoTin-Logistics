@@ -98,7 +98,7 @@ with tab1:
             SELECT cd.id AS 'Mã', cd.ngay_chuyen_di AS 'Ngày', cd.ten_khach_hang AS 'Khách hàng',
                    x.bien_so_xe AS 'Biển Số', nv.ho_ten AS 'Tài Xế', cd.dia_diem_giao_nhan AS 'Lộ trình', 
                    CAST(cd.so_km_thuc_te AS FLOAT) AS 'Số KM', CAST(cd.cong_chuyen AS FLOAT) AS 'Lương chuyến',
-                   CAST(cd.tien_them AS FLOAT) AS 'Thưởng thêm',cd.ghi_chu AS 'Ghi chú', cd.trang_thai_chuyen AS 'Trạng thái'
+                   CAST(cd.doanh_thu AS FLOAT) AS 'Doanh thu', CAST(cd.tien_them AS FLOAT) AS 'Thưởng thêm',cd.ghi_chu AS 'Ghi chú', cd.trang_thai_chuyen AS 'Trạng thái'
             FROM chuyen_di cd 
             LEFT JOIN xe x ON cd.xe_id = x.id
             LEFT JOIN chuyen_di_tai_xe cdtx ON cd.id = cdtx.chuyen_di_id AND cdtx.loai_tai_xe = 'Tai_Chinh'
@@ -110,7 +110,7 @@ with tab1:
         
         if isinstance(df_chuyen, pd.DataFrame) and not df_chuyen.empty:
             df_chuyen['Ngày'] = pd.to_datetime(df_chuyen['Ngày']).dt.strftime('%d/%m/%Y')
-            for col_money in ['Lương chuyến', 'Thưởng thêm']:
+            for col_money in ['Lương chuyến', 'Thưởng thêm','Doanh thu']:
                 df_chuyen[col_money] = df_chuyen[col_money].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
             # --- BẮT ĐẦU XỬ LÝ PHÂN TRANG VÀ HIỂN THỊ TẤT CẢ CHO CHUYẾN ĐI ---
     
@@ -527,7 +527,7 @@ with tab3:
     sql_load = """
         SELECT cd.id, cd.ngay_chuyen_di, cd.ten_khach_hang, x.bien_so_xe, CAST(x.tai_trong_thiet_ke AS FLOAT) AS tai_trong,
                nv.ho_ten AS ten_tai_xe, cd.trang_thai_chuyen,
-               cd.so_km_thuc_te, cd.so_lit_xang, cd.cong_chuyen, cd.tien_them,
+               cd.so_km_thuc_te, cd.so_lit_xang, cd.cong_chuyen,cd.doanh_thu, cd.tien_them,
                cd.phi_hai_quan, cd.phi_boc_xep, cd.phi_khac, cd.ghi_chu,
                cd.is_gop_chuyen, cd.is_ve_khuya
         FROM chuyen_di cd
@@ -560,14 +560,16 @@ with tab3:
             
             # --- PHẦN 1: SỐ LIỆU HÀNH TRÌNH THỰC CHẠY ---
             st.markdown("##### 📍 1. Số liệu hành trình thực chạy")
-            col1_1, col1_2, col1_3, col1_4 = st.columns(4)
+            col1_1, col1_2, col1_3, col1_4,col1_5 = st.columns(5)
             edit_cong_ty = col1_1.text_input("Tên Khách/Công ty", value=str(row_sel['ten_khach_hang'] or ""))
             final_km     = col1_2.number_input("Số KM thực tế", min_value=0.0, value=float(row_sel['so_km_thuc_te'] or 0.0), step=1.0)
             final_lit    = col1_3.number_input("Số Lít xăng/dầu", min_value=0.0, value=float(row_sel['so_lit_xang'] or 0.0), step=1.0)
             #num_cong     = col1_4.number_input("Công chuyến (VNĐ)", min_value=0, value=int(row_sel['cong_chuyen'] or 0), step=50000)
             num_cong     = col1_4.text_input("Công chuyến (VNĐ)", placeholder="VD: 200,000",value=str(row_sel['cong_chuyen'] or ""))
-            #cong_chuyen_str = c6.text_input("Tạm ứng (VNĐ)", placeholder="VD: 200,000", key=f"luong_{st.session_state['reset_tab2']}")
             num_cong = parse_money_input(num_cong)
+            doanh_thu_chuyen= col1_5.text_input("Doanh thu (VNĐ)", placeholder="VD: 200,000", key=f"doanhthu_{st.session_state['reset_tab2']}")
+            doanh_thu_chuyen= parse_money_input(doanh_thu_chuyen)
+
             st.divider()
 
             # --- PHẦN 2: CHẾ ĐỘ PHỤ CẤP & TIỀN THƯỞNG ---
@@ -630,6 +632,7 @@ with tab3:
                     'so_km_thuc_te': final_km,
                     'so_lit_xang': final_lit,
                     'cong_chuyen': num_cong,
+                    'doanh_thu': doanh_thu_chuyen,
                     'is_gop_chuyen': 1 if chk_gop else 0,
                     'is_ve_khuya': 1 if chk_khuya else 0,
                     'tien_them': num_them,
@@ -729,7 +732,7 @@ with tab4:
         # Lấy dữ liệu từ Database
         if loai_tim_kiem == "Theo Xe":
             sql_find_trips = """
-                SELECT id, dia_diem_giao_nhan, ten_khach_hang, cong_chuyen, so_km_thuc_te, 
+                SELECT id, dia_diem_giao_nhan, ten_khach_hang, cong_chuyen,doanh_thu, so_km_thuc_te, 
                        tien_them, phi_hai_quan, phi_boc_xep, phi_khac, ghi_chu 
                 FROM chuyen_di 
                 WHERE ngay_chuyen_di = %s AND xe_id = %s 
@@ -738,7 +741,7 @@ with tab4:
             df_trips = db.execute_query(sql_find_trips, (ngay_str, doi_tuong_id))
         else:
             sql_find_trips = """
-                SELECT cd.id, cd.dia_diem_giao_nhan, cd.ten_khach_hang, cd.cong_chuyen, cd.so_km_thuc_te, 
+                SELECT cd.id, cd.dia_diem_giao_nhan, cd.ten_khach_hang, cd.cong_chuyen,cd.doanh_thu, cd.so_km_thuc_te, 
                        cd.tien_them, cd.phi_hai_quan, cd.phi_boc_xep, cd.phi_khac, cd.ghi_chu 
                 FROM chuyen_di cd
                 JOIN chuyen_di_tai_xe ctx ON cd.id = ctx.chuyen_di_id
@@ -798,7 +801,7 @@ with tab4:
                                 return 0.0 # Nếu gõ bậy bạ chữ cái thì trả về 0
 
                         # Dùng text_input cho Tiền, giữ number_input cho KM
-                        c1, c2, c3 = st.columns(3)
+                        c1, c2, c3,c4 = st.columns(4)
                         
                         edit_cong_str = c1.text_input(
                             "Công tài xế (Lương)*", 
@@ -819,21 +822,26 @@ with tab4:
                             value=format_money(trip_info['tien_them']), 
                             key=f"them_{chuyen_can_sua}"
                         )
+                        edit_doanh_thu_str = c4.text_input(
+                            "Doanh thu chuyến", 
+                            value=format_money(trip_info['doanh_thu']), 
+                            key=f"doanhthu_{chuyen_can_sua}"
+                        )
                         
-                        c4, c5, c6 = st.columns(3)
-                        edit_hai_quan_str = c4.text_input(
+                        c5, c6, c7 = st.columns(3)
+                        edit_hai_quan_str = c5.text_input(
                             "Phí hải quan", 
                             value=format_money(trip_info['phi_hai_quan']), 
                             key=f"hq_{chuyen_can_sua}"
                         )
                         
-                        edit_boc_xep_str = c5.text_input(
+                        edit_boc_xep_str = c6.text_input(
                             "Phí bốc xếp", 
                             value=format_money(trip_info['phi_boc_xep']), 
                             key=f"bx_{chuyen_can_sua}"
                         )
                         
-                        edit_khac_str = c6.text_input(
+                        edit_khac_str = c7.text_input(
                             "Phí khác (Luật, cầu đường...)", 
                             value=format_money(trip_info['phi_khac']), 
                             key=f"khac_{chuyen_can_sua}"
@@ -851,6 +859,7 @@ with tab4:
                                 'cong_chuyen': parse_money(edit_cong_str),
                                 'so_km_thuc_te': edit_km, # km đã là dạng số sẵn
                                 'tien_them': parse_money(edit_tien_them_str),
+                                'doanh_thu': parse_money(edit_doanh_thu_str),
                                 'phi_hai_quan': parse_money(edit_hai_quan_str),
                                 'phi_boc_xep': parse_money(edit_boc_xep_str),
                                 'phi_khac': parse_money(edit_khac_str),
@@ -910,7 +919,7 @@ with tab5:
         st.download_button("⬇️ Tải mẫu Tạo chuyến Tự động", data=buffer_order.getvalue(), file_name="Mau_Tao_Chuyen_Co_CBM.xlsx")
         
     with col_t2:
-        df_tpl_close = pd.DataFrame(columns=["MA_CHUYEN", "KM_THUC_TE", "LIT_DAU","TIEN_CONG_TAI_XE","THUONG_THEM", "PHI_HAI_QUAN", "PHI_BOC_XEP", "PHI_KHAC", "GHI_CHU"])
+        df_tpl_close = pd.DataFrame(columns=["MA_CHUYEN", "KM_THUC_TE", "LIT_DAU","TIEN_CONG_TAI_XE","DOANH_THU_CHUYEN","THUONG_THEM", "PHI_HAI_QUAN", "PHI_BOC_XEP", "PHI_KHAC", "GHI_CHU"])
         buffer_close = io.BytesIO()
         with pd.ExcelWriter(buffer_close, engine='xlsxwriter') as writer:
             df_tpl_close.to_excel(writer, index=False)
@@ -1211,6 +1220,7 @@ with tab5:
                                 'so_km_thuc_te': parse_excel_money(r.get('KM_THUC_TE')),
                                 'so_lit_xang': parse_excel_money(r.get('LIT_DAU')),
                                 'cong_chuyen': parse_excel_money(r.get('TIEN_CONG_TAI_XE')),
+                                'doanh_thu': parse_excel_money(r.get('DOANH_THU_CHUYEN')),
                                 'tien_them': parse_excel_money(r.get('THUONG_THEM')),
                                 'phi_hai_quan': parse_excel_money(r.get('PHI_HAI_QUAN')),
                                 'phi_boc_xep': parse_excel_money(r.get('PHI_BOC_XEP')),

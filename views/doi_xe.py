@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import datetime, io, time, math
 #from st_aggrid import AgGrid, GridOptionsBuilder
-
-from fleet_manager import  save_vehicle_transaction, delete_vehicle_transaction, get_canh_bao_bao_duong, save_lich_su_bao_duong,get_thong_ke_hoat_dong_xe,get_chi_tiet_bao_duong_xe
+import plotly.express as px
+import plotly.graph_objects as go
+from fleet_manager import  save_vehicle_transaction, delete_vehicle_transaction, get_canh_bao_bao_duong, save_lich_su_bao_duong,get_thong_ke_hoat_dong_xe,get_chi_tiet_bao_duong_xe,get_bieu_do_hoat_dong,get_bang_ke_tong_hop_xe
 
 # ==========================================
 # CSS ẨN HƯỚNG DẪN "PRESS ENTER TO SUBMIT"
@@ -552,7 +553,8 @@ with tab6:
         if xe_duoc_chon is not None:
             stats_hoat_dong = get_thong_ke_hoat_dong_xe(db.pool, xe_duoc_chon, tu_ngay.strftime('%Y-%m-%d'), den_ngay.strftime('%Y-%m-%d'))
             df_bao_duong = get_chi_tiet_bao_duong_xe(db.pool, xe_duoc_chon, tu_ngay.strftime('%Y-%m-%d'), den_ngay.strftime('%Y-%m-%d'))
-            
+            df_bieu_do = get_bieu_do_hoat_dong(db.pool, xe_duoc_chon, tu_ngay.strftime('%Y-%m-%d'), den_ngay.strftime('%Y-%m-%d')) # GỌI HÀM MỚI
+
             tong_km = float(stats_hoat_dong['tong_km'])
             tong_nhien_lieu = float(stats_hoat_dong['tong_nhien_lieu'])
             tong_chuyen = int(stats_hoat_dong['tong_so_chuyen'])
@@ -585,63 +587,165 @@ with tab6:
             chi_phi_tren_km = (tong_tien_sua_chua / tong_km) if tong_km > 0 else 0
             k8.metric("📉 Phí bảo trì / 1 KM", f"{chi_phi_tren_km:,.0f} đ / km", help="Đo lường mức độ tốn kém sửa chữa so với quãng đường chạy được sinh lời.")
 
+            # --- HIỂN THỊ BIỂU ĐỒ TRỰC QUAN (MỚI) ---
+            c_chart1, c_chart2 = st.columns([3, 2]) # Cột biểu đồ đường to hơn cột biểu đồ tròn
+            
+            with c_chart1:
+                st.markdown("**📊 Xu hướng Vận hành & Tiêu hao nhiên liệu**")
+                if not df_bieu_do.empty:
+                    # Tạo biểu đồ cột kép chuyên nghiệp bằng Plotly
+                    fig1 = go.Figure()
+                    fig1.add_trace(go.Bar(x=df_bieu_do['Thang'], y=df_bieu_do['Tong_KM'], name='Quãng đường (KM)', marker_color='#1f77b4'))
+                    fig1.add_trace(go.Line(x=df_bieu_do['Thang'], y=df_bieu_do['Tong_Nhien_Lieu'], name='Nhiên liệu (Lít)', marker_color='#ff7f0e', yaxis='y2'))
+                    
+                    # Cấu hình 2 trục Y (Một cho KM, Một cho Lít)
+                    fig1.update_layout(
+                        yaxis=dict(title='Quãng đường (KM)', side='left'),
+                        yaxis2=dict(title='Nhiên liệu (Lít)', side='right', overlaying='y'),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                        margin=dict(l=0, r=0, t=30, b=0),
+                        height=350
+                    )
+                    st.plotly_chart(fig1, use_container_width=True)
+                else:
+                    st.info("Chưa có dữ liệu vận hành trong giai đoạn này.")
+                    
+            with c_chart2:
+                st.markdown("**🍩 Phân bổ Chi phí Bảo dưỡng**")
+                if not df_bao_duong.empty:
+                    # Tạo biểu đồ Donut phân tích loại chi phí
+                    loai_map = {'Dinh_Ky': 'Định kỳ', 'Sua_Chua_Dot_Xuat': 'Đột xuất', 'Thay_Lop': 'Thay lốp', 'Khac': 'Khác'}
+                    df_bd_pie = df_bao_duong.copy()
+                    df_bd_pie['Loại'] = df_bd_pie['loai_bao_duong'].map(loai_map).fillna(df_bd_pie['loai_bao_duong'])
+                    
+                    # Tính tổng tiền theo từng loại
+                    df_pie_group = df_bd_pie.groupby('Loại')['chi_phi'].sum().reset_index()
+                    
+                    fig2 = px.pie(df_pie_group, values='chi_phi', names='Loại', hole=0.5, 
+                                color_discrete_sequence=px.colors.qualitative.Pastel)
+                    fig2.update_traces(textposition='inside', textinfo='percent+label')
+                    fig2.update_layout(showlegend=False, margin=dict(l=0, r=0, t=30, b=0), height=350)
+                    
+                    st.plotly_chart(fig2, use_container_width=True)
+                else:
+                    st.info("Chưa có phát sinh chi phí bảo dưỡng.")
+
             st.divider()
 
             # --- 3. BẢNG CHI TIẾT & XUẤT EXCEL ---
             st.markdown(f"#### 🛠️ Bảng kê chi tiết lịch sử bảo dưỡng")
-            
+                
             if not df_bao_duong.empty:
-                df_hien_thi = df_bao_duong.copy()
+                    df_hien_thi = df_bao_duong.copy()
+                    
+                    # Đã chèn thêm cột "Dầu Tiêu Thụ (Lít)" vào đúng vị trí cạnh KM
+                    df_hien_thi.columns = [
+                        'Biển Số Xe', 'Tài Xế Cố Định', 'Ngày', 'Loại', 
+                        'KM Lúc Sửa (Odo)', 'Dầu Tiêu Thụ (Lít)', 
+                        'Hạng Mục', 'Garage', 'Chi Phí (VNĐ)', 'Ghi Chú'
+                    ]
+                    
+                    df_hien_thi['Tài Xế Cố Định'] = df_hien_thi['Tài Xế Cố Định'].fillna("Chưa gán")
+                    df_hien_thi['Ngày'] = pd.to_datetime(df_hien_thi['Ngày']).dt.strftime('%d/%m/%Y')
+                    loai_map = {'Dinh_Ky': 'Định kỳ', 'Sua_Chua_Dot_Xuat': 'Đột xuất', 'Thay_Lop': 'Thay lốp', 'Khac': 'Khác'}
+                    df_hien_thi['Loại'] = df_hien_thi['Loại'].map(loai_map).fillna(df_hien_thi['Loại'])
+                    
+                    st.dataframe(
+                        df_hien_thi.style.format({
+                            "Chi Phí (VNĐ)": "{:,.0f}",
+                            "KM Lúc Sửa (Odo)": "{:,.0f} km",
+                            "Dầu Tiêu Thụ (Lít)": "{:,.1f} Lít" # Format số thập phân cho nhiên liệu
+                        }),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    
+                    # --- TẠO FILE EXCEL VÀ NÚT TẢI XUỐNG ---
+                    import io
+                    buffer_export = io.BytesIO()
+                    with pd.ExcelWriter(buffer_export, engine='xlsxwriter') as writer:
+                        df_hien_thi.to_excel(writer, index=False, sheet_name="Lich_Su_Bao_Duong")
+                        worksheet = writer.sheets['Lich_Su_Bao_Duong']
+                        
+                        header_format = writer.book.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#4A90E2', 'border': 1})
+                        for col_num, col_name in enumerate(df_hien_thi.columns):
+                            worksheet.write(0, col_num, col_name, header_format)
+                            
+                        for idx, col in enumerate(df_hien_thi.columns):
+                            series_str = df_hien_thi[col].fillna("").astype(str)
+                            max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
+                            worksheet.set_column(idx, idx, min(max_len, 50))
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    col_btn1, col_btn2 = st.columns([1, 3])
+                    with col_btn1:
+                        ten_file_excel = "Toan_Bo_Xe" if xe_duoc_chon == 0 else str(xe_dict[xe_duoc_chon]).replace(" ", "_")
+                        st.download_button(
+                            label="📥 XUẤT FILE EXCEL BÁO CÁO",
+                            data=buffer_export.getvalue(),
+                            file_name=f"Bao_Cao_Bao_Duong_{ten_file_excel}_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            type="primary",
+                            use_container_width=True
+                        )
+                        
+            else:
+                    st.info("Không có phát sinh bảo dưỡng / sửa chữa nào trong giai đoạn lọc.")
+            # --- BÊN TRÊN LÀ CODE BẢNG CHI TIẾT BẢO DƯỠNG (GIỮ NGUYÊN) ---
+    
+            st.markdown("<br><br>", unsafe_allow_html=True)
+            st.divider()
+
+            # --- 4. BẢNG KÊ TỔNG HỢP VẬN HÀNH ---
+            st.markdown(f"#### 🚛 Bảng thống kê hiệu suất vận hành (Theo thời gian lọc)")
+            
+            # Lấy dữ liệu từ hàm mới viết
+            df_tong_hop = get_bang_ke_tong_hop_xe(db.pool, xe_duoc_chon, tu_ngay.strftime('%Y-%m-%d'), den_ngay.strftime('%Y-%m-%d'))
+            
+            if not df_tong_hop.empty:
+                # Sắp xếp lại thứ tự cột cho đẹp mắt
+                df_tong_hop = df_tong_hop[['Biển Số Xe', 'Tài Xế', 'Từ Ngày', 'Đến Ngày', 'Tổng KM Vận Hành', 'Dầu Tiêu Thụ (Lít)']]
                 
-                # Đổi tên cột, bao gồm cả cột Tài xế mới thêm vào
-                df_hien_thi.columns = ['Biển Số Xe', 'Tài Xế Cố Định', 'Ngày', 'Loại', 'KM Lúc Sửa (Odo)', 'Hạng Mục', 'Garage', 'Chi Phí (VNĐ)', 'Ghi Chú']
-                
-                # Xử lý các ô trống (nếu xe chưa được gán tài xế cố định)
-                df_hien_thi['Tài Xế Cố Định'] = df_hien_thi['Tài Xế Cố Định'].fillna("Chưa gán")
-                
-                df_hien_thi['Ngày'] = pd.to_datetime(df_hien_thi['Ngày']).dt.strftime('%d/%m/%Y')
-                loai_map = {'Dinh_Ky': 'Định kỳ', 'Sua_Chua_Dot_Xuat': 'Đột xuất', 'Thay_Lop': 'Thay lốp', 'Khac': 'Khác'}
-                df_hien_thi['Loại'] = df_hien_thi['Loại'].map(loai_map).fillna(df_hien_thi['Loại'])
-                
+                # Hiển thị lên giao diện
                 st.dataframe(
-                    df_hien_thi.style.format({
-                        "Chi Phí (VNĐ)": "{:,.0f}",
-                        "KM Lúc Sửa (Odo)": "{:,.0f} km"
+                    df_tong_hop.style.format({
+                        "Tổng KM Vận Hành": "{:,.1f} km",
+                        "Dầu Tiêu Thụ (Lít)": "{:,.1f} Lít"
                     }),
                     use_container_width=True,
                     hide_index=True
                 )
                 
-                # --- TẠO FILE EXCEL VÀ NÚT TẢI XUỐNG ---
-                buffer_export = io.BytesIO()
-                with pd.ExcelWriter(buffer_export, engine='xlsxwriter') as writer:
-                    df_hien_thi.to_excel(writer, index=False, sheet_name="Lich_Su_Bao_Duong")
-                    worksheet = writer.sheets['Lich_Su_Bao_Duong']
+                # --- NÚT XUẤT EXCEL BẢNG VẬN HÀNH ---
+                import io
+                buffer_tong_hop = io.BytesIO()
+                with pd.ExcelWriter(buffer_tong_hop, engine='xlsxwriter') as writer:
+                    df_tong_hop.to_excel(writer, index=False, sheet_name="Hieu_Suat_Van_Hanh")
+                    worksheet = writer.sheets['Hieu_Suat_Van_Hanh']
                     
-                    # Format Tiêu đề
-                    header_format = writer.book.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#4A90E2', 'border': 1})
-                    for col_num, col_name in enumerate(df_hien_thi.columns):
+                    # Tô màu xanh lá cây cho Header của bảng này để phân biệt với màu xanh dương của bảng bảo dưỡng
+                    header_format = writer.book.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#2CA02C', 'border': 1})
+                    for col_num, col_name in enumerate(df_tong_hop.columns):
                         worksheet.write(0, col_num, col_name, header_format)
                         
-                    # Auto-fit cột an toàn
-                    for idx, col in enumerate(df_hien_thi.columns):
-                        series_str = df_hien_thi[col].fillna("").astype(str)
+                    # Căn chỉnh độ rộng cột tự động
+                    for idx, col in enumerate(df_tong_hop.columns):
+                        series_str = df_tong_hop[col].fillna("").astype(str)
                         max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
-                        worksheet.set_column(idx, idx, min(max_len, 50))
-                
+                        worksheet.set_column(idx, idx, min(max_len, 35))
+                        
                 st.markdown("<br>", unsafe_allow_html=True)
-                col_btn1, col_btn2 = st.columns([1, 3])
-                with col_btn1:
-                    ten_file_excel = "Toan_Bo_Xe" if xe_duoc_chon == 0 else str(xe_dict[xe_duoc_chon]).replace(" ", "_")
+                c_btn3, c_btn4 = st.columns([1, 3])
+                with c_btn3:
+                    ten_file_excel2 = "Toan_Bo_Xe" if xe_duoc_chon == 0 else str(xe_dict[xe_duoc_chon]).replace(" ", "_")
                     st.download_button(
-                        label="📥 XUẤT FILE EXCEL BÁO CÁO",
-                        data=buffer_export.getvalue(),
-                        file_name=f"Bao_Cao_Bao_Duong_{ten_file_excel}_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
+                        label="📥 XUẤT EXCEL HIỆU SUẤT VẬN HÀNH",
+                        data=buffer_tong_hop.getvalue(),
+                        file_name=f"Bao_Cao_Hieu_Suat_{ten_file_excel2}_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         type="primary",
-                        use_container_width=True
+                        key="btn_download_tonghop" # Phải có Key riêng để không trùng lặp với nút tải Excel bên trên
                     )
-                    
             else:
-                st.info("Không có phát sinh bảo dưỡng / sửa chữa nào trong giai đoạn lọc.")
+                st.info("Chưa có dữ liệu thống kê vận hành nào trong khoảng thời gian này.")
     except Exception as e: st.error(f"Lỗi: {e}")

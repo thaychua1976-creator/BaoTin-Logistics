@@ -207,6 +207,7 @@ else:
     page_doi_xe    = st.Page("views/doi_xe.py", title="QUẢN LÝ XE", icon="🚛")
     page_tai_khoan    = st.Page("views/tai_khoan.py", title="QUẢN LÝ TÀI KHOẢN", icon="👤")
     page_config_thuong= st.Page("views/config_thuong.py", title="CẤU HÌNH THƯỞNG", icon="👤")
+    page_kinh_doanh_result= st.Page("views/kinh_doanh_result.py", title="BÁO CÁO KẾT QUẢ KINH DOANH", icon="💰")
 
     # 5. THUẬT TOÁN PHÂN QUYỀN (RBAC) TỰ ĐỘNG CHÈN VÀO SIDEBAR
     role = st.session_state.get('role', 'User')
@@ -215,7 +216,7 @@ else:
     if role == 'Admin':
         pages_structure = {
             "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di, page_bao_cao],
-            "⚙️ DANH MỤC QUẢN TRỊ": [page_nhan_vien, page_doi_xe,page_tai_khoan,page_config_thuong]
+            "⚙️ DANH MỤC QUẢN TRỊ": [page_nhan_vien, page_doi_xe,page_tai_khoan,page_config_thuong,page_kinh_doanh_result]
         }
     else:
         pages_structure = {

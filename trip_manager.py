@@ -1,5 +1,6 @@
 import streamlit as st
 from audit_logger import ghi_log_thao_tac
+import pandas as pd
 
 def save_trip_full_process(db_pool, trip_data, tai_xe_id):
     conn = db_pool.get_connection()
@@ -280,3 +281,66 @@ def delete_trip_safe(db_pool, chuyen_di_id):
         cursor.close()
         conn.close() # Trả kết nối về Pool
 ###
+
+import pandas as pd
+import pandas as pd
+
+def get_bao_cao_pnl_chuyen_di(db_pool, tu_ngay, den_ngay, xe_id=0):
+    """
+    Trích xuất báo cáo Lãi/Lỗ (P&L) dựa trên bảng chuyen_di mới nhất.
+    Đã bổ sung thông tin Tài Xế phụ trách chuyến.
+    """
+    try:
+        conn = db_pool.get_connection()
+        
+        sql_base = """
+            SELECT 
+                cd.id AS `Mã Chuyến`,
+                DATE_FORMAT(cd.ngay_chuyen_di, '%d/%m/%Y') AS `Ngày Chạy`,
+                x.bien_so_xe AS `Biển Số Xe`,
+                COALESCE(nv.ho_ten, 'Chưa xác định') AS `Tài Xế`,
+                cd.dia_diem_giao_nhan AS `Hành Trình`,
+                
+                COALESCE(cd.doanh_thu, 0) AS `Doanh Thu`, 
+                
+                -- CÁC KHOẢN CHI TIẾT
+                COALESCE(cd.cong_chuyen, 0) + COALESCE(cd.tien_them, 0) AS `Lương TX & Thêm`,
+                COALESCE(cd.tien_xang, 0) AS `Tiền Xăng/Dầu`,
+                COALESCE(cd.phi_hai_quan, 0) AS `Hải Quan`,
+                COALESCE(cd.phi_boc_xep, 0) AS `Bốc Xếp`,
+                COALESCE(cd.phi_khac, 0) AS `Phí Khác`,
+                
+                -- TỔNG CHI CỘNG GỘP
+                (COALESCE(cd.cong_chuyen, 0) + COALESCE(cd.tien_them, 0) + 
+                 COALESCE(cd.tien_xang, 0) + 
+                 COALESCE(cd.phi_hai_quan, 0) + COALESCE(cd.phi_boc_xep, 0) + COALESCE(cd.phi_khac, 0)) AS `Tổng Chi Phí`,
+                
+                -- LỢI NHUẬN RÒNG
+                COALESCE(cd.doanh_thu, 0) - (COALESCE(cd.cong_chuyen, 0) + COALESCE(cd.tien_them, 0) + 
+                     COALESCE(cd.tien_xang, 0) + 
+                     COALESCE(cd.phi_hai_quan, 0) + COALESCE(cd.phi_boc_xep, 0) + COALESCE(cd.phi_khac, 0)) AS `Lợi Nhuận Gộp`
+                
+            FROM chuyen_di cd
+            LEFT JOIN xe x ON cd.xe_id = x.id
+            
+            -- [MỚI BỔ SUNG] JOIN qua bảng phân công để lấy Tên tài xế chính
+            LEFT JOIN chuyen_di_tai_xe ctx ON cd.id = ctx.chuyen_di_id AND ctx.loai_tai_xe = 'Tai_Chinh'
+            LEFT JOIN nhan_vien nv ON ctx.tai_xe_id = nv.id
+            
+            WHERE cd.trang_thai_chuyen = 'Hoan_Thanh' 
+              AND cd.ngay_chuyen_di BETWEEN %s AND %s
+        """
+        
+        if xe_id == 0:
+            sql = sql_base + " ORDER BY cd.ngay_chuyen_di DESC"
+            df = pd.read_sql(sql, conn, params=(tu_ngay, den_ngay))
+        else:
+            sql = sql_base + " AND cd.xe_id = %s ORDER BY cd.ngay_chuyen_di DESC"
+            df = pd.read_sql(sql, conn, params=(tu_ngay, den_ngay, xe_id))
+            
+        return df
+    except Exception as e:
+        print(f"Lỗi truy vấn P&L: {e}")
+        return pd.DataFrame()
+    finally:
+        if 'conn' in locals() and conn: conn.close()

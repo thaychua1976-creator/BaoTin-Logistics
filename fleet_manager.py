@@ -211,18 +211,39 @@ def get_thong_ke_hoat_dong_xe(db_pool, xe_id, tu_ngay, den_ngay):
         if 'cursor' in locals() and cursor: cursor.close()
         if 'conn' in locals() and conn: conn.close()
 ##############################################################
+
+
 def get_chi_tiet_bao_duong_xe(db_pool, xe_id, tu_ngay, den_ngay):
-    """Lấy lịch sử bảo dưỡng chi tiết (Kèm Biển số xe và Tài xế cố định)"""
+    """Lấy lịch sử bảo dưỡng chi tiết (Đã tích hợp tự động tính Lít dầu theo chu kỳ)"""
     try:
         conn = db_pool.get_connection()
         
+        # CÔNG THỨC THÔNG MINH: Tự động quét bảng chuyen_di để cộng dồn lít dầu 
+        # tính từ lần bảo dưỡng gần nhất trước đó cho đến ngày bảo dưỡng hiện tại.
+        subquery_dau = """
+            (SELECT COALESCE(SUM(cd.so_lit_xang), 0)
+             FROM chuyen_di cd
+             WHERE cd.xe_id = l.xe_id
+               AND cd.trang_thai_chuyen = 'Hoan_Thanh'
+               AND cd.ngay_chuyen_di <= l.ngay_bao_duong
+               AND cd.ngay_chuyen_di > COALESCE(
+                   (SELECT MAX(l2.ngay_bao_duong) 
+                    FROM lich_su_bao_duong l2 
+                    WHERE l2.xe_id = l.xe_id AND l2.ngay_bao_duong < l.ngay_bao_duong),
+                   '1970-01-01'
+               )
+            ) AS lit_dau_tieu_thu
+        """
+        
         if xe_id == 0:
-            sql = """
+            sql = f"""
                 SELECT 
                     x.bien_so_xe, 
                     nv.ho_ten AS ten_tai_xe,
                     l.ngay_bao_duong, l.loai_bao_duong,
-                    l.km_thuc_te, l.hang_muc_sua_chua, l.don_vi_thuc_hien, 
+                    l.km_thuc_te, 
+                    {subquery_dau},
+                    l.hang_muc_sua_chua, l.don_vi_thuc_hien, 
                     l.chi_phi, l.ghi_chu
                 FROM lich_su_bao_duong l
                 JOIN xe x ON l.xe_id = x.id
@@ -232,12 +253,14 @@ def get_chi_tiet_bao_duong_xe(db_pool, xe_id, tu_ngay, den_ngay):
             """
             df = pd.read_sql(sql, conn, params=(tu_ngay, den_ngay))
         else:
-            sql = """
+            sql = f"""
                 SELECT 
                     x.bien_so_xe, 
                     nv.ho_ten AS ten_tai_xe,
                     l.ngay_bao_duong, l.loai_bao_duong,
-                    l.km_thuc_te, l.hang_muc_sua_chua, l.don_vi_thuc_hien, 
+                    l.km_thuc_te, 
+                    {subquery_dau},
+                    l.hang_muc_sua_chua, l.don_vi_thuc_hien, 
                     l.chi_phi, l.ghi_chu
                 FROM lich_su_bao_duong l
                 JOIN xe x ON l.xe_id = x.id
@@ -255,3 +278,89 @@ def get_chi_tiet_bao_duong_xe(db_pool, xe_id, tu_ngay, den_ngay):
     finally:
         if 'conn' in locals() and conn: conn.close()
 ##################### ending thống kê #################### 12/07/2026
+def get_bieu_do_hoat_dong(db_pool, xe_id, tu_ngay, den_ngay):
+    """Lấy dữ liệu vận hành (KM và Nhiên liệu) gom nhóm theo từng tháng để vẽ biểu đồ"""
+    try:
+        conn = db_pool.get_connection()
+        
+        # Gom nhóm theo tháng-năm (VD: 04/2026)
+        sql_base = """
+            SELECT 
+                DATE_FORMAT(ngay_chuyen_di, '%m/%Y') AS Thang,
+                YEAR(ngay_chuyen_di) AS Nam_Sort,
+                MONTH(ngay_chuyen_di) AS Thang_Sort,
+                COALESCE(SUM(so_km_thuc_te), 0) AS Tong_KM,
+                COALESCE(SUM(so_lit_xang), 0) AS Tong_Nhien_Lieu
+            FROM chuyen_di
+            WHERE trang_thai_chuyen = 'Hoan_Thanh'
+              AND ngay_chuyen_di BETWEEN %s AND %s
+        """
+        
+        if xe_id == 0:
+            sql = sql_base + " GROUP BY Thang, Nam_Sort, Thang_Sort ORDER BY Nam_Sort, Thang_Sort"
+            df = pd.read_sql(sql, conn, params=(tu_ngay, den_ngay))
+        else:
+            sql = sql_base + " AND xe_id = %s GROUP BY Thang, Nam_Sort, Thang_Sort ORDER BY Nam_Sort, Thang_Sort"
+            df = pd.read_sql(sql, conn, params=(tu_ngay, den_ngay, xe_id))
+            
+        return df
+    except Exception as e:
+        print(f"Lỗi truy vấn biểu đồ: {e}")
+        return pd.DataFrame()
+    finally:
+        if 'conn' in locals() and conn: conn.close()
+###########################################################
+import pandas as pd
+
+def get_bang_ke_tong_hop_xe(db_pool, xe_id, tu_ngay, den_ngay):
+    """Lấy bảng thống kê tổng hợp hiệu suất của (các) xe trong khoảng thời gian"""
+    try:
+        conn = db_pool.get_connection()
+        
+        # Nếu chọn "Tất cả", lấy toàn bộ xe đang hoạt động
+        if xe_id == 0:
+            sql = """
+                SELECT 
+                    x.bien_so_xe AS `Biển Số Xe`,
+                    COALESCE(nv.ho_ten, 'Chưa gán') AS `Tài Xế`,
+                    COALESCE(SUM(cd.so_km_thuc_te), 0) AS `Tổng KM Vận Hành`,
+                    COALESCE(SUM(cd.so_lit_xang), 0) AS `Dầu Tiêu Thụ (Lít)`
+                FROM xe x
+                LEFT JOIN nhan_vien nv ON x.tai_xe_co_dinh_id = nv.id
+                LEFT JOIN chuyen_di cd ON x.id = cd.xe_id 
+                    AND cd.trang_thai_chuyen = 'Hoan_Thanh' 
+                    AND cd.ngay_chuyen_di BETWEEN %s AND %s
+                WHERE x.trang_thai = 'Dang_Hoat_Dong'
+                GROUP BY x.id, x.bien_so_xe, nv.ho_ten
+                ORDER BY `Tổng KM Vận Hành` DESC
+            """
+            df = pd.read_sql(sql, conn, params=(tu_ngay, den_ngay))
+        else:
+            # Nếu chọn 1 xe cụ thể
+            sql = """
+                SELECT 
+                    x.bien_so_xe AS `Biển Số Xe`,
+                    COALESCE(nv.ho_ten, 'Chưa gán') AS `Tài Xế`,
+                    COALESCE(SUM(cd.so_km_thuc_te), 0) AS `Tổng KM Vận Hành`,
+                    COALESCE(SUM(cd.so_lit_xang), 0) AS `Dầu Tiêu Thụ (Lít)`
+                FROM xe x
+                LEFT JOIN nhan_vien nv ON x.tai_xe_co_dinh_id = nv.id
+                LEFT JOIN chuyen_di cd ON x.id = cd.xe_id 
+                    AND cd.trang_thai_chuyen = 'Hoan_Thanh' 
+                    AND cd.ngay_chuyen_di BETWEEN %s AND %s
+                WHERE x.id = %s
+                GROUP BY x.id, x.bien_so_xe, nv.ho_ten
+            """
+            df = pd.read_sql(sql, conn, params=(tu_ngay, den_ngay, xe_id))
+        
+        # Thêm cột Từ ngày, Đến ngày vào DataFrame
+        if not df.empty:
+            df['Từ Ngày'] = pd.to_datetime(tu_ngay).strftime('%d/%m/%Y')
+            df['Đến Ngày'] = pd.to_datetime(den_ngay).strftime('%d/%m/%Y')
+            
+        return df
+    except Exception as e:
+        print(f"Lỗi lấy bảng kê tổng hợp: {e}")
+        return pd.DataFrame()
+    finally:
+        if 'conn' in locals() and conn: conn.close()
