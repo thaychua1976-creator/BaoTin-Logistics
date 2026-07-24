@@ -5,7 +5,7 @@ import datetime, io, time, math
 import plotly.express as px
 import plotly.graph_objects as go
 from fleet_manager import  save_vehicle_transaction, delete_vehicle_transaction, get_canh_bao_bao_duong, save_lich_su_bao_duong,get_thong_ke_hoat_dong_xe,get_chi_tiet_bao_duong_xe,get_bieu_do_hoat_dong,get_bang_ke_tong_hop_xe
-from utils_core import  kiem_tra_va_gui_bao_cao_telegram,send_zalo_message
+from utils_core import  kiem_tra_va_gui_bao_cao_telegram
 # ==========================================
 # CSS ẨN HƯỚNG DẪN "PRESS ENTER TO SUBMIT"
 # ==========================================
@@ -337,7 +337,7 @@ with tab4:
             # Bắt buộc phải có dòng này để con trỏ đọc file quay về vị trí đầu tiên (byte 0)
             excel_buffer_xe.seek(0)        
             # Tạo 3 cột để chứa 3 nút bấm
-            col_btn1, col_btn2,col_btn3 = st.columns([1, 1,1])
+            col_btn1, col_btn2 = st.columns([1, 1])
             
         
             with col_btn1:
@@ -362,26 +362,26 @@ with tab4:
                             st.success("✅ Đã gửi danh sách tới hạn lên Telegram!")
                         else:
                             st.warning(f"Thông tin: {message}")
-            with col_btn3:
+            
                 # Nút Gửi Zalo (Dùng hàm send_zalo_message từ utils_core.py)
-                if st.button("💬 GỬI ZALO (BÁO CÁO)", key='btn_gui_zalo_xe', type="secondary", use_container_width=True):
-                    with st.spinner("Đang gửi tin nhắn Zalo..."):
+                #if st.button("💬 GỬI ZALO (BÁO CÁO)", key='btn_gui_zalo_xe', type="secondary", use_container_width=True):
+                   # with st.spinner("Đang gửi tin nhắn Zalo..."):
                         # Lấy thông tin tài xế cần gia hạn từ df_tx_danger
-                        so_luong = len(df_xe_danger)
-                        noi_dung_tom_tat = f"Co {so_luong} xe sap het han giay to."
+                   #     so_luong = len(df_xe_danger)
+                   #     noi_dung_tom_tat = f"Co {so_luong} xe sap het han giay to."
                         
                         # Giả định số điện thoại của quản lý hoặc bộ phận nhân sự nhận thông báo
                         # Bạn cần thay '09xxxxxxxx' bằng số điện thoại người nhận thực tế
-                        success = send_zalo_message(
-                            phone="09xxxxxxxx", 
-                            khach_hang="XE", 
-                            lo_trinh=noi_dung_tom_tat
-                        )
+                    #    success = send_zalo_personal_message(
+                    #        phone="09xxxxxxxx", 
+                    #        khach_hang="XE", 
+                    #        lo_trinh=noi_dung_tom_tat
+                    #    )
                         
-                        if success:
-                            st.success("✅ Đã gửi Zalo thành công!")
-                        else:
-                            st.error("❌ Không thể gửi Zalo, vui lòng kiểm tra API.")
+                    #    if success:
+                    #        st.success("✅ Đã gửi Zalo thành công!")
+                #else:
+                #       st.error("❌ Không thể gửi Zalo, vui lòng kiểm tra API.")
         else:
             st.success("✅ Toàn bộ xe đều an toàn pháp lý.")
 
@@ -430,7 +430,7 @@ with tab4:
             # Bắt buộc phải có dòng này để con trỏ đọc file quay về vị trí đầu tiên (byte 0)
             excel_buffer_tx.seek(0)        
             # Tạo 2 cột để chứa 2 nút bấm
-            col_btn4, col_btn5,col_btn6 = st.columns([1, 1,1])
+            col_btn4, col_btn5 = st.columns([1, 1])
 
             with col_btn4:
                     st.download_button(
@@ -455,26 +455,7 @@ with tab4:
                                 st.success("✅ Đã gửi danh sách tới hạn lên Telegram!")
                             else:
                                 st.warning(f"Thông tin: {message}")
-            with col_btn6:
-                    # Nút Gửi Zalo (Dùng hàm send_zalo_message từ utils_core.py)
-                    if st.button("💬 GỬI ZALO (BÁO CÁO)", key='btn_gui_zalo_tx', type="secondary", use_container_width=True):
-                        with st.spinner("Đang gửi tin nhắn Zalo..."):
-                            # Lấy thông tin tài xế cần gia hạn từ df_tx_danger
-                            so_luong = len(df_tx_danger)
-                            noi_dung_tom_tat = f"Co {so_luong} tai xe sap het han giay to."
-                            
-                            # Giả định số điện thoại của quản lý hoặc bộ phận nhân sự nhận thông báo
-                            # Bạn cần thay '09xxxxxxxx' bằng số điện thoại người nhận thực tế
-                            success = send_zalo_message(
-                                phone="09xxxxxxxx", 
-                                khach_hang="PHONG_NHAN_SU", 
-                                lo_trinh=noi_dung_tom_tat
-                            )
-                            
-                            if success:
-                                st.success("✅ Đã gửi Zalo thành công!")
-                            else:
-                                st.error("❌ Không thể gửi Zalo, vui lòng kiểm tra API.")
+            
         else:
             st.success("✅ Toàn bộ tài xế đều đầy đủ giấy phép hợp lệ.")
     
