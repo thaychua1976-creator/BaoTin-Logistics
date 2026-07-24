@@ -136,11 +136,11 @@ with tab1:
                 # Định dạng nội dung tin nhắn Zalo chuẩn
                 noi_dung_chat = (
                     f"LỆNH ĐIỀU XE BẢO TÍN \n"
-                    f" Mã chuyến: {row['Mã']}\n"
-                    f" Ngày chạy: {row['Ngày']}\n"
-                    f" Khách hàng: {row['Khách hàng']}\n"
-                    f" Lộ trình: {row['Lộ trình']}\n"
-                    f" Ghi chú: {ghi_chu}\n"
+                    f"- Mã chuyến: {row['Mã']}\n"
+                    f"- Ngày chạy: {row['Ngày']}\n"
+                    f"- Khách hàng: {row['Khách hàng']}\n"
+                    f"- Lộ trình: {row['Lộ trình']}\n"
+                    f"- Ghi chú: {ghi_chu}\n"
                     
                 )
                 
@@ -1201,13 +1201,13 @@ with tab5:
                                         ten_group = "".join([c for c in raw_bien_so if c.isalnum()]).upper()
                                         
                                         noi_dung_chat = (
-                                            f"🚗 LỆNH ĐIỀU XE BẢO TÍN 🚗\n"
-                                            f"🔹 Mã chuyến: {result_msg}\n"
-                                            f"🔹 Ngày chạy: {ngay_chay_hien_thi}\n"
-                                            f"🔹 Khách hàng: {khach_hang}\n"
-                                            f"🔹 Lộ trình: {kho_di} ➡️ {kho_den}\n"
-                                            f"🔹 Ghi chú: {ghi_chu if ghi_chu else 'Không'}\n"
-                                            f"Vui lòng chuẩn bị hàng hóa!"
+                                            f"- LỆNH ĐIỀU XE BẢO TÍN -\n"
+                                            f"- Mã chuyến: {result_msg}\n"
+                                            f"- Ngày chạy: {ngay_chay_hien_thi}\n"
+                                            f"- Khách hàng: {khach_hang}\n"
+                                            f"- Lộ trình: {kho_di} ➡️ {kho_den}\n"
+                                            f"- Ghi chú: {ghi_chu if ghi_chu else 'Không'}\n"
+                                            
                                         )
                                         
                                         danh_sach_xuat_excel.append({
