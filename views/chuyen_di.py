@@ -1,15 +1,12 @@
 import streamlit as st
 import pandas as pd
 import datetime
-import io,math, os
+import io, math, os
 from map_service import MapService
-#from st_aggrid import AgGrid, GridOptionsBuilder
-import time , requests
-#import json
+import time, requests
 import streamlit.components.v1 as components
-from trip_manager import  delete_trip_safe, settle_trip_transaction, save_trip_full_process, update_trip_transaction, update_trip_full_process,goi_gps_theo_thoi_gian_tuy_chinh
-from utils_core import parse_money_input, doc_anh_cay_xang,tao_tieu_de_kem_nut_refresh
-#from utils_core import send_zalo_message
+from trip_manager import delete_trip_safe, settle_trip_transaction, save_trip_full_process, update_trip_transaction, update_trip_full_process, goi_gps_theo_thoi_gian_tuy_chinh
+from utils_core import parse_money_input, doc_anh_cay_xang, tao_tieu_de_kem_nut_refresh
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -19,7 +16,6 @@ def get_map_service(): return MapService()
 
 map_srv = get_map_service()
 db = st.session_state['db']
-
 
 # ==========================================
 # CSS ẨN HƯỚNG DẪN "PRESS ENTER TO SUBMIT"
@@ -45,26 +41,20 @@ STATUS_MAP = {
     "Hủy Chuyến": "Huy_Chuyen"
 }
 
-
-
-####
-
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>📝 PHÂN HỆ QUẢN LÝ VÀ ĐIỀU PHỐI CHUYẾN ĐI NÂNG CAO</h3>", unsafe_allow_html=True)
 
 # Mở rộng thành 5 Tab nghiệp vụ
-tab1, tab2, tab3, tab4,tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📋 Danh sách chuyến", 
     "➕ Tạo/Sửa chuyến thủ công", 
     "🏁 Quyết toán đơn chuyến",
     "🏁 Sửa chuyến đi đã quyết toán", 
     "🤖 Tạo chuyến tự động/ Excel tool" 
-    #"📍 Bản đồ GPS"  # Thêm tab này
 ])
 
 # ==========================================
 # 🛠️ CHUẨN HÓA DỮ LIỆU TỪ DATABASE (KHẮC PHỤC LỖI ÉP KIỂU)
 # ==========================================
-#
 # CÔNG CỤ LỌC XE TRỐNG (TỐI ƯU SQL BACKEND)
 sql_xe_trong = """
     SELECT x.id, x.bien_so_xe, x.tai_trong_thiet_ke, x.dung_tich_cbm, x.tai_xe_co_dinh_id 
@@ -78,7 +68,6 @@ sql_xe_trong = """
 """
 
 df_xe_full = db.execute_query(sql_xe_trong)
-#df_xe_full = db.execute_query("SELECT id, bien_so_xe, tai_trong_thiet_ke, dung_tich_cbm, tai_xe_co_dinh_id FROM xe WHERE trang_thai='Dang_Hoat_Dong'")
 df_tx_full = db.execute_query("SELECT id, ho_ten FROM nhan_vien WHERE loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu') AND trang_thai='Dang_Lam_Viec'")
 
 # Đảm bảo toàn bộ ID (khóa) là kiểu số nguyên (int) gốc của Python để hàm index() chạy chính xác 100%
@@ -93,15 +82,12 @@ if isinstance(df_tx_full, pd.DataFrame) and not df_tx_full.empty:
         tx_opts[int(r['id'])] = str(r['ho_ten'])
 
 # ==========================================
-# TAB 1: DANH SÁCH CHUYẾN ĐI # WHERE cd.ngay_chuyen_di >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-# ==========================================
-# ==========================================
 # TAB 1: DANH SÁCH CHUYẾN ĐI 
 # ==========================================
 with tab1:
-    # Gọi hàm thay cho st.markdown thông thường
     tao_tieu_de_kem_nut_refresh("📋 Danh sách chuyến đi trong ngày", "ref_tab1")
     try:
+        # ĐÃ FIX: SỬA DATE_SUB(NOW()) THÀNH CURDATE()
         sql_list = """
             SELECT cd.id AS 'Mã', cd.ngay_chuyen_di AS 'Ngày', cd.ten_khach_hang AS 'Khách hàng',
                    x.bien_so_xe AS 'Biển Số', nv.ho_ten AS 'Tài Xế', cd.dia_diem_giao_nhan AS 'Lộ trình', 
@@ -111,23 +97,21 @@ with tab1:
             LEFT JOIN xe x ON cd.xe_id = x.id
             LEFT JOIN chuyen_di_tai_xe cdtx ON cd.id = cdtx.chuyen_di_id AND cdtx.loai_tai_xe = 'Tai_Chinh'
             LEFT JOIN nhan_vien nv ON cdtx.tai_xe_id = nv.id 
-            WHERE cd.ngay_chuyen_di = DATE_SUB(NOW())
+            WHERE cd.ngay_chuyen_di = CURDATE()
             ORDER BY cd.id DESC
         """
         df_chuyen = db.execute_query(sql_list)
         
         if isinstance(df_chuyen, pd.DataFrame) and not df_chuyen.empty:
             
-            # --- BẮT ĐẦU THÊM MỚI: DASHBOARD THỐNG KÊ TRẠNG THÁI XE ---
+            # --- DASHBOARD THỐNG KÊ TRẠNG THÁI XE ---
             st.markdown("##### 📊 Tổng quan hoạt động xe trong ngày")
             
-            # Tính toán số lượng xe độc nhất (tránh trùng lặp nếu 1 xe chạy 2 chuyến cùng trạng thái)
             xe_chua_chay = df_chuyen[df_chuyen['Trạng thái'] == 'Tao_Moi']['Biển Số'].nunique()
             xe_dang_chay = df_chuyen[df_chuyen['Trạng thái'] == 'Dang_Di']['Biển Số'].nunique()
             xe_cho_qt = df_chuyen[df_chuyen['Trạng thái'] == 'Quyet_Toan']['Biển Số'].nunique()
             xe_hoan_thanh = df_chuyen[df_chuyen['Trạng thái'] == 'Hoan_Thanh']['Biển Số'].nunique()
             
-            # Hiển thị thành 4 cột thống kê
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             col_m1.metric("Tạo Mới (Chưa chạy)", f"{xe_chua_chay} Xe")
             col_m2.metric("Đang Đi", f"{xe_dang_chay} Xe")
@@ -135,15 +119,12 @@ with tab1:
             col_m4.metric("Đã Hoàn Thành", f"{xe_hoan_thanh} Xe")
             
             st.divider()
-            # --- KẾT THÚC THÊM MỚI ---
 
             df_chuyen['Ngày'] = pd.to_datetime(df_chuyen['Ngày']).dt.strftime('%d/%m/%Y')
             for col_money in ['Lương chuyến', 'Thưởng thêm','Doanh thu']:
                 df_chuyen[col_money] = df_chuyen[col_money].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
             
-            # --- BẮT ĐẦU XỬ LÝ PHÂN TRANG VÀ HIỂN THỊ TẤT CẢ CHO CHUYẾN ĐI ---
-    
-            # Thêm key="xem_chuyen" để Streamlit phân biệt với ô selectbox của nhân viên
+            # --- PHÂN TRANG VÀ HIỂN THỊ TẤT CẢ CHO CHUYẾN ĐI ---
             col_opt1, col_opt2 = st.columns([1, 7]) 
             with col_opt1:
                 che_do_xem_chuyen = st.selectbox("Hiển thị:", ["20 dòng", "Tất cả"], key="xem_chuyen")
@@ -161,7 +142,6 @@ with tab1:
                 total_pages = math.ceil(total_rows / rows_per_page)
                 
                 if total_pages > 0:
-                    # DÙNG BIẾN NHỚ MỚI: 'page_chuyen' (thay vì 'page_nv')
                     if 'page_chuyen' not in st.session_state:
                         st.session_state['page_chuyen'] = 1
                         
@@ -173,14 +153,12 @@ with tab1:
                     col1, col2, col3 = st.columns([1, 2, 1])
                     
                     with col1:
-                        # Thêm key="btn_prev_chuyen" cho nút
                         if st.button("⬅️ Trước", key="btn_prev_chuyen", disabled=(st.session_state['page_chuyen'] <= 1)):
                             if st.session_state['page_chuyen'] > 1:
                                 st.session_state['page_chuyen'] -= 1
                                 st.rerun()
                             
                     with col3:
-                        # Thêm key="btn_next_chuyen" cho nút
                         if st.button("Sau ➡️", key="btn_next_chuyen", disabled=(st.session_state['page_chuyen'] >= total_pages)):
                             if st.session_state['page_chuyen'] < total_pages:
                                 st.session_state['page_chuyen'] += 1
@@ -189,12 +167,10 @@ with tab1:
                     with col2:
                         st.markdown(f"<div style='text-align: center; margin-top: 5px;'>Trang {st.session_state['page_chuyen']} / {total_pages}</div>", unsafe_allow_html=True)
 
-                    # Tính toán vị trí và cắt dữ liệu
                     start_idx = (st.session_state['page_chuyen'] - 1) * rows_per_page
                     end_idx = start_idx + rows_per_page
                     df_page_chuyen = df_chuyen.iloc[start_idx:end_idx]
                     
-                    # In bảng 20 dòng ra màn hình
                     st.dataframe(
                         df_page_chuyen,
                         use_container_width=True,
@@ -206,18 +182,15 @@ with tab1:
         st.error(f"Lỗi truy xuất danh sách: {e}")
 
 # ==========================================
-# TAB 2: ĐĂNG KÝ, SỬA CHUYẾN ĐI THỦ CÔNG (ĐÃ FIX LỖI POPUP TÀI XẾ)
+# TAB 2: ĐĂNG KÝ, SỬA CHUYẾN ĐI THỦ CÔNG
 # ==========================================
 with tab2:
-    # Gọi hàm thay cho st.markdown thông thường
     tao_tieu_de_kem_nut_refresh("📋 Đăng ký/ Sửa chuyến đi", "ref_tab2")
     if "reset_tab2" not in st.session_state: st.session_state["reset_tab2"] = 0
     if "api_km" not in st.session_state: st.session_state["api_km"] = 0.0
     if "editing_trip_id" not in st.session_state: st.session_state["editing_trip_id"] = None
     if "editing_trip_data" not in st.session_state: st.session_state["editing_trip_data"] = None
 
-    # --- SỬA ĐỔI 1: GIAO DIỆN HEADER MỚI ---
-    # Chia cột lại để Nút bấm nằm gọn 1 bên, nhường toàn bộ không gian cho form tìm kiếm
     col_title, col_btn = st.columns([4, 1])
     
     with col_title:
@@ -228,14 +201,12 @@ with tab2:
             
     with col_btn:
         if st.session_state["editing_trip_id"]:
-            # Nút bấm tạo mới chiếm hết chiều ngang của cột nhỏ
             if st.button("➕ Tạo mới", type="secondary", use_container_width=True):
                 st.session_state["editing_trip_id"] = None
                 st.session_state["editing_trip_data"] = None
                 st.session_state["api_km"] = 0.0
                 st.rerun()
 
-    # SỬA ĐỔI 2: ĐƯA Ô TÌM KIẾM RA NGOÀI ĐỂ CHIẾM TRỌN CHIỀU NGANG MÀN HÌNH
     if not st.session_state["editing_trip_id"]:
         expander_search = st.expander("🔍 Tìm chuyến đi cũ để sửa (Click để mở rộng)", expanded=False)
         with expander_search:
@@ -293,15 +264,12 @@ with tab2:
         else:
             default_diem_dau = lo_trinh_str 
 
-    # --- 1. CHUẨN HOÁ KIỂU DỮ LIỆU ĐỂ TRỊ BỆNH "TRỐNG Ô" CỦA STREAMLIT ---
-    # Ép toàn bộ bộ nhớ đệm về số nguyên (int) thuần túy của Python
     xe_map_clean = {int(float(k)): v for k, v in xe_map.items()}
     tx_opts_clean = {int(float(k)): v for k, v in tx_opts.items()}
     
     danh_sach_xe_id = list(xe_map_clean.keys())
     danh_sach_tx_id = list(tx_opts_clean.keys())
 
-    # ÉP KIỂU ID TỪ DỮ LIỆU ĐANG SỬA
     old_xe_id = None
     old_tx_id = None
     if is_edit_mode and editing_data:
@@ -310,8 +278,6 @@ with tab2:
         if pd.notna(editing_data.get('tai_xe_id')):
             old_tx_id = int(float(editing_data['tai_xe_id']))
 
-    # --- 2. PHỤC HỒI XE/TÀI XẾ CŨ NẾU BỊ "TÀNG HÌNH" KHỎI DANH SÁCH ---
-    # Nếu xe cũ đang bận chạy chuyến này nên bị loại khỏi danh sách "xe rảnh", ta tự bơm nó vào lại để Streamlit không bị rỗng ô.
     if is_edit_mode and old_xe_id is not None and old_xe_id not in danh_sach_xe_id:
         xe_map_clean[old_xe_id] = {
             'bien_so_xe': editing_data.get('bien_so_xe', f"Xe cũ ID {old_xe_id}"),
@@ -319,14 +285,12 @@ with tab2:
             'dung_tich_cbm': editing_data.get('the_tich_cbm', 0),
             'tai_xe_co_dinh_id': old_tx_id
         }
-        danh_sach_xe_id.insert(0, old_xe_id) # Ưu tiên đẩy lên đầu danh sách
+        danh_sach_xe_id.insert(0, old_xe_id) 
         
-    # Tương tự, nếu bác tài cũ bị ẩn (nghỉ phép/đang bận), ta cũng bơm lại vào danh sách
     if is_edit_mode and old_tx_id is not None and old_tx_id not in danh_sach_tx_id:
         tx_opts_clean[old_tx_id] = editing_data.get('ten_tai_xe', f"Tài xế cũ ID {old_tx_id}")
         danh_sach_tx_id.insert(0, old_tx_id)
 
-    # --- 3. HIỂN THỊ CHỌN XE ---
     default_xe_index = None
     if is_edit_mode and old_xe_id in danh_sach_xe_id:
         default_xe_index = danh_sach_xe_id.index(old_xe_id)
@@ -339,25 +303,19 @@ with tab2:
         key=f"xe_sel_{st.session_state['reset_tab2']}_{st.session_state['editing_trip_id']}" 
     )
     
-    # --- 4. THUẬT TOÁN BẮT TÀI XẾ THÔNG MINH ---
     tx_of_selected_xe = None
-    # Kiểm tra an toàn xem xe được chọn có tài xế cố định không
     if c_xe_sel is not None and pd.notna(xe_map_clean[c_xe_sel].get('tai_xe_co_dinh_id')):
         tx_id_raw = int(float(xe_map_clean[c_xe_sel]['tai_xe_co_dinh_id']))
         if tx_id_raw in danh_sach_tx_id:
             tx_of_selected_xe = tx_id_raw
 
-    # Logic điều hướng điền tên tài xế
     default_tx_id = None
     if is_edit_mode:
         if c_xe_sel == old_xe_id:
-            # Vẫn giữ xe cũ -> Hiện tên tài xế cũ
             default_tx_id = old_tx_id
         else:
-            # Vừa lướt chuột chọn xe mới -> Lôi tên tài xế mặc định của xe mới ra
             default_tx_id = tx_of_selected_xe
     else:
-        # Đang tạo chuyến mới -> Ưu tiên tài xế mặc định của xe
         default_tx_id = tx_of_selected_xe
 
     tx_index = None
@@ -366,7 +324,6 @@ with tab2:
 
     dynamic_tx_key = f"tx_sel_{st.session_state['reset_tab2']}_{c_xe_sel}_{st.session_state['editing_trip_id']}"
 
-    # Hiển thị Selectbox Tài xế
     c_tx_sel = st.selectbox(
         "🧑‍✈️ Xác nhận Tài xế chạy", 
         options=danh_sach_tx_id, 
@@ -375,7 +332,6 @@ with tab2:
         key=dynamic_tx_key
     )
     
-    # --- FORM NHẬP LIỆU CHÍNH ---
     with st.form("form_thu_cong_chuyen", clear_on_submit=False):
         c1, c2 = st.columns(2)
         txt_khach = c1.text_input(
@@ -501,7 +457,6 @@ with tab2:
                     trip_id_to_update = st.session_state["editing_trip_id"]
                     
                     with st.spinner(f"Đang cập nhật..."):
-                        # Gọi hàm DB UPDATE
                         success, result = update_trip_full_process(db.pool, trip_id_to_update, trip_data_tuple, c_tx_sel)
 
                     if success:
@@ -510,14 +465,13 @@ with tab2:
                         st.session_state["editing_trip_data"] = None
                         st.session_state["api_km"] = 0.0
                         st.session_state["reset_tab2"] += 1 
-                        import time; time.sleep(1)
+                        time.sleep(1)
                         st.rerun()
                     else:
                         st.error(f"❌ Lỗi: {result}")
                         
                 else:
                     with st.spinner("Đang đăng ký chuyến đi mới..."):
-                        # Gọi hàm DB INSERT
                         success, result = save_trip_full_process(db.pool, trip_data_tuple, c_tx_sel)
                     
                     if success:
@@ -525,29 +479,20 @@ with tab2:
                         st.session_state["api_km"] = 0.0
                         st.success(f"✅ Đăng ký thành công! Mã nội bộ DB: {result}")
                         st.balloons()
-                        import time; time.sleep(1)
+                        time.sleep(1)
                         st.rerun() 
                     else:
                         st.error(f"❌ Lỗi: {result}")
-       
+
 # ==========================================
 # TAB 3: QUYẾT TOÁN ĐƠN CHUYẾN (TÍCH HỢP TELEGRAM & AI LOGIC)
 # ==========================================
-
-# CẤU HÌNH TELEGRAM BOT (Lấy từ BotFather trên Telegram): note cần phân biệt thêm khi 1 xe đổ xăng nhiều lần trong ngày mà caption chỉ có 1 mã chuyến
 bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
 
 if not bot_token:
     st.error("⚠️ HỆ THỐNG: Không tìm thấy TELEGRAM_BOT_TOKEN trong file .env. Tính năng tự động lấy ảnh sẽ bị vô hiệu hóa.")
 
-import requests
-
 def lay_danh_sach_anh_telegram_theo_ma_chuyen(bot_token, chuyen_di_id, danh_sach_file_id_da_tai):
-    """
-    Quét Telegram tìm tất cả ảnh có chú thích chứa Mã Chuyến Đi (ID).
-    Bỏ qua bộ lọc ngày tháng vì ID chuyến đi là duy nhất, giúp tránh lỗi do múi giờ
-    hoặc do tài xế gửi ảnh trễ sang ngày hôm sau.
-    """
     try:
         url_updates = f"https://api.telegram.org/bot{bot_token}/getUpdates"
         resp = requests.get(url_updates).json()
@@ -563,19 +508,14 @@ def lay_danh_sach_anh_telegram_theo_ma_chuyen(bot_token, chuyen_di_id, danh_sach
             message = msg.get('message', {})
             
             if 'photo' in message:
-                # Lấy nội dung Caption
                 caption = message.get('caption', '').upper()
                 
-                # CHỐT CHẶN 1: Kiểm tra Mã chuyến đi có nằm trong chú thích không
                 if chuyen_di_id_str in caption:
-                    # Lấy ID của ảnh chất lượng cao nhất
                     photo_id = message['photo'][-1]['file_id']
                     
-                    # CHỐT CHẶN 2: Bỏ qua nếu ảnh đã được tải về trong session hiện tại
                     if photo_id in danh_sach_file_id_da_tai:
                         continue
                         
-                    # Tiến hành tải ảnh
                     url_file = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={photo_id}"
                     file_path = requests.get(url_file).json()['result']['file_path']
                     
@@ -592,15 +532,13 @@ def lay_danh_sach_anh_telegram_theo_ma_chuyen(bot_token, chuyen_di_id, danh_sach
             
     except Exception as e:
         return [], [], f"Lỗi kết nối Telegram: {e}"
-################################################
+
 with tab3:
-    # Gọi hàm thay cho st.markdown thông thường
     tao_tieu_de_kem_nut_refresh("📋 Quyết toán và cập nhật chi phí chuyến đi", "ref_tab3")
 
     if "reset_chuyen_form" not in st.session_state: 
         st.session_state["reset_chuyen_form"] = 0
         
-    # 1. TẢI CẤU HÌNH VÀ DANH SÁCH CHUYẾN ĐI ĐANG CHỜ QUYẾT TOÁN
     df_cfg = db.execute_query("SELECT ma_tieu_chi, muc_thuong FROM cau_hinh_thuong")
     bonus_rules = {row['ma_tieu_chi']: float(row['muc_thuong']) for _, row in df_cfg.iterrows()} if isinstance(df_cfg, pd.DataFrame) and not df_cfg.empty else {}
 
@@ -636,26 +574,19 @@ with tab3:
         row_sel = df_cd[df_cd['id'] == cd_id].iloc[0]
         tai_trong_xe = row_sel['tai_trong']
         
-        # [QUAN TRỌNG] Tự động dọn dẹp Cache ảnh nếu người dùng chọn sang chuyến đi khác
         if 'current_trip_id' not in st.session_state or st.session_state['current_trip_id'] != cd_id:
             for key in ['ai_fuel_lit', 'ai_fuel_tien', 'danh_sach_anh_tam', 'danh_sach_file_id_tam']:
                 if key in st.session_state:
                     del st.session_state[key]
             st.session_state['current_trip_id'] = cd_id
 
-        # Khởi tạo Cache cho danh sách ảnh và ID
         if 'danh_sach_anh_tam' not in st.session_state: st.session_state['danh_sach_anh_tam'] = []
         if 'danh_sach_file_id_tam' not in st.session_state: st.session_state['danh_sach_file_id_tam'] = []
 
         st.divider()
 
-        # ========================================================
-        # 2. KHU VỰC CÔNG CỤ TỰ ĐỘNG HÓA (GPS & AI TELEGRAM)
-        # ========================================================
         with st.expander("🛠️ CÔNG CỤ TỰ ĐỘNG BỔ TRỢ KẾ TOÁN (GPS & AI)", expanded=True):
-            
             st.markdown("##### 🛰️ Quét dữ liệu KM từ GPS (Hành Trình Xe)")
-            # Nội suy thời gian gợi ý cho GPS
             ngay_cd_obj = row_sel['ngay_chuyen_di']
             if isinstance(ngay_cd_obj, str):
                 ngay_cd_obj = datetime.datetime.strptime(ngay_cd_obj, '%Y-%m-%d').date()
@@ -692,7 +623,6 @@ with tab3:
             st.markdown("##### 🤖 Thu thập & Quét biên lai nhiên liệu tự động")
             col_bot_1, col_bot_2 = st.columns([1, 1])
             
-            # Quét Telegram theo Mã Chuyến (Hỗ trợ nhiều ảnh)
             with col_bot_1:
                 st.info(f"📡 Lấy tự động hóa đơn từ Telegram cho mã chuyến **{cd_id}**.")
                 if st.button("📥 Quét Telegram lấy hóa đơn xăng dầu", type="primary", use_container_width=True):
@@ -709,7 +639,6 @@ with tab3:
                         else:
                             st.warning(msg)
                             
-            # Upload file thủ công (Nhiều ảnh)
             with col_bot_2:
                 st.info("📂 Kế toán có thể tải lên nhiều file ảnh thủ công nếu tài xế gửi qua Zalo.")
                 uploaded_fuels = st.file_uploader("Tải lên biên lai", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True, key=f"up_{cd_id}_{st.session_state['reset_chuyen_form']}")
@@ -719,7 +648,6 @@ with tab3:
                         if au not in st.session_state['danh_sach_anh_tam']:
                             st.session_state['danh_sach_anh_tam'].append(au)
 
-            # Phân tích AI và Chốt chặn Toán học
             if st.session_state['danh_sach_anh_tam']:
                 from io import BytesIO
                 so_luong_anh = len(st.session_state['danh_sach_anh_tam'])
@@ -752,7 +680,6 @@ with tab3:
                         st.markdown(f"- **Tổng số lít:** {tong_lit:,.2f} Lít")
                         st.markdown(f"- **Tổng tiền:** {tong_tien:,} VNĐ")
                         
-                        # CHỐT CHẶN LOGIC TOÁN HỌC (Sanity Check)
                         if tong_lit > 0:
                             don_gia_tb = tong_tien / tong_lit
                             if don_gia_tb < 14000 or don_gia_tb > 40000:
@@ -763,9 +690,6 @@ with tab3:
                         else:
                             st.warning("AI không đọc được số lít ở các hóa đơn, kế toán vui lòng tự tính và nhập tay.")
 
-        # ========================================================
-        # 3. FORM QUYẾT TOÁN CHÍNH (CHỐT CHẶN KẾ TOÁN)
-        # ========================================================
         st.divider()
         with st.form(key=f"form_qt_{st.session_state['reset_chuyen_form']}"):
             
@@ -815,7 +739,6 @@ with tab3:
             submit_chot = b2.form_submit_button("🏁 CHỐT SỔ CHUYẾN ĐI", type="primary")
             submit_xoa  = b3.form_submit_button("🗑️ XÓA CHUYẾN ĐI")
 
-            # Xử lý Parse Data theo quy chuẩn Hệ thống
             data_dict_thu_cong = {
                 'ten_khach_hang': edit_cong_ty,
                 'so_km_thuc_te': final_km,
@@ -839,7 +762,6 @@ with tab3:
                     if key in st.session_state:
                         del st.session_state[key]
 
-            # Module điều hướng gọi chức năng DB
             if submit_luu:
                 is_ok, msg = settle_trip_transaction(db.pool, data_dict_thu_cong, row_sel['trang_thai_chuyen'], cd_id)
                 if is_ok:
@@ -878,20 +800,17 @@ with tab3:
     else:
         st.info("🎉 Tuyệt vời! Hiện tại không có chuyến đi nào đang chờ quyết toán.")
 
-################################################################
-# Giả sử bạn đang ở trong khối hiển thị Tab (ví dụ: with tab5:)
+# ==========================================
+# TAB 4: SỬA DỮ LIỆU ĐÃ QUYẾT TOÁN
+# ==========================================
 with tab4:
-    # Gọi hàm thay cho st.markdown thông thường
     tao_tieu_de_kem_nut_refresh("📋 Sửa dữ liệu chuyến đi đã quyết toán", "ref_tab4")
-    # --- THÊM 2 DÒNG NÀY ĐỂ TẠO BỘ ĐẾM RESET ---
     if "reset_sqt" not in st.session_state:
         st.session_state["reset_sqt"] = 0
-    #st.markdown("#### 📝 Sửa dữ liệu chuyến đi đã Quyết Toán / Chốt chuyến")
     st.info("Tính năng này dùng để điều chỉnh chi phí, công lương cho các chuyến đã chốt.")
     
     current_user = st.session_state.get('username', 'Admin')
     
-    # 1. BỘ LỌC TÌM KIẾM
     col_filter1, col_filter2, col_filter3 = st.columns(3)
     
     with col_filter1:
@@ -918,11 +837,9 @@ with tab4:
 
     st.divider()
 
-    # 2. HIỂN THỊ DANH SÁCH CHUYẾN ĐI
     if doi_tuong_id:
         ngay_str = ngay_tim_kiem.strftime('%Y-%m-%d')
         
-        # Lấy dữ liệu từ Database
         if loai_tim_kiem == "Theo Xe":
             sql_find_trips = """
                 SELECT id, dia_diem_giao_nhan, ten_khach_hang, cong_chuyen,doanh_thu, so_km_thuc_te,so_lit_xang,tien_xang, 
@@ -953,47 +870,35 @@ with tab4:
                 "📌 Chọn chuyến cần sửa quyết toán:", 
                 options=list(dict_trips.keys()), 
                 format_func=lambda x: dict_trips[x],
-                # --- SỬA DÒNG NÀY (Thêm reset_sqt vào tên key) ---
                 key=f"chon_chuyen_sua_{st.session_state['reset_sqt']}",
                 index=None, 
                 placeholder="-- Vui lòng chọn 1 chuyến đi --"
             )
             
-            # 🛑 CHỈ CHẠY CODE BÊN DƯỚI NẾU NGƯỜI DÙNG ĐÃ CHỌN 1 MÃ CHUYẾN
             if chuyen_can_sua is not None:
-                
-                # Ép kiểu lọc an toàn
                 df_filtered = df_trips[df_trips['id'].astype(str) == str(chuyen_can_sua)]
                 
-                # Kiểm tra chắc chắn bảng không rỗng
                 if not df_filtered.empty:
-                    # Chỉ dùng iloc[0] khi đã chắc chắn bảng có dữ liệu
                     trip_info = df_filtered.iloc[0]
                     
-                    # 3. FORM NHẬP LIỆU
-                    # 3. FORM NHẬP LIỆU SỬA ĐỔI
                     with st.form("form_sua_quyet_toan", clear_on_submit=True):
                         st.markdown(f"**Đang sửa dữ liệu chuyến {chuyen_can_sua}**")
                         
-                        # --- HÀM 1: ĐỊNH DẠNG SỐ CÓ DẤU PHẨY ĐỂ HIỂN THỊ ---
                         def format_money(val):
                             if pd.isna(val) or val == "":
                                 return "0"
                             try:
-                                return f"{int(float(val)):,}" # Thêm dấu phẩy ngăn cách ngàn
+                                return f"{int(float(val)):,}" 
                             except:
                                 return "0"
                                 
-                        # --- HÀM 2: LỘT BỎ DẤU PHẨY/CHẤM ĐỂ LƯU DATABASE ---
                         def parse_money(val_str):
-                            # Xóa mọi dấu phẩy, dấu chấm, khoảng trắng do người dùng gõ
                             clean_str = str(val_str).replace(",", "").replace(".", "").replace(" ", "")
                             try:
                                 return float(clean_str)
                             except:
-                                return 0.0 # Nếu gõ bậy bạ chữ cái thì trả về 0
+                                return 0.0 
 
-                        # Dùng text_input cho Tiền, giữ number_input cho KM
                         c1, c2, c3,c4,c5,c6 = st.columns(6)
                         
                         edit_cong_str = c1.text_input(
@@ -1002,7 +907,6 @@ with tab4:
                             key=f"cong_{chuyen_can_sua}"
                         )
                         
-                        # Số KM giữ nguyên number_input vì thường số nhỏ, không cần dấu phẩy
                         edit_km = c2.number_input(
                             "Số KM thực tế*", 
                             value=0.0 if pd.isna(trip_info['so_km_thuc_te']) else float(trip_info['so_km_thuc_te']), 
@@ -1057,10 +961,9 @@ with tab4:
                         )
                         
                         if st.form_submit_button("💾 Lưu sửa đổi quyết toán", type="primary"):
-                            # ÉP KIỂU NGƯỢC LẠI THÀNH SỐ KHI LƯU DB
                             data_update = {
                                 'cong_chuyen': parse_money(edit_cong_str),
-                                'so_km_thuc_te': edit_km, # km đã là dạng số sẵn
+                                'so_km_thuc_te': edit_km,
                                 'so_lit_xang': parse_money(edit_so_lit_xang_str),
                                 'tien_xang': parse_money(edit_tien_xang_str),
                                 'tien_them': parse_money(edit_tien_them_str),
@@ -1075,14 +978,12 @@ with tab4:
                             
                             if is_ok:
                                 st.success(f"✅ Đã cập nhật thành công quyết toán cho chuyến {chuyen_can_sua}!")
-                                
                                 st.session_state["reset_sqt"] += 1
-                                
-                                import time
                                 time.sleep(2) 
                                 st.rerun()
                             else:
                                 st.error(f"❌ Lỗi khi lưu: {msg}")
+
 # ==========================================
 # TAB 5: 🤖 TỰ ĐỘNG ĐIỀU XE & EXCEL TOOLS
 # ==========================================
@@ -1094,19 +995,15 @@ with tab5:
     st.markdown("#### ⚙️ Trung tâm điều phối đội xe tự động & Tiện ích Excel")
     st.divider()
     
-    
-    
-
     # ---------------------------------------------------------
-    # TÍNH NĂNG 1: TẢI FILE MẪU EXCEL (Đã thêm dòng dữ liệu mẫu)
+    # TÍNH NĂNG 1: TẢI FILE MẪU EXCEL
     # ---------------------------------------------------------
     st.markdown("##### 📥 1. Tải File Mẫu (Templates) chuẩn của hệ thống")
     col_t1, col_t2 = st.columns(2)
     with col_t1:
-        # TẠO FILE MẪU CÓ SẴN 1 DÒNG ĐỂ ÉP NGƯỜI DÙNG NHẬP ĐÚNG FORMAT DD/MM/YYYY
         df_tpl_order = pd.DataFrame([
             {
-                "NGAY_CHAY": "format ô:text, dd/mm/yyyy",  # Dòng ví dụ để người dùng bắt chước
+                "NGAY_CHAY": "format ô:text, dd/mm/yyyy",
                 "TEN_KHACH_HANG": "Công ty TNHH ABC (Dòng Mẫu - Hãy Xóa)",
                 "DIA_CHI_KHACH_HANG": "Thông tin địa chỉ khách hàng",
                 "DIA_CHI_KHO_DI": "Bình Dương",
@@ -1115,7 +1012,6 @@ with tab5:
                 "THE_TICH_CBM": 5.5,
                 "TIEN_CONG_TAI_XE":0,
                 "GHI_CHU":"GHI CHÚ THÊM THÔNG TIN NẾU CẦN"
-                
             }
         ])
         buffer_order = io.BytesIO()
@@ -1132,343 +1028,304 @@ with tab5:
     
     st.divider()
 
- # ---------------------------------------------------------
-# TÍNH NĂNG 2: ĐIỀU XE TỰ ĐỘNG (THUẬT TOÁN ƯU TIÊN)
-# ---------------------------------------------------------
-st.markdown("##### 🚀 2. Nạp file Excel đơn hàng chạy tự động")
+    # 👉 ĐÃ KHẮC PHỤC: Toàn bộ Tính năng 2 và Tính năng 3 đã được thụt lề chuẩn vào trong Tab 5
 
-with st.form("form_auto_dispatch"):
-    file_order = st.file_uploader("Chọn file Excel Tạo chuyến (Đuôi .xlsx)", type=["xlsx", "xls"])
-    submit_order = st.form_submit_button("🚀 Thực thi thuật toán tự động", type="primary")
-    
-    if submit_order:
-        if not file_order:
-            st.warning("⚠️ Bạn chưa tải file Excel lên!")
-        else:
-            with st.spinner("⏳ Đang quét dữ liệu, ghép xe và tạo danh sách xuất file thủ công..."):
-                try:
-                    df_orders = pd.read_excel(file_order)
-                    df_orders.columns = [str(c).strip().upper() for c in df_orders.columns] 
-                    
-                    # Chuẩn hóa ngày tháng
-                    df_orders['NGAY_CHAY_CHUAN'] = pd.to_datetime(df_orders['NGAY_CHAY'], dayfirst=True, errors='coerce')
-                    
-                    # --- BƯỚC 1: SẮP XẾP ƯU TIÊN (CHỐNG CƯỚP XE) ---
-                    def safe_float(val):
-                        try:
-                            return 0.0 if pd.isna(val) or str(val).strip() == "" else float(val)
-                        except:
-                            return 0.0
-                    
-                    df_orders['SORT_KG'] = df_orders['KHOI_LUONG_KG'].apply(safe_float)
-                    df_orders['SORT_CBM'] = df_orders['THE_TICH_CBM'].apply(safe_float)
-                    
-                    df_orders_sorted = df_orders.sort_values(by=['SORT_KG', 'SORT_CBM'], ascending=[False, False])
-                    
-                    # --- BƯỚC 2: TÌM XE RẢNH ---
-                    sql_xe_ranh = """
-                        SELECT x.id, x.bien_so_xe, x.tai_xe_co_dinh_id, x.tai_trong_thiet_ke, x.dung_tich_cbm, 
-                            nv.ho_ten as ten_tai_xe, nv.so_dien_thoai as so_dien_thoai, nv.cccd as cccd
-                        FROM xe x 
-                        LEFT JOIN nhan_vien nv ON x.tai_xe_co_dinh_id = nv.id
-                        WHERE x.trang_thai = 'Dang_Hoat_Dong'
-                        AND x.id NOT IN (
-                            SELECT xe_id FROM chuyen_di 
-                            WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') AND xe_id IS NOT NULL
-                        )
-                        ORDER BY x.tai_trong_thiet_ke ASC, x.dung_tich_cbm ASC
-                    """
-                    df_xe_ranh = db.execute_query(sql_xe_ranh)
-                    
-                    if isinstance(df_xe_ranh, str) or df_xe_ranh.empty:
-                        st.error("❌ Hiện tại không có xe nào rảnh để điều phối!")
-                    else:
-                        success_count = 0
-                        xe_list = df_xe_ranh.to_dict('records')
-                        danh_sach_xuat_excel = [] 
-                        
-                        for xe in xe_list:
-                            xe['is_used'] = False 
-                        
-                        for idx, row in df_orders_sorted.iterrows():
-                            
-                            # --- ĐỌC NGÀY ĐÃ ĐƯỢC CHUẨN HOÁ ---
-                            ngay_chay_dt = row['NGAY_CHAY_CHUAN']
-                            if pd.isna(ngay_chay_dt):
-                                st.error(f"❌ Dòng số {idx + 2} (Excel): Dữ liệu ngày '{row.get('NGAY_CHAY')}' không hợp lệ. Vui lòng nhập chuẩn DD/MM/YYYY.")
-                                continue
-                                
-                            ngay_chay_str = ngay_chay_dt.strftime('%Y-%m-%d')       
-                            ngay_chay_hien_thi = ngay_chay_dt.strftime('%d/%m/%Y')  
-                            
-                            req_kg = row['SORT_KG']
-                            req_cbm = row['SORT_CBM']
-                            khach_hang = str(row.get('TEN_KHACH_HANG', 'Khách Lẻ')).strip()
-                            
-                            val_cong = row.get('TIEN_CONG_TAI_XE', 0)
-                            cong_tai_xe = 0.0 if pd.isna(val_cong) or str(val_cong).strip() == "" else float(val_cong)
-                            
-                            val_dia_chi_kh = row.get('DIA_CHI_KHACH_HANG', '')
-                            dia_chi_kh = str(val_dia_chi_kh).strip() if pd.notnull(val_dia_chi_kh) else ""
-                            
-                            val_kho_di = row.get('DIA_CHI_KHO_DI', '')
-                            kho_di = str(val_kho_di).strip() if pd.notnull(val_kho_di) else ""
-                            
-                            val_kho_den = row.get('DIA_CHI_KHO_DEN', '')
-                            kho_den = str(val_kho_den).strip() if pd.notnull(val_kho_den) else ""
-                            
-                            val_ghi_chu = row.get('GHI_CHU', '')
-                            ghi_chu = str(val_ghi_chu).strip() if pd.notnull(val_ghi_chu) else ""
+    # ---------------------------------------------------------
+    # TÍNH NĂNG 2: ĐIỀU XE TỰ ĐỘNG (THUẬT TOÁN ƯU TIÊN)
+    # ---------------------------------------------------------
+    st.markdown("##### 🚀 2. Nạp file Excel đơn hàng chạy tự động")
 
-                            xe_phu_hop = None
-                            
-                            # --- BƯỚC 3: GHÉP XE ---
-                            for xe in xe_list:
-                                if xe['is_used'] or pd.isna(xe['tai_xe_co_dinh_id']): continue 
-                                
-                                cap_kg = float(xe['tai_trong_thiet_ke'] or 0) * 1000 
-                                cap_cbm = float(xe['dung_tich_cbm'] or 0)
-                                
-                                if (cap_kg >= req_kg) and (req_cbm == 0 or cap_cbm >= req_cbm):
-                                    xe_phu_hop = xe
-                                    xe['is_used'] = True
-                                    break
-                            
-                            if xe_phu_hop:
-                                trip_data_tuple = (
-                                    ngay_chay_str,                
-                                    khach_hang,                   
-                                    dia_chi_kh,                   
-                                    xe_phu_hop['id'],             
-                                    f"{kho_di} ➡️ {kho_den}",     
-                                    0.0,                          
-                                    req_kg,                      
-                                    req_cbm,                      
-                                    cong_tai_xe,                  
-                                    'Tao_Moi',                    
-                                    ghi_chu                       
-                                )
-                            
-                                tx_id = int(float(xe_phu_hop['tai_xe_co_dinh_id']))
-                                # Gọi hàm tạo chuyến đi dựa trên module trip_manager đã quy định
-                                is_ok, result_msg = save_trip_full_process(db.pool, trip_data_tuple, tx_id)
-                                
-                                if is_ok:
-                                    success_count += 1
-                                    
-                                    # -------------------------------------------------------------
-                                    # XỬ LÝ ĐỊNH DẠNG TÊN GROUP VÀ NỘI DUNG GỬI THỦ CÔNG
-                                    # -------------------------------------------------------------
-                                    raw_bien_so = str(xe_phu_hop['bien_so_xe'])
-                                    # Loại bỏ hoàn toàn ký tự đặc biệt (dấu gạch ngang, dấu chấm, khoảng trắng...)
-                                    ten_group = "".join([c for c in raw_bien_so if c.isalnum()]).upper()
-                                    
-                                    # Chuẩn bị nội dung bản tin để Admin copy & paste trực tiếp vào nhóm Zalo
-                                    noi_dung_chat = (
-                                        f"🚗 LỆNH ĐIỀU XE BẢO TÍN 🚗\n"
-                                        f"🔹 Mã chuyến: {result_msg}\n"
-                                        f"🔹 Ngày chạy: {ngay_chay_hien_thi}\n"
-                                        f"🔹 Khách hàng: {khach_hang}\n"
-                                       # f"🔹 Xe: {raw_bien_so} | Tài xế: {xe_phu_hop['ten_tai_xe']}\n"
-                                       # f"🔹 CCCD: {xe_phu_hop['cccd']}\n"
-                                        f"🔹 Lộ trình: {kho_di} ➡️ {kho_den}\n"
-                                        f"🔹 Ghi chú: {ghi_chu if ghi_chu else 'Không'}\n"
-                                        f"Vui lòng chuẩn bị hàng hóa!"
-                                    )
-                                    
-                                    # Thêm dữ liệu vào danh sách báo cáo Excel kèm cấu trúc yêu cầu
-                                    danh_sach_xuat_excel.append({
-                                        "STT Dòng Excel": idx + 2,
-                                        "ten_group": ten_group, # Cột mới: Tên nhóm đã loại bỏ ký tự đặc biệt
-                                        "noi_dung_chat": noi_dung_chat, # Cột mới: Nội dung hoàn chỉnh để copy dán
-                                        "Mã Hệ Thống (Trip ID)": result_msg,
-                                        "Ngày Chạy": ngay_chay_hien_thi,
-                                        "Khách Hàng": khach_hang,
-                                        "Địa Chỉ KH": dia_chi_kh,
-                                        "Lộ Trình": f"{kho_di} ➡️ {kho_den}",
-                                        "Biển Số Xe": raw_bien_so,
-                                        "Tên Tài Xế": xe_phu_hop['ten_tai_xe'],
-                                        "Số điện thoại": xe_phu_hop['so_dien_thoai'],
-                                        "CCCD": xe_phu_hop['cccd'],
-                                        "Công tài xế": cong_tai_xe,
-                                        "Khối Lượng (KG)": req_kg,
-                                        "Thể Tích (CBM)": req_cbm,
-                                        "Ghi Chú": ghi_chu
-                                    })
-                                else:
-                                    st.error(f"❌ Lỗi lưu đơn '{khach_hang}' (Dòng {idx + 2}): {result_msg}")
-                            else:
-                                st.warning(f"⚠️ Dòng {idx + 2} (Excel): Đơn '{khach_hang}' ({req_kg}kg, {req_cbm} CBM) không tìm được xe phù hợp!")
-                        
-                        # --- BƯỚC 4: LỌC DANH SÁCH XE CÒN TRỐNG ---
-                        xe_con_trong = []
-                        for xe in xe_list:
-                            if not xe['is_used']:
-                                xe_con_trong.append({
-                                    "Biển Số Xe": xe['bien_so_xe'],
-                                    "Tài Xế Mặc Định": xe['ten_tai_xe'],
-                                    "Số Điện Thoại": xe['so_dien_thoai'],
-                                    "Tải Trọng (Tấn)": float(xe['tai_trong_thiet_ke'] or 0),
-                                    "Thể Tích (CBM)": float(xe['dung_tich_cbm'] or 0)
-                                })
-                        st.session_state["export_xe_ranh"] = pd.DataFrame(xe_con_trong)
-                        
-                        if success_count > 0:
-                            st.success(f"🎉 Đã điều phối thành công {success_count} chuyến đi và tạo sẵn nội dung Zalo thủ công!")
-                            st.balloons()
-                            
-                            df_export = pd.DataFrame(danh_sach_xuat_excel)
-                            df_export = df_export.sort_values(by="STT Dòng Excel").drop(columns=["STT Dòng Excel"])
-                            st.session_state["export_dieu_xe"] = df_export
-                            
-                            
-                            time.sleep(2)
-                            st.rerun()
-                            
-                except Exception as e:
-                    st.error(f"❌ Lỗi xử lý thuật toán: {str(e)}")
-
-# ---------------------------------------------------------
-# KẾT QUẢ ĐIỀU XE: XUẤT FILE IN & GỌI TÀI XẾ
-# ---------------------------------------------------------
-if st.session_state.get("export_dieu_xe") is not None and not st.session_state["export_dieu_xe"].empty:
-    st.markdown("### 🖨️ Danh sách chuyến đi vừa điều phối thành công (Hỗ trợ Zalo Thủ công)")
-    st.dataframe(st.session_state["export_dieu_xe"], use_container_width=True)
-    
-    # Nút xuất file Excel Đa Tab
-    buffer_export = io.BytesIO()
-    with pd.ExcelWriter(buffer_export, engine='xlsxwriter') as writer:
-        # Ghi sheet 1: Các lệnh đã book thành công kèm cột ten_group và nội dung chat
-        st.session_state["export_dieu_xe"].to_excel(writer, index=False, sheet_name="Lich_Chay_Va_Zalo")
+    with st.form("form_auto_dispatch"):
+        file_order = st.file_uploader("Chọn file Excel Tạo chuyến (Đuôi .xlsx)", type=["xlsx", "xls"])
+        submit_order = st.form_submit_button("🚀 Thực thi thuật toán tự động", type="primary")
         
-        # Ghi sheet 2: Các xe còn rảnh
-        df_ranh = st.session_state.get("export_xe_ranh")
-        if df_ranh is not None and not df_ranh.empty:
-            df_ranh.to_excel(writer, index=False, sheet_name="Xe_Con_Trong")
-        else:
-            pd.DataFrame([{"Thông Báo": "Tuyệt vời! Toàn bộ xe rảnh đã được điều động hết."}]).to_excel(writer, index=False, sheet_name="Xe_Con_Trong")
-    
-    col_btn1, col_btn2 = st.columns([1, 4])
-    with col_btn1:
-        if st.button("🔄 Reset Màn Hình", use_container_width=True):
-            st.session_state["export_dieu_xe"] = None
-            st.session_state["export_xe_ranh"] = None
-            st.rerun()
-    with col_btn2:
-        st.download_button(
-            label="⬇️ TẢI FILE EXCEL (CÓ CỘT TEN_GROUP & NỘI DUNG ZALO THỦ CÔNG)", 
-            data=buffer_export.getvalue(), 
-            file_name=f"Lenh_Dieu_Xe_ZaloThuCong_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx", 
-            type="primary",
-            use_container_width=True
-        )
-                
-st.divider()
-    
+        if submit_order:
+            if not file_order:
+                st.warning("⚠️ Bạn chưa tải file Excel lên!")
+            else:
+                with st.spinner("⏳ Đang quét dữ liệu, ghép xe và tạo danh sách xuất file thủ công..."):
+                    try:
+                        df_orders = pd.read_excel(file_order)
+                        df_orders.columns = [str(c).strip().upper() for c in df_orders.columns] 
+                        
+                        df_orders['NGAY_CHAY_CHUAN'] = pd.to_datetime(df_orders['NGAY_CHAY'], dayfirst=True, errors='coerce')
+                        
+                        def safe_float(val):
+                            try:
+                                return 0.0 if pd.isna(val) or str(val).strip() == "" else float(val)
+                            except:
+                                return 0.0
+                        
+                        df_orders['SORT_KG'] = df_orders['KHOI_LUONG_KG'].apply(safe_float)
+                        df_orders['SORT_CBM'] = df_orders['THE_TICH_CBM'].apply(safe_float)
+                        
+                        df_orders_sorted = df_orders.sort_values(by=['SORT_KG', 'SORT_CBM'], ascending=[False, False])
+                        
+                        sql_xe_ranh = """
+                            SELECT x.id, x.bien_so_xe, x.tai_xe_co_dinh_id, x.tai_trong_thiet_ke, x.dung_tich_cbm, 
+                                nv.ho_ten as ten_tai_xe, nv.so_dien_thoai as so_dien_thoai, nv.cccd as cccd
+                            FROM xe x 
+                            LEFT JOIN nhan_vien nv ON x.tai_xe_co_dinh_id = nv.id
+                            WHERE x.trang_thai = 'Dang_Hoat_Dong'
+                            AND x.id NOT IN (
+                                SELECT xe_id FROM chuyen_di 
+                                WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') AND xe_id IS NOT NULL
+                            )
+                            ORDER BY x.tai_trong_thiet_ke ASC, x.dung_tich_cbm ASC
+                        """
+                        df_xe_ranh = db.execute_query(sql_xe_ranh)
+                        
+                        if isinstance(df_xe_ranh, str) or df_xe_ranh.empty:
+                            st.error("❌ Hiện tại không có xe nào rảnh để điều phối!")
+                        else:
+                            success_count = 0
+                            xe_list = df_xe_ranh.to_dict('records')
+                            danh_sach_xuat_excel = [] 
+                            
+                            for xe in xe_list:
+                                xe['is_used'] = False 
+                            
+                            for idx, row in df_orders_sorted.iterrows():
+                                
+                                ngay_chay_dt = row['NGAY_CHAY_CHUAN']
+                                if pd.isna(ngay_chay_dt):
+                                    st.error(f"❌ Dòng số {idx + 2} (Excel): Dữ liệu ngày '{row.get('NGAY_CHAY')}' không hợp lệ. Vui lòng nhập chuẩn DD/MM/YYYY.")
+                                    continue
+                                    
+                                ngay_chay_str = ngay_chay_dt.strftime('%Y-%m-%d')       
+                                ngay_chay_hien_thi = ngay_chay_dt.strftime('%d/%m/%Y')  
+                                
+                                req_kg = row['SORT_KG']
+                                req_cbm = row['SORT_CBM']
+                                khach_hang = str(row.get('TEN_KHACH_HANG', 'Khách Lẻ')).strip()
+                                
+                                val_cong = row.get('TIEN_CONG_TAI_XE', 0)
+                                cong_tai_xe = 0.0 if pd.isna(val_cong) or str(val_cong).strip() == "" else float(val_cong)
+                                
+                                val_dia_chi_kh = row.get('DIA_CHI_KHACH_HANG', '')
+                                dia_chi_kh = str(val_dia_chi_kh).strip() if pd.notnull(val_dia_chi_kh) else ""
+                                
+                                val_kho_di = row.get('DIA_CHI_KHO_DI', '')
+                                kho_di = str(val_kho_di).strip() if pd.notnull(val_kho_di) else ""
+                                
+                                val_kho_den = row.get('DIA_CHI_KHO_DEN', '')
+                                kho_den = str(val_kho_den).strip() if pd.notnull(val_kho_den) else ""
+                                
+                                val_ghi_chu = row.get('GHI_CHU', '')
+                                ghi_chu = str(val_ghi_chu).strip() if pd.notnull(val_ghi_chu) else ""
+
+                                xe_phu_hop = None
+                                
+                                for xe in xe_list:
+                                    if xe['is_used'] or pd.isna(xe['tai_xe_co_dinh_id']): continue 
+                                    
+                                    cap_kg = float(xe['tai_trong_thiet_ke'] or 0) * 1000 
+                                    cap_cbm = float(xe['dung_tich_cbm'] or 0)
+                                    
+                                    if (cap_kg >= req_kg) and (req_cbm == 0 or cap_cbm >= req_cbm):
+                                        xe_phu_hop = xe
+                                        xe['is_used'] = True
+                                        break
+                                
+                                if xe_phu_hop:
+                                    trip_data_tuple = (
+                                        ngay_chay_str,                
+                                        khach_hang,                   
+                                        dia_chi_kh,                   
+                                        xe_phu_hop['id'],             
+                                        f"{kho_di} ➡️ {kho_den}",     
+                                        0.0,                          
+                                        req_kg,                      
+                                        req_cbm,                      
+                                        cong_tai_xe,                  
+                                        'Tao_Moi',                    
+                                        ghi_chu                       
+                                    )
+                                
+                                    tx_id = int(float(xe_phu_hop['tai_xe_co_dinh_id']))
+                                    is_ok, result_msg = save_trip_full_process(db.pool, trip_data_tuple, tx_id)
+                                    
+                                    if is_ok:
+                                        success_count += 1
+                                        
+                                        raw_bien_so = str(xe_phu_hop['bien_so_xe'])
+                                        ten_group = "".join([c for c in raw_bien_so if c.isalnum()]).upper()
+                                        
+                                        noi_dung_chat = (
+                                            f"🚗 LỆNH ĐIỀU XE BẢO TÍN 🚗\n"
+                                            f"🔹 Mã chuyến: {result_msg}\n"
+                                            f"🔹 Ngày chạy: {ngay_chay_hien_thi}\n"
+                                            f"🔹 Khách hàng: {khach_hang}\n"
+                                            f"🔹 Lộ trình: {kho_di} ➡️ {kho_den}\n"
+                                            f"🔹 Ghi chú: {ghi_chu if ghi_chu else 'Không'}\n"
+                                            f"Vui lòng chuẩn bị hàng hóa!"
+                                        )
+                                        
+                                        danh_sach_xuat_excel.append({
+                                            "STT Dòng Excel": idx + 2,
+                                            "ten_group": ten_group, 
+                                            "noi_dung_chat": noi_dung_chat, 
+                                            "Mã Hệ Thống (Trip ID)": result_msg,
+                                            "Ngày Chạy": ngay_chay_hien_thi,
+                                            "Khách Hàng": khach_hang,
+                                            "Địa Chỉ KH": dia_chi_kh,
+                                            "Lộ Trình": f"{kho_di} ➡️ {kho_den}",
+                                            "Biển Số Xe": raw_bien_so,
+                                            "Tên Tài Xế": xe_phu_hop['ten_tai_xe'],
+                                            "Số điện thoại": xe_phu_hop['so_dien_thoai'],
+                                            "CCCD": xe_phu_hop['cccd'],
+                                            "Công tài xế": cong_tai_xe,
+                                            "Khối Lượng (KG)": req_kg,
+                                            "Thể Tích (CBM)": req_cbm,
+                                            "Ghi Chú": ghi_chu
+                                        })
+                                    else:
+                                        st.error(f"❌ Lỗi lưu đơn '{khach_hang}' (Dòng {idx + 2}): {result_msg}")
+                                else:
+                                    st.warning(f"⚠️ Dòng {idx + 2} (Excel): Đơn '{khach_hang}' ({req_kg}kg, {req_cbm} CBM) không tìm được xe phù hợp!")
+                            
+                            xe_con_trong = []
+                            for xe in xe_list:
+                                if not xe['is_used']:
+                                    xe_con_trong.append({
+                                        "Biển Số Xe": xe['bien_so_xe'],
+                                        "Tài Xế Mặc Định": xe['ten_tai_xe'],
+                                        "Số Điện Thoại": xe['so_dien_thoai'],
+                                        "Tải Trọng (Tấn)": float(xe['tai_trong_thiet_ke'] or 0),
+                                        "Thể Tích (CBM)": float(xe['dung_tich_cbm'] or 0)
+                                    })
+                            st.session_state["export_xe_ranh"] = pd.DataFrame(xe_con_trong)
+                            
+                            if success_count > 0:
+                                st.success(f"🎉 Đã điều phối thành công {success_count} chuyến đi và tạo sẵn nội dung Zalo thủ công!")
+                                st.balloons()
+                                
+                                df_export = pd.DataFrame(danh_sach_xuat_excel)
+                                df_export = df_export.sort_values(by="STT Dòng Excel").drop(columns=["STT Dòng Excel"])
+                                st.session_state["export_dieu_xe"] = df_export
+                                
+                                time.sleep(2)
+                                st.rerun()
+                                
+                    except Exception as e:
+                        st.error(f"❌ Lỗi xử lý thuật toán: {str(e)}")
+
+    # ---------------------------------------------------------
+    # KẾT QUẢ ĐIỀU XE: XUẤT FILE IN & GỌI TÀI XẾ
+    # ---------------------------------------------------------
+    if st.session_state.get("export_dieu_xe") is not None and not st.session_state["export_dieu_xe"].empty:
+        st.markdown("### 🖨️ Danh sách chuyến đi vừa điều phối thành công (Hỗ trợ Zalo Thủ công)")
+        st.dataframe(st.session_state["export_dieu_xe"], use_container_width=True)
+        
+        buffer_export = io.BytesIO()
+        with pd.ExcelWriter(buffer_export, engine='xlsxwriter') as writer:
+            st.session_state["export_dieu_xe"].to_excel(writer, index=False, sheet_name="Lich_Chay_Va_Zalo")
+            
+            df_ranh = st.session_state.get("export_xe_ranh")
+            if df_ranh is not None and not df_ranh.empty:
+                df_ranh.to_excel(writer, index=False, sheet_name="Xe_Con_Trong")
+            else:
+                pd.DataFrame([{"Thông Báo": "Tuyệt vời! Toàn bộ xe rảnh đã được điều động hết."}]).to_excel(writer, index=False, sheet_name="Xe_Con_Trong")
+        
+        col_btn1, col_btn2 = st.columns([1, 4])
+        with col_btn1:
+            if st.button("🔄 Reset Màn Hình", use_container_width=True):
+                st.session_state["export_dieu_xe"] = None
+                st.session_state["export_xe_ranh"] = None
+                st.rerun()
+        with col_btn2:
+            st.download_button(
+                label="⬇️ TẢI FILE EXCEL (CÓ CỘT TEN_GROUP & NỘI DUNG ZALO THỦ CÔNG)", 
+                data=buffer_export.getvalue(), 
+                file_name=f"Lenh_Dieu_Xe_ZaloThuCong_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx", 
+                type="primary",
+                use_container_width=True
+            )
+                    
+    st.divider()
+        
     # ---------------------------------------------------------
     # TÍNH NĂNG 3: QUYẾT TOÁN HÀNG LOẠT BẰNG EXCEL
     # ---------------------------------------------------------
-st.markdown("##### 🏁 3. Nạp file Excel chốt chuyến / quyết toán hàng loạt")
-with st.form("form_mass_close"):
-        file_close = st.file_uploader("Chọn file Excel Quyết toán (Đuôi .xlsx)", type=["xlsx", "xls"])
-        submit_close = st.form_submit_button("🏁 Khóa sổ & Chốt chuyến hàng loạt", type="primary")
-        
-        if submit_close:
-            if not file_close:
-                st.warning("⚠️ Bạn chưa tải file Excel lên!")
-            else:
-                with st.spinner("⏳ Hệ thống đang xử lý quyết toán và cập nhật Database... Không đóng trình duyệt lúc này!"):
-                    try:
-                        df_close = pd.read_excel(file_close)
-                        df_close.columns = [str(c).strip().upper() for c in df_close.columns]
-                        
-                        closed_count = 0
-                        error_list = []
-                        
-                        # --- HÀM LÀM SẠCH VÀ ÉP KIỂU SỐ TỪ EXCEL (CÓ BẪY LỖI) ---
-                        def parse_excel_money(val):
-                            if pd.isna(val) or val == "" or val is None:
-                                return 0.0
-                            try:
-                                if isinstance(val, (int, float)):
-                                    return float(val)
-                                clean_str = str(val).replace(",", "").replace(" ", "").strip()
-                                return float(clean_str)
-                            except ValueError:
-                                return 0.0
+    st.markdown("##### 🏁 3. Nạp file Excel chốt chuyến / quyết toán hàng loạt")
+    with st.form("form_mass_close"):
+            file_close = st.file_uploader("Chọn file Excel Quyết toán (Đuôi .xlsx)", type=["xlsx", "xls"])
+            submit_close = st.form_submit_button("🏁 Khóa sổ & Chốt chuyến hàng loạt", type="primary")
+            
+            if submit_close:
+                if not file_close:
+                    st.warning("⚠️ Bạn chưa tải file Excel lên!")
+                else:
+                    with st.spinner("⏳ Hệ thống đang xử lý quyết toán và cập nhật Database... Không đóng trình duyệt lúc này!"):
+                        try:
+                            df_close = pd.read_excel(file_close)
+                            df_close.columns = [str(c).strip().upper() for c in df_close.columns]
+                            
+                            closed_count = 0
+                            error_list = []
+                            
+                            def parse_excel_money(val):
+                                if pd.isna(val) or val == "" or val is None:
+                                    return 0.0
+                                try:
+                                    if isinstance(val, (int, float)):
+                                        return float(val)
+                                    clean_str = str(val).replace(",", "").replace(" ", "").strip()
+                                    return float(clean_str)
+                                except ValueError:
+                                    return 0.0
 
-                        # LẶP QUA TỪNG DÒNG TRONG EXCEL
-                        for index, r in df_close.iterrows():
-                            if pd.isna(r.get('MA_CHUYEN')): 
-                                continue 
-                            
-                            cid = int(r['MA_CHUYEN'])
-                            
-                            # --- 🛑 LƯỚI LỌC BẪY LỖI: KIỂM TRA TỒN TẠI VÀ TRẠNG THÁI ---
-                            sql_check = "SELECT trang_thai_chuyen FROM chuyen_di WHERE id = %s"
-                            df_check = db.execute_query(sql_check, (cid,))
-                            
-                            if isinstance(df_check, pd.DataFrame):
-                                if df_check.empty:
-                                    # Lỗi 1: Không tìm thấy mã chuyến trong Database
-                                    error_list.append(f"❌ Dòng {index + 2} (Mã chuyến {cid}): Không tồn tại trong hệ thống.")
-                                    continue
-                                else:
-                                    trang_thai = df_check.iloc[0]['trang_thai_chuyen']
-                                    if trang_thai == 'Hoan_Thanh':
-                                        # Lỗi 2: Chuyến đã quyết toán từ trước, không cho phép ghi đè
-                                        error_list.append(f"⚠️ Dòng {index + 2} (Mã chuyến {cid}): Đã khóa sổ trước đó, hệ thống tự động bỏ qua.")
-                                        continue
-                            else:
-                                error_list.append(f"❌ Dòng {index + 2} (Mã chuyến {cid}): Lỗi truy vấn cơ sở dữ liệu.")
-                                continue
-                            
-                            # Nếu vượt qua bẫy lỗi, tiến hành làm sạch dữ liệu
-                            data_dict_excel = {
-                                'so_km_thuc_te': parse_excel_money(r.get('KM_THUC_TE')),
-                                'so_lit_xang': parse_excel_money(r.get('LIT_DAU')),
-                                'tien_xang': parse_excel_money(r.get('TIEN_XANG')),
-                                'cong_chuyen': parse_excel_money(r.get('TIEN_CONG_TAI_XE')),
-                                'doanh_thu': parse_excel_money(r.get('DOANH_THU_CHUYEN')),
-                                'tien_them': parse_excel_money(r.get('THUONG_THEM')),
-                                'phi_hai_quan': parse_excel_money(r.get('PHI_HAI_QUAN')),
-                                'phi_boc_xep': parse_excel_money(r.get('PHI_BOC_XEP')),
-                                'phi_khac': parse_excel_money(r.get('PHI_KHAC')),
-                                'ghi_chu': str(r.get('GHI_CHU', '')).strip() if pd.notna(r.get('GHI_CHU')) else ""
-                            }
-                
-                            # Gọi hàm Giao dịch Database lưu dữ liệu
-                            success, msg = settle_trip_transaction(db.pool, data_dict_excel, 'Hoan_Thanh', cid)
-                            
-                            if success:
-                                closed_count += 1
-                            else:
-                                error_list.append(f"❌ Dòng {index + 2} (Mã chuyến {cid}): Lỗi khi cập nhật - {msg}")
+                            for index, r in df_close.iterrows():
+                                if pd.isna(r.get('MA_CHUYEN')): 
+                                    continue 
                                 
-                        # TỔNG KẾT BÁO CÁO SAU KHI CHẠY XONG
-                        if closed_count > 0:
-                            st.success(f"🎉 Đã xử lý khoá sổ thành công {closed_count} chuyến đi!")
-                            import time
-                            time.sleep(2)
-                            st.rerun()
-
-                        # IN RA DANH SÁCH LỖI NẾU CÓ
-                        if error_list:
-                            with st.expander("⚠️ Chi tiết các đơn không thể quyết toán (Nhấn để xem)", expanded=True):
-                                for err in error_list:
-                                    st.warning(err)
+                                cid = int(r['MA_CHUYEN'])
+                                
+                                sql_check = "SELECT trang_thai_chuyen FROM chuyen_di WHERE id = %s"
+                                df_check = db.execute_query(sql_check, (cid,))
+                                
+                                if isinstance(df_check, pd.DataFrame):
+                                    if df_check.empty:
+                                        error_list.append(f"❌ Dòng {index + 2} (Mã chuyến {cid}): Không tồn tại trong hệ thống.")
+                                        continue
+                                    else:
+                                        trang_thai = df_check.iloc[0]['trang_thai_chuyen']
+                                        if trang_thai == 'Hoan_Thanh':
+                                            error_list.append(f"⚠️ Dòng {index + 2} (Mã chuyến {cid}): Đã khóa sổ trước đó, hệ thống tự động bỏ qua.")
+                                            continue
+                                else:
+                                    error_list.append(f"❌ Dòng {index + 2} (Mã chuyến {cid}): Lỗi truy vấn cơ sở dữ liệu.")
+                                    continue
+                                
+                                data_dict_excel = {
+                                    'so_km_thuc_te': parse_excel_money(r.get('KM_THUC_TE')),
+                                    'so_lit_xang': parse_excel_money(r.get('LIT_DAU')),
+                                    'tien_xang': parse_excel_money(r.get('TIEN_XANG')),
+                                    'cong_chuyen': parse_excel_money(r.get('TIEN_CONG_TAI_XE')),
+                                    'doanh_thu': parse_excel_money(r.get('DOANH_THU_CHUYEN')),
+                                    'tien_them': parse_excel_money(r.get('THUONG_THEM')),
+                                    'phi_hai_quan': parse_excel_money(r.get('PHI_HAI_QUAN')),
+                                    'phi_boc_xep': parse_excel_money(r.get('PHI_BOC_XEP')),
+                                    'phi_khac': parse_excel_money(r.get('PHI_KHAC')),
+                                    'ghi_chu': str(r.get('GHI_CHU', '')).strip() if pd.notna(r.get('GHI_CHU')) else ""
+                                }
+                    
+                                success, msg = settle_trip_transaction(db.pool, data_dict_excel, 'Hoan_Thanh', cid)
+                                
+                                if success:
+                                    closed_count += 1
+                                else:
+                                    error_list.append(f"❌ Dòng {index + 2} (Mã chuyến {cid}): Lỗi khi cập nhật - {msg}")
                                     
-                    except Exception as e:
-                        st.error(f"❌ Lỗi hệ thống khi đọc file Excel: {str(e)}")
-      
+                            if closed_count > 0:
+                                st.success(f"🎉 Đã xử lý khoá sổ thành công {closed_count} chuyến đi!")
+                                time.sleep(2)
+                                st.rerun()
 
-
-# ==========================================
-# TAB 5: BẢN ĐỒ GIÁM SÁT HÀNH TRÌNH
-# ==========================================
-#with tab5:
-#    st.markdown("### 📍 Trung tâm Giám sát Hành trình GPS Trực tiếp")
-#    st.info("💡 Lần đầu tiên truy cập, bạn cần đăng nhập bằng tài khoản GPS của công ty. Hệ thống sẽ tự động lưu phiên đăng nhập cho các lần sau.")
-    
-    # Lệnh nhúng trang web với chiều cao 800px để hiển thị bản đồ rộng rãi
-#    components.iframe("https://gps.hanhtrinhxe.vn", height=800, scrolling=True)
+                            if error_list:
+                                with st.expander("⚠️ Chi tiết các đơn không thể quyết toán (Nhấn để xem)", expanded=True):
+                                    for err in error_list:
+                                        st.warning(err)
+                                        
+                        except Exception as e:
+                            st.error(f"❌ Lỗi hệ thống khi đọc file Excel: {str(e)}")
