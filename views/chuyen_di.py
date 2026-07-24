@@ -135,12 +135,12 @@ with tab1:
                 
                 # Định dạng nội dung tin nhắn Zalo chuẩn
                 noi_dung_chat = (
-                    f"🚗 LỆNH ĐIỀU XE BẢO TÍN 🚗\n"
-                    f"🔹 Mã chuyến: {row['Mã']}\n"
-                    f"🔹 Ngày chạy: {row['Ngày']}\n"
-                    f"🔹 Khách hàng: {row['Khách hàng']}\n"
-                    f"🔹 Lộ trình: {row['Lộ trình']}\n"
-                    f"🔹 Ghi chú: {ghi_chu}\n"
+                    f"LỆNH ĐIỀU XE BẢO TÍN \n"
+                    f"Mã chuyến: {row['Mã']}\n"
+                    f"Ngày chạy: {row['Ngày']}\n"
+                    f"Khách hàng: {row['Khách hàng']}\n"
+                    f"Lộ trình: {row['Lộ trình']}\n"
+                    f"Ghi chú: {ghi_chu}\n"
                     f"Vui lòng chuẩn bị hàng hóa!"
                 )
                 
