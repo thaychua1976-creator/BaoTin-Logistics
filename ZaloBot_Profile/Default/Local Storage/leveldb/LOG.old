@@ -1,0 +1,6 @@
+2026/07/23-17:00:59.794 2d98 Reusing MANIFEST D:\PROJECT_COI\Logistics_App\ZaloBot_Profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/07/23-17:00:59.803 2d98 Recovering log #18
+2026/07/23-17:00:59.806 2d98 Reusing old log D:\PROJECT_COI\Logistics_App\ZaloBot_Profile\Default\Local Storage\leveldb/000018.log 
+2026/07/23-17:01:59.825 1e98 Level-0 table #22: started
+2026/07/23-17:01:59.842 1e98 Level-0 table #22: 65927 bytes OK
+2026/07/23-17:01:59.847 1e98 Delete type=0 #18

@@ -1,6 +1,10 @@
 import streamlit as st
 from audit_logger import ghi_log_thao_tac
 import pandas as pd
+import os, requests, datetime
+from dotenv import load_dotenv
+load_dotenv()
+
 
 def save_trip_full_process(db_pool, trip_data, tai_xe_id):
     conn = db_pool.get_connection()
@@ -282,8 +286,7 @@ def delete_trip_safe(db_pool, chuyen_di_id):
         conn.close() # Trả kết nối về Pool
 ###
 
-import pandas as pd
-import pandas as pd
+
 
 def get_bao_cao_pnl_chuyen_di(db_pool, tu_ngay, den_ngay, xe_id=0):
     """
@@ -343,4 +346,95 @@ def get_bao_cao_pnl_chuyen_di(db_pool, tu_ngay, den_ngay, xe_id=0):
         print(f"Lỗi truy vấn P&L: {e}")
         return pd.DataFrame()
     finally:
+        if 'conn' in locals() and conn: conn.close()
+###################
+# Lấy thông tin xác thực từ file .env
+HTX_CUSTOMER_CODE = os.getenv("HTX_CUSTOMER_CODE")
+HTX_KEY = os.getenv("HTX_KEY")
+
+
+def goi_gps_theo_thoi_gian_tuy_chinh(db_instance, chuyen_di_id, tg_bat_dau_quet, tg_ket_thuc_quet):
+    """
+    Hàm gọi GPS độc lập, sử dụng mốc thời gian do Kế toán chốt trên UI.
+    """
+    try:
+        conn = db_instance.pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Lấy thông tin xe
+        sql_get_info = """
+            SELECT x.bien_so_xe, x.id as xe_id
+            FROM chuyen_di cd
+            JOIN xe x ON cd.xe_id = x.id
+            WHERE cd.id = %s
+        """
+        cursor.execute(sql_get_info, (chuyen_di_id,))
+        trip_info = cursor.fetchone()
+        
+        # Kiểm tra an toàn trước khi gọi API
+        if not HTX_CUSTOMER_CODE or not HTX_KEY:
+            return False, "⚠️ Lỗi: Chưa cấu hình CustomerCode hoặc Key trong file .env" 
+        if not trip_info or not trip_info['bien_so_xe']:
+            return False, "Không tìm thấy thông tin xe."
+            
+        bien_so = trip_info['bien_so_xe']
+        xe_id = trip_info['xe_id']
+        
+        api_url = "https://hanhtrinhxe.vn/api/gps/rpsummary"
+        tong_km_chuyen_di = 0.0
+        thoi_gian_quet_hien_tai = tg_bat_dau_quet
+        
+        # Vòng lặp chia nhỏ request nếu thời gian dài
+        while thoi_gian_quet_hien_tai < tg_ket_thuc_quet:
+            moc_tiep_theo = thoi_gian_quet_hien_tai + datetime.timedelta(hours=23, minutes=59, seconds=59)
+            if moc_tiep_theo > tg_ket_thuc_quet:
+                moc_tiep_theo = tg_ket_thuc_quet
+                
+            from_date_str = thoi_gian_quet_hien_tai.strftime('%Y%m%d%H%M%S')
+            to_date_str = moc_tiep_theo.strftime('%Y%m%d%H%M%S')
+            
+            payload = {
+                "CustomerCode": HTX_CUSTOMER_CODE,     
+                "Key": HTX_KEY,               
+                "VehiclePlate": bien_so,
+                "FromDate": from_date_str,
+                "ToDate": to_date_str
+            }
+            
+            try:
+                response = requests.post(api_url, data=payload, timeout=20, verify=False)
+                if response.status_code == 200:
+                    api_data = response.json()
+                    if api_data.get('messageResult') == 'Success':
+                        danh_sach_bao_cao = api_data.get('summaryReports', [])
+                        if danh_sach_bao_cao and len(danh_sach_bao_cao) > 0:
+                            tong_km_chuyen_di += float(danh_sach_bao_cao[0].get('totalKmGps', 0))
+            except Exception as api_err:
+                pass # Có thể ghi log lỗi API ở đây
+                
+            thoi_gian_quet_hien_tai = moc_tiep_theo + datetime.timedelta(seconds=1)
+
+        # CẬP NHẬT DATABASE
+        sql_update_chuyen = """
+            UPDATE chuyen_di 
+            SET so_km_thuc_te = %s,
+                thoi_gian_bat_dau = %s, 
+                thoi_gian_ket_thuc = %s,
+                trang_thai_chuyen = 'Quyet_Toan'
+            WHERE id = %s
+        """
+        cursor.execute(sql_update_chuyen, (tong_km_chuyen_di, tg_bat_dau_quet, tg_ket_thuc_quet, chuyen_di_id))
+        
+        if tong_km_chuyen_di > 0:
+            sql_update_xe = "UPDATE xe SET tong_km_hien_tai = tong_km_hien_tai + %s WHERE id = %s"
+            cursor.execute(sql_update_xe, (tong_km_chuyen_di, xe_id))
+            
+        conn.commit()
+        return True, f"✅ Đã quét thành công {tong_km_chuyen_di:.2f} KM."
+        
+    except Exception as e:
+        if 'conn' in locals() and conn: conn.rollback()
+        return False, f"Lỗi hệ thống: {e}"
+    finally:
+        if 'cursor' in locals() and cursor: cursor.close()
         if 'conn' in locals() and conn: conn.close()

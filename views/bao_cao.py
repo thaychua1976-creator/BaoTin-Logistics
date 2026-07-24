@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import datetime
 import io
+import math
+from utils_core import tao_tieu_de_kem_nut_refresh
 from st_aggrid import AgGrid, GridOptionsBuilder  # 👉 Bổ sung import AgGrid đồng bộ
 
 db = st.session_state['db']
@@ -51,138 +53,192 @@ st.divider()
 # ==========================================
 # 2. KHU VỰC HIỂN THỊ: CHIA 2 TAB BÁO CÁO
 # ==========================================
-tab_bc1, tab_bc2 = st.tabs(["📊 Báo cáo tài chính & Quyết toán", "⚠️ Cảnh báo Xe tồn đọng / Quá hạn"])
+tab_bc1, tab_bc2,tab_bc3,tab_bc4 = st.tabs(["📊 Chuyến đi trong ngày ","📊 Chuyến theo ngày chọn ","⚠️ Cảnh báo Xe tồn đọng / Quá hạn","📊 Thống kê lương tài xế "])
+
+# ==========================================
+# KHU VỰC: DANH SÁCH CHUYẾN ĐI
+# ==========================================
+
+
 
 # ---------------------------------------------------------
-# TAB 1: BÁO CÁO TÀI CHÍNH (CÁC CHUYẾN ĐÃ HOÀN THÀNH)
+# TAB 1: DANH SÁCH CHUYẾN ĐI TRONG NGÀY
 # ---------------------------------------------------------
 with tab_bc1:
+    tao_tieu_de_kem_nut_refresh("📋 Quản lý danh sách chuyến đi", "ref_ds_chuyen")
     try:
-        tx_clause = ""
-        params_bc1 = [f"{tu_ngay.strftime('%Y-%m-%d')} 00:00:00", f"{den_ngay.strftime('%Y-%m-%d')} 23:59:59"]
-        
-        if tai_xe_duoc_chon != 0:
-            tx_clause = "AND cdtx.tai_xe_id = %s"
-            params_bc1.append(tai_xe_duoc_chon)
-
-        sql_raw_data = f"""
-            SELECT 
-                cd.id AS 'Mã Chuyến', 
-                cd.ngay_chuyen_di AS 'Ngày Chạy', 
-                cd.ten_khach_hang AS 'Khách Hàng',
-                x.bien_so_xe AS 'Biển Số Xe', 
-                CAST(x.tai_trong_thiet_ke AS DECIMAL(15,2)) AS 'Tải Trọng',
-                nv.ho_ten AS 'Tài Xế', 
-                cd.dia_diem_giao_nhan AS 'Lộ Trình', 
-                CAST(COALESCE(cd.so_km_thuc_te, 0) AS DECIMAL(15,2)) AS 'Số KM chạy', 
-                CAST(COALESCE(cd.so_lit_xang, 0) AS DECIMAL(15,2)) AS 'Số Lít Dầu',
-                CAST(COALESCE(cd.cong_chuyen, 0) AS DECIMAL(15,2)) AS 'Lương Chuyến Gốc',
-                CAST(COALESCE(cd.tien_them, 0) AS DECIMAL(15,2)) AS 'Thưởng Thêm',
-                CAST((COALESCE(cd.cong_chuyen, 0) + COALESCE(cd.tien_them, 0)) AS DECIMAL(15,2)) AS 'Tổng Lương Tài Xế',
-                CAST(COALESCE(cd.phi_hai_quan, 0) AS DECIMAL(15,2)) AS 'Phí Hải Quan',
-                CAST(COALESCE(cd.phi_boc_xep, 0) AS DECIMAL(15,2)) AS 'Phí Bốc Xếp',
-                CAST(COALESCE(cd.phi_khac, 0) AS DECIMAL(15,2)) AS 'Phí Khác',
-                cd.ghi_chu AS 'Ghi chú'
-            FROM chuyen_di cd
+        sql_list = """
+            SELECT cd.id AS 'Mã', cd.ngay_chuyen_di AS 'Ngày', cd.ten_khach_hang AS 'Khách hàng',
+                   x.bien_so_xe AS 'Biển Số', nv.ho_ten AS 'Tài Xế', cd.dia_diem_giao_nhan AS 'Lộ trình', 
+                   CAST(cd.so_km_thuc_te AS FLOAT) AS 'Số KM', CAST(cd.cong_chuyen AS FLOAT) AS 'Lương chuyến',
+                   CAST(cd.doanh_thu AS FLOAT) AS 'Doanh thu', CAST(cd.tien_them AS FLOAT) AS 'Thưởng thêm',
+                   cd.ghi_chu AS 'Ghi chú', cd.trang_thai_chuyen AS 'Trạng thái'
+            FROM chuyen_di cd 
             LEFT JOIN xe x ON cd.xe_id = x.id
             LEFT JOIN chuyen_di_tai_xe cdtx ON cd.id = cdtx.chuyen_di_id AND cdtx.loai_tai_xe = 'Tai_Chinh'
-            LEFT JOIN nhan_vien nv ON cdtx.tai_xe_id = nv.id
-            WHERE cd.trang_thai_chuyen = 'Hoan_Thanh' 
-              AND cd.ngay_chuyen_di >= %s 
-              AND cd.ngay_chuyen_di <= %s
-              {tx_clause}
-            ORDER BY cd.ngay_chuyen_di DESC, cd.id DESC
+            LEFT JOIN nhan_vien nv ON cdtx.tai_xe_id = nv.id 
+            WHERE cd.ngay_chuyen_di = CURDATE()
+            ORDER BY cd.id DESC
         """
-        df_result = db.execute_query(sql_raw_data, tuple(params_bc1))
-
-        if isinstance(df_result, pd.DataFrame) and not df_result.empty:
-            df_result['Ngày hiển thị'] = pd.to_datetime(df_result['Ngày Chạy']).dt.strftime('%d/%m/%Y')
-            
-            tong_so_chuyen = len(df_result)
-            tong_luong_tx = df_result['Tổng Lương Tài Xế'].sum()
-            tong_hq_bx = df_result['Phí Hải Quan'].sum() + df_result['Phí Bốc Xếp'].sum()
-            tong_phi_khac = df_result['Phí Khác'].sum()
+        df_chuyen = db.execute_query(sql_list)
+        
+        if isinstance(df_chuyen, pd.DataFrame) and not df_chuyen.empty:
+            # Tích hợp Dashboard thống kê xe trong ngày
+            st.markdown("##### 📊 Tổng quan hoạt động xe hôm nay")
+            xe_chua_chay = df_chuyen[df_chuyen['Trạng thái'] == 'Tao_Moi']['Biển Số'].nunique()
+            xe_dang_chay = df_chuyen[df_chuyen['Trạng thái'] == 'Dang_Di']['Biển Số'].nunique()
+            xe_cho_qt = df_chuyen[df_chuyen['Trạng thái'] == 'Quyet_Toan']['Biển Số'].nunique()
+            xe_hoan_thanh = df_chuyen[df_chuyen['Trạng thái'] == 'Hoan_Thanh']['Biển Số'].nunique()
             
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-            col_m1.metric("🚛 Tổng Số Chuyến", f"{tong_so_chuyen} chuyến")
-            col_m2.metric("👨‍✈️ Tổng Lương Tài Xế", f"{tong_luong_tx:,.0f} đ")
-            col_m3.metric("📦 Phí Hải Quan & Bốc Xếp", f"{tong_hq_bx:,.0f} đ")
-            col_m4.metric("💸 Tổng Phí Khác", f"{tong_phi_khac:,.0f} đ")
+            col_m1.metric("Tạo Mới (Chưa chạy)", f"{xe_chua_chay} Xe")
+            col_m2.metric("Đang Đi", f"{xe_dang_chay} Xe")
+            col_m3.metric("Chờ Quyết Toán", f"{xe_cho_qt} Xe")
+            col_m4.metric("Đã Hoàn Thành", f"{xe_hoan_thanh} Xe")
             
             st.divider()
 
-            # (Giữ nguyên đoạn code xuất Excel auto-fit và hiển thị AgGrid của Tab 1 ở đây)
-            # ... Bạn dán tiếp phần Xuất Excel multi-sheets và AgGrid của tin nhắn trước vào đây ...
-            st.markdown("##### 📥 Xuất báo cáo tài chính chuyên sâu")
-            excel_buffer = io.BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                cols_excel = [
-                    'Mã Chuyến', 'Ngày hiển thị', 'Khách Hàng', 'Biển Số Xe', 'Tải Trọng', 'Tài Xế', 'Lộ Trình',
-                    'Số KM chạy', 'Số Lít Dầu', 'Lương Chuyến Gốc', 'Thưởng Thêm', 'Tổng Lương Tài Xế',
-                    'Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Ghi chú'
-                ]
-                df_excel_all = df_result[cols_excel].rename(columns={'Ngày hiển thị': 'Ngày Chạy'}).copy()
+            df_chuyen['Ngày'] = pd.to_datetime(df_chuyen['Ngày']).dt.strftime('%d/%m/%Y')
+            for col_money in ['Lương chuyến', 'Thưởng thêm','Doanh thu']:
+                df_chuyen[col_money] = df_chuyen[col_money].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
+    
+            col_opt1, col_opt2 = st.columns([1, 7]) 
+            with col_opt1:
+                che_do_xem_chuyen = st.selectbox("Hiển thị:", ["20 dòng", "Tất cả"], key="xem_chuyen_t1")
+            
+            if che_do_xem_chuyen == "Tất cả":
+                st.caption(f"Đang hiển thị toàn bộ {len(df_chuyen)} chuyến đi.")
+                st.dataframe(df_chuyen, use_container_width=True, hide_index=True)
+            else:
+                rows_per_page = 20
+                total_rows = len(df_chuyen)
+                total_pages = math.ceil(total_rows / rows_per_page)
                 
-                def auto_fit_columns(worksheet, df):
-                    for idx, col in enumerate(df.columns):
-                    # BƯỚC BẢO VỆ: Lấp đầy các ô trống (NaN) bằng chuỗi rỗng "", 
-                    # sau đó mới ép toàn bộ cột về kiểu chữ (str)
-                        series_str = df[col].fillna("").astype(str)
-                    # Lúc này 100% dữ liệu đã là chữ, hàm len() sẽ chạy mượt mà
-                        max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
-                                    
-                    # Giới hạn độ rộng cột tối đa là 50 để tránh cột bị kéo ra quá dài
-                        worksheet.set_column(idx, idx, min(max_len, 50))
-
-                
-                df_excel_all.to_excel(writer, sheet_name='Tổng Hợp', index=False)
-                worksheet_all = writer.sheets['Tổng Hợp']
-                header_format = writer.book.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#0b5394', 'border': 1})
-                for col_num, col_name in enumerate(df_excel_all.columns):
-                    worksheet_all.write(0, col_num, col_name, header_format)
-                auto_fit_columns(worksheet_all, df_excel_all)
-
-                for tx_name, df_group in df_excel_all.groupby('Tài Xế'):
-                    clean_sheet_name = str(tx_name).replace('/', '-').replace('\\', '-').strip()[:30]
-                    if not clean_sheet_name or clean_sheet_name.lower() == 'nan':
-                        clean_sheet_name = "Chưa phân tài"
-                    df_group.to_excel(writer, sheet_name=clean_sheet_name, index=False)
-                    worksheet_tx = writer.sheets[clean_sheet_name]
-                    for col_num, col_name in enumerate(df_group.columns):
-                        worksheet_tx.write(0, col_num, col_name, header_format)
-                    auto_fit_columns(worksheet_tx, df_group)
+                if total_pages > 0:
+                    if 'page_chuyen_t1' not in st.session_state:
+                        st.session_state['page_chuyen_t1'] = 1
                         
-            st.download_button(
-                label="📥 TẢI FILE EXCEL BÁO CÁO",
-                data=excel_buffer.getvalue(),
-                file_name=f"Bao_Cao_Van_Tai_{tu_ngay.strftime('%d%m%Y')}_{den_ngay.strftime('%d%m%Y')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary"
-            )
-            
-            st.markdown("<br><b>📊 Bảng xem trước dữ liệu Báo cáo:</b>", unsafe_allow_html=True)
-            df_app_display = df_result[cols_excel].copy()
-            gb = GridOptionsBuilder.from_dataframe(df_app_display)
-            gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=150)
-            gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=12)
-            
-            money_columns = ['Lương Chuyến Gốc', 'Thưởng Thêm', 'Tổng Lương Tài Xế', 'Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác']
-            for col in money_columns:
-                gb.configure_column(col, type=["numericColumn", "numberColumnFilter"], valueFormatter="Math.floor(value).toString().replace(/(\\d)(?=(\\d{3})+(?!\\d))/g, '$1,') + ' đ'")
-            
-            custom_css = {".ag-header-cell": {"background-color": "#0b5394 !important"}, ".ag-header-cell-text": {"color": "white !important", "font-weight": "bold !important"}}
-            AgGrid(df_app_display, gridOptions=gb.build(), custom_css=custom_css, theme="streamlit", fit_columns_on_grid_load=False, width="100%", allow_unsafe_jscode=True)
+                    if st.session_state['page_chuyen_t1'] < 1: st.session_state['page_chuyen_t1'] = 1
+                    elif st.session_state['page_chuyen_t1'] > total_pages: st.session_state['page_chuyen_t1'] = total_pages
+                        
+                    col1, col2, col3 = st.columns([1, 2, 1])
+                    with col1:
+                        if st.button("⬅️ Trước", key="prev_t1", disabled=(st.session_state['page_chuyen_t1'] <= 1)):
+                            st.session_state['page_chuyen_t1'] -= 1
+                            st.rerun()
+                    with col3:
+                        if st.button("Sau ➡️", key="next_t1", disabled=(st.session_state['page_chuyen_t1'] >= total_pages)):
+                            st.session_state['page_chuyen_t1'] += 1
+                            st.rerun()
+                    with col2:
+                        st.markdown(f"<div style='text-align: center; margin-top: 5px;'>Trang {st.session_state['page_chuyen_t1']} / {total_pages}</div>", unsafe_allow_html=True)
 
+                    start_idx = (st.session_state['page_chuyen_t1'] - 1) * rows_per_page
+                    st.dataframe(df_chuyen.iloc[start_idx:start_idx + rows_per_page], use_container_width=True, hide_index=True)
         else:
-            st.info("📭 Không tìm thấy chuyến đi nào hoàn thành trong khoảng thời gian này.")
-
+            st.info("Chưa có dữ liệu chuyến đi nào trong ngày hôm nay.")
     except Exception as e:
-        st.error(f"⚠️ Chi tiết lỗi truy vấn Báo cáo: {e}")
+        st.error(f"Lỗi truy xuất danh sách hôm nay: {e}")
 
 # ---------------------------------------------------------
-# TAB 2: CẢNH BÁO XE TỒN ĐỌNG / CHƯA HOÀN THÀNH
+# TAB 2: TRA CỨU CHUYẾN ĐI THEO THỜI GIAN VÀ BỘ LỌC PHỤ
 # ---------------------------------------------------------
 with tab_bc2:
+    tao_tieu_de_kem_nut_refresh("📋 Quản lý danh sách chuyến đi", "ref_ds_chuyen1")
+    st.markdown("##### 🔍 Chọn điều kiện tra cứu")
+    
+    # --- 1. LẤY DANH SÁCH TÀI XẾ TỪ DATABASE ĐỂ ĐƯA VÀO BỘ LỌC ---
+    sql_tx_list = "SELECT id, ho_ten FROM nhan_vien WHERE loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu') ORDER BY ho_ten"
+    df_tx_filter = db.execute_query(sql_tx_list)
+    
+    tx_options = {0: "✨ Tất cả Tài xế"}
+    if isinstance(df_tx_filter, pd.DataFrame) and not df_tx_filter.empty:
+        for _, r in df_tx_filter.iterrows():
+            tx_options[r['id']] = r['ho_ten']
+            
+    # Dictionary map trạng thái thân thiện sang đúng chuẩn ENUM trong Database
+    status_mapping = {
+        "Tất cả": "Tất cả",
+        "Tạo Mới": "Tao_Moi",
+        "Đang Đi": "Dang_Di",
+        "Chờ Quyết Toán": "Quyet_Toan",
+        "Đã Hoàn Thành": "Hoan_Thanh",
+        "Đã Hủy": "Huy_Chuyen"
+    }
+
+    # --- 2. XÂY DỰNG GIAO DIỆN BỘ LỌC TÙY CHỈNH ---
+    col_d1, col_d2 = st.columns(2)
+    today = datetime.date.today()
+    start_of_week = today - datetime.timedelta(days=7)
+    
+    with col_d1:
+        tu_ngay = st.date_input("Từ ngày", value=start_of_week, format="DD/MM/YYYY", key="tu_ngay_tc")
+        loc_tai_xe = st.selectbox("Lọc theo Tài xế", options=list(tx_options.keys()), format_func=lambda x: tx_options[x], key="loc_tx_tc")
+    with col_d2:
+        den_ngay = st.date_input("Đến ngày", value=today, format="DD/MM/YYYY", key="den_ngay_tc")
+        loc_trang_thai = st.selectbox("Lọc theo Trạng thái", options=list(status_mapping.keys()), key="loc_tt_tc")
+        
+    st.markdown("<br>", unsafe_allow_html=True)
+    btn_tra_cuu = st.button("🚀 Thực thi tra cứu", type="primary", use_container_width=True)
+        
+    st.divider()
+    
+    # --- 3. XỬ LÝ TRUY VẤN DỮ LIỆU ---
+    if btn_tra_cuu:
+        try:
+            # Câu lệnh cơ sở
+            sql_search = """
+                SELECT cd.id AS 'Mã', cd.ngay_chuyen_di AS 'Ngày', cd.ten_khach_hang AS 'Khách hàng',
+                       x.bien_so_xe AS 'Biển Số', nv.ho_ten AS 'Tài Xế', cd.dia_diem_giao_nhan AS 'Lộ trình', 
+                       CAST(cd.so_km_thuc_te AS FLOAT) AS 'Số KM', CAST(cd.cong_chuyen AS FLOAT) AS 'Lương chuyến',
+                       CAST(cd.doanh_thu AS FLOAT) AS 'Doanh thu', CAST(cd.tien_them AS FLOAT) AS 'Thưởng thêm',
+                       cd.ghi_chu AS 'Ghi chú', cd.trang_thai_chuyen AS 'Trạng thái'
+                FROM chuyen_di cd 
+                LEFT JOIN xe x ON cd.xe_id = x.id
+                LEFT JOIN chuyen_di_tai_xe cdtx ON cd.id = cdtx.chuyen_di_id AND cdtx.loai_tai_xe = 'Tai_Chinh'
+                LEFT JOIN nhan_vien nv ON cdtx.tai_xe_id = nv.id 
+                WHERE cd.ngay_chuyen_di >= %s AND cd.ngay_chuyen_di <= %s
+            """
+            
+            # Khởi tạo mảng tham số với 2 ngày mặc định
+            params_search = [tu_ngay.strftime('%Y-%m-%d'), den_ngay.strftime('%Y-%m-%d')]
+            
+            # Điều kiện phụ 1: Nếu có chọn lọc trạng thái cụ thể
+            if loc_trang_thai != "Tất cả":
+                sql_search += " AND cd.trang_thai_chuyen = %s"
+                params_search.append(status_mapping[loc_trang_thai])
+                
+            # Điều kiện phụ 2: Nếu có chọn lọc đích danh tài xế
+            if loc_tai_xe != 0:
+                sql_search += " AND cdtx.tai_xe_id = %s"
+                params_search.append(loc_tai_xe)
+                
+            # Chốt câu lệnh SQL bằng ORDER BY
+            sql_search += " ORDER BY cd.ngay_chuyen_di DESC, cd.id DESC"
+            
+            # Truy vấn DB
+            df_search = db.execute_query(sql_search, tuple(params_search))
+            
+            # --- 4. HIỂN THỊ KẾT QUẢ ---
+            if isinstance(df_search, pd.DataFrame) and not df_search.empty:
+                st.success(f"✅ Tìm thấy **{len(df_search)}** chuyến đi thỏa mãn điều kiện.")
+                
+                # Format định dạng tiền tệ và ngày tháng
+                df_search['Ngày'] = pd.to_datetime(df_search['Ngày']).dt.strftime('%d/%m/%Y')
+                for col_money in ['Lương chuyến', 'Thưởng thêm','Doanh thu']:
+                    df_search[col_money] = df_search[col_money].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
+                
+                # In bảng
+                st.dataframe(df_search, use_container_width=True, hide_index=True)
+            else:
+                st.warning("📭 Không có dữ liệu chuyến đi nào khớp với bộ lọc bạn vừa chọn.")
+                
+        except Exception as e:
+            st.error(f"Lỗi hệ thống khi tra cứu dữ liệu: {e}")
+# ---------------------------------------------------------
+# TAB 3: CẢNH BÁO XE TỒN ĐỌNG / CHƯA HOÀN THÀNH
+# ---------------------------------------------------------
+with tab_bc3:
     st.markdown("##### 🚨 Danh sách Chuyến đi chưa chốt sổ (Đã qua ngày)")
     st.info("Bảng này thống kê các chuyến đi có lịch chạy trước ngày hôm nay nhưng hệ thống vẫn ghi nhận là chưa hoàn thành (có thể do tài xế chưa báo cáo hoặc lỗi treo hệ thống).")
     
@@ -269,7 +325,133 @@ with tab_bc2:
             
         else:
             st.success("🎉 Tuyệt vời! Không có chuyến đi nào bị tồn đọng hay treo hệ thống trong khoảng thời gian này.")
-            st.balloons()
+            #st.balloons()
             
     except Exception as e:
         st.error(f"⚠️ Chi tiết lỗi truy vấn Cảnh báo: {e}")
+# ---------------------------------------------------------
+# TAB 1: BÁO CÁO TÀI CHÍNH (CÁC CHUYẾN ĐÃ HOÀN THÀNH)
+# ---------------------------------------------------------
+with tab_bc4:
+    try:
+        tx_clause = ""
+        params_bc1 = [f"{tu_ngay.strftime('%Y-%m-%d')} 00:00:00", f"{den_ngay.strftime('%Y-%m-%d')} 23:59:59"]
+        
+        if tai_xe_duoc_chon != 0:
+            tx_clause = "AND cdtx.tai_xe_id = %s"
+            params_bc1.append(tai_xe_duoc_chon)
+
+        sql_raw_data = f"""
+            SELECT 
+                cd.id AS 'Mã Chuyến', 
+                cd.ngay_chuyen_di AS 'Ngày Chạy', 
+                cd.ten_khach_hang AS 'Khách Hàng',
+                x.bien_so_xe AS 'Biển Số Xe', 
+                CAST(x.tai_trong_thiet_ke AS DECIMAL(15,2)) AS 'Tải Trọng',
+                nv.ho_ten AS 'Tài Xế', 
+                cd.dia_diem_giao_nhan AS 'Lộ Trình', 
+                CAST(COALESCE(cd.so_km_thuc_te, 0) AS DECIMAL(15,2)) AS 'Số KM chạy', 
+                CAST(COALESCE(cd.so_lit_xang, 0) AS DECIMAL(15,2)) AS 'Số Lít Dầu',
+                CAST(COALESCE(cd.cong_chuyen, 0) AS DECIMAL(15,2)) AS 'Lương Chuyến Gốc',
+                CAST(COALESCE(cd.tien_them, 0) AS DECIMAL(15,2)) AS 'Thưởng Thêm',
+                CAST((COALESCE(cd.cong_chuyen, 0) + COALESCE(cd.tien_them, 0)) AS DECIMAL(15,2)) AS 'Tổng Lương Tài Xế',
+                CAST(COALESCE(cd.phi_hai_quan, 0) AS DECIMAL(15,2)) AS 'Phí Hải Quan',
+                CAST(COALESCE(cd.phi_boc_xep, 0) AS DECIMAL(15,2)) AS 'Phí Bốc Xếp',
+                CAST(COALESCE(cd.phi_khac, 0) AS DECIMAL(15,2)) AS 'Phí Khác',
+                cd.ghi_chu AS 'Ghi chú'
+            FROM chuyen_di cd
+            LEFT JOIN xe x ON cd.xe_id = x.id
+            LEFT JOIN chuyen_di_tai_xe cdtx ON cd.id = cdtx.chuyen_di_id AND cdtx.loai_tai_xe = 'Tai_Chinh'
+            LEFT JOIN nhan_vien nv ON cdtx.tai_xe_id = nv.id
+            WHERE cd.trang_thai_chuyen = 'Hoan_Thanh' 
+              AND cd.ngay_chuyen_di >= %s 
+              AND cd.ngay_chuyen_di <= %s
+              {tx_clause}
+            ORDER BY cd.ngay_chuyen_di DESC, cd.id DESC
+        """
+        df_result = db.execute_query(sql_raw_data, tuple(params_bc1))
+
+        if isinstance(df_result, pd.DataFrame) and not df_result.empty:
+            df_result['Ngày hiển thị'] = pd.to_datetime(df_result['Ngày Chạy']).dt.strftime('%d/%m/%Y')
+            
+            tong_so_chuyen = len(df_result)
+            tong_luong_tx = df_result['Tổng Lương Tài Xế'].sum()
+            tong_hq_bx = df_result['Phí Hải Quan'].sum() + df_result['Phí Bốc Xếp'].sum()
+            tong_phi_khac = df_result['Phí Khác'].sum()
+            
+            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+            col_m1.metric("🚛 Tổng Số Chuyến", f"{tong_so_chuyen} chuyến")
+            col_m2.metric("👨‍✈️ Tổng Lương Tài Xế", f"{tong_luong_tx:,.0f} đ")
+            col_m3.metric("📦 Phí Hải Quan & Bốc Xếp", f"{tong_hq_bx:,.0f} đ")
+            col_m4.metric("💸 Tổng Phí Khác", f"{tong_phi_khac:,.0f} đ")
+            
+            st.divider()
+
+            # (Giữ nguyên đoạn code xuất Excel auto-fit và hiển thị AgGrid của Tab 1 ở đây)
+            # ... Bạn dán tiếp phần Xuất Excel multi-sheets và AgGrid của tin nhắn trước vào đây ...
+            st.markdown("##### 📥 Xuất báo cáo lương tài xế")
+            excel_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+                cols_excel = [
+                    'Mã Chuyến', 'Ngày hiển thị', 'Khách Hàng', 'Biển Số Xe', 'Tải Trọng', 'Tài Xế', 'Lộ Trình',
+                    'Số KM chạy', 'Số Lít Dầu', 'Lương Chuyến Gốc', 'Thưởng Thêm', 'Tổng Lương Tài Xế',
+                    'Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Ghi chú'
+                ]
+                df_excel_all = df_result[cols_excel].rename(columns={'Ngày hiển thị': 'Ngày Chạy'}).copy()
+                
+                def auto_fit_columns(worksheet, df):
+                    for idx, col in enumerate(df.columns):
+                    # BƯỚC BẢO VỆ: Lấp đầy các ô trống (NaN) bằng chuỗi rỗng "", 
+                    # sau đó mới ép toàn bộ cột về kiểu chữ (str)
+                        series_str = df[col].fillna("").astype(str)
+                    # Lúc này 100% dữ liệu đã là chữ, hàm len() sẽ chạy mượt mà
+                        max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
+                                    
+                    # Giới hạn độ rộng cột tối đa là 50 để tránh cột bị kéo ra quá dài
+                        worksheet.set_column(idx, idx, min(max_len, 50))
+
+                
+                df_excel_all.to_excel(writer, sheet_name='Tổng Hợp', index=False)
+                worksheet_all = writer.sheets['Tổng Hợp']
+                header_format = writer.book.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#0b5394', 'border': 1})
+                for col_num, col_name in enumerate(df_excel_all.columns):
+                    worksheet_all.write(0, col_num, col_name, header_format)
+                auto_fit_columns(worksheet_all, df_excel_all)
+
+                for tx_name, df_group in df_excel_all.groupby('Tài Xế'):
+                    clean_sheet_name = str(tx_name).replace('/', '-').replace('\\', '-').strip()[:30]
+                    if not clean_sheet_name or clean_sheet_name.lower() == 'nan':
+                        clean_sheet_name = "Chưa phân tài"
+                    df_group.to_excel(writer, sheet_name=clean_sheet_name, index=False)
+                    worksheet_tx = writer.sheets[clean_sheet_name]
+                    for col_num, col_name in enumerate(df_group.columns):
+                        worksheet_tx.write(0, col_num, col_name, header_format)
+                    auto_fit_columns(worksheet_tx, df_group)
+                        
+            st.download_button(
+                label="📥 TẢI FILE EXCEL BÁO CÁO",
+                data=excel_buffer.getvalue(),
+                file_name=f"Bao_Cao_Van_Tai_{tu_ngay.strftime('%d%m%Y')}_{den_ngay.strftime('%d%m%Y')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary"
+            )
+            
+            st.markdown("<br><b>📊 Bảng xem trước dữ liệu Báo cáo:</b>", unsafe_allow_html=True)
+            df_app_display = df_result[cols_excel].copy()
+            gb = GridOptionsBuilder.from_dataframe(df_app_display)
+            gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=150)
+            gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=12)
+            
+            money_columns = ['Lương Chuyến Gốc', 'Thưởng Thêm', 'Tổng Lương Tài Xế', 'Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác']
+            for col in money_columns:
+                gb.configure_column(col, type=["numericColumn", "numberColumnFilter"], valueFormatter="Math.floor(value).toString().replace(/(\\d)(?=(\\d{3})+(?!\\d))/g, '$1,') + ' đ'")
+            
+            custom_css = {".ag-header-cell": {"background-color": "#0b5394 !important"}, ".ag-header-cell-text": {"color": "white !important", "font-weight": "bold !important"}}
+            AgGrid(df_app_display, gridOptions=gb.build(), custom_css=custom_css, theme="streamlit", fit_columns_on_grid_load=False, width="100%", allow_unsafe_jscode=True)
+
+        else:
+            st.info("📭 Không tìm thấy chuyến đi nào hoàn thành trong khoảng thời gian này.")
+
+    except Exception as e:
+        st.error(f"⚠️ Chi tiết lỗi truy vấn Báo cáo: {e}")
+

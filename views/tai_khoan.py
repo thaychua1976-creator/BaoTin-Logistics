@@ -1,10 +1,9 @@
 import streamlit as st
 import pandas as pd
-#from st_aggrid import AgGrid, GridOptionsBuilder
 from hr_system_manager import handle_user_transaction_with_audit
-
 import time, math
 import bcrypt
+
 db = st.session_state['db']
 
 # ==========================================
@@ -24,31 +23,69 @@ st.markdown(hide_enter_submit_css, unsafe_allow_html=True)
 
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>🔐 PHÂN HỆ QUẢN LÝ TÀI KHOẢN HỆ THỐNG</h3>", unsafe_allow_html=True)
 
+# --- MỚI: HÀM LẤY DANH SÁCH NHÂN VIÊN (CẬP NHẬT THEO CỘT LOẠI NHÂN VIÊN) ---
+def get_danh_sach_nhan_vien(database):
+    # Lấy thêm cột loai_nhan_vien từ Database
+    sql = "SELECT id, ho_ten, loai_nhan_vien FROM nhan_vien" 
+    try:
+        df = database.execute_query(sql)
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            
+            # Tạo một từ điển nhỏ để dịch thuật ngữ Enum sang tiếng Việt hiển thị cho đẹp
+            dict_dich_thuat = {
+                "Tai_Chinh": "Tài xế chính",
+                "Tai_Phu": "Tài xế phụ",
+                "Dieu_Hanh": "Điều hành"
+            }
+            
+            # Hàm xử lý việc dịch: Nếu giá trị có trong từ điển thì dịch, không thì giữ nguyên
+            def dich_loai_nv(ma_loai):
+                # Xử lý trường hợp bị NULL (None)
+                if pd.isna(ma_loai):
+                    return "Chưa phân loại"
+                return dict_dich_thuat.get(ma_loai, str(ma_loai))
+
+            # Trả về format: Nguyễn Văn A (Tài xế chính)
+            return {
+                row['id']: f"{row['ho_ten']} ({dich_loai_nv(row['loai_nhan_vien'])})" 
+                for _, row in df.iterrows()
+            }
+        return {}
+    except Exception as e:
+        st.error(f"⚠️ Không thể tải danh sách Nhân viên. Lỗi: {e}")
+        return {}
+
+nhan_vien_dict = get_danh_sach_nhan_vien(db)
+
 # Khởi tạo các Tab chức năng điều hướng
 tab1, tab2, tab3 = st.tabs(["📋 Danh sách Tài khoản", "➕ Tạo Tài khoản Mới", "🔧 Sửa & Xóa Tài khoản"])
 
 # ==========================================
-# TAB 1: DANH SÁCH TÀI KHOẢN (ĐỒNG BỘ AGGRID)
+# TAB 1: DANH SÁCH TÀI KHOẢN
 # ==========================================
 with tab1:
     try:
         sql_users = """
             SELECT 
-                id AS 'Mã', 
-                username AS 'Tên đăng nhập', 
-                ho_ten AS 'Họ và Tên', 
+                u.id AS 'Mã', 
+                u.username AS 'Tên đăng nhập', 
+                u.ho_ten AS 'Họ và Tên', 
                 CASE 
-                    WHEN role = 'Admin' THEN 'Quản trị viên (Admin)'
-                    WHEN role = 'Ke_Toan' THEN 'Kế toán tài chính'
-                    WHEN role = 'Dieu_Do' THEN 'Điều độ điều xe'
-                    ELSE role 
+                    WHEN u.role = 'Admin' THEN 'Quản trị viên (Admin)'
+                    WHEN u.role = 'Ke_Toan' THEN 'Kế toán tài chính'
+                    WHEN u.role = 'Dieu_Do' THEN 'Điều độ điều xe'
+                    WHEN u.role = 'Tai_Xe' THEN 'Tài xế vận hành'
+                    ELSE u.role 
                 END AS 'Quyền hạn',
+                COALESCE(nv.ho_ten, '---') AS 'Thuộc Nhân Viên',
                 CASE 
-                    WHEN trang_thai = 'Dang_Hoat_Dong' THEN '🟢 Đang hoạt động'
-                    WHEN trang_thai = 'Da_Khoa' THEN '🔴 Đã khóa'
-                    ELSE trang_thai 
+                    WHEN u.trang_thai = 'Dang_Hoat_Dong' THEN '🟢 Đang hoạt động'
+                    WHEN u.trang_thai = 'Da_Khoa' THEN '🔴 Đã khóa'
+                    ELSE u.trang_thai 
                 END AS 'Trạng thái'
-            FROM users ORDER BY id DESC
+            FROM users u
+            LEFT JOIN nhan_vien nv ON u.nhan_vien_id = nv.id
+            ORDER BY u.id DESC
         """
         df_users = db.execute_query(sql_users)
         
@@ -58,21 +95,14 @@ with tab1:
                 che_do_xem = st.selectbox("Hiển thị:", ["10 dòng", "Tất cả"])
             
             if che_do_xem == "Tất cả":
-                # CHẾ ĐỘ 1: HIỂN THỊ TẤT CẢ (Không dùng nút phân trang)
                 st.caption(f"Đang hiển thị toàn bộ {len(df_users)} tài khoản.")
-                st.dataframe(
-                    df_users,
-                    use_container_width=True,
-                    hide_index=True
-                )
+                st.dataframe(df_users, use_container_width=True, hide_index=True)
             else:
-                # CHẾ ĐỘ 2: PHÂN TRANG 10 DÒNG
                 rows_per_page = 10
                 total_rows = len(df_users)
                 total_pages = math.ceil(total_rows / rows_per_page)
                 
                 if total_pages > 0:
-                    # Khởi tạo và bảo vệ biến nhớ
                     if 'page_tk' not in st.session_state:
                         st.session_state['page_tk'] = 1
                         
@@ -81,55 +111,23 @@ with tab1:
                     elif st.session_state['page_tk'] > total_pages:
                         st.session_state['page_tk'] = total_pages
                         
-                    # Dàn 3 cột cho nút bấm
                     col1, col2, col3 = st.columns([1, 2, 1])
-                    
                     with col1:
                         if st.button("⬅️ Trước", key="btn_prev_tk", disabled=(st.session_state['page_tk'] <= 1)):
-                            if st.session_state['page_tk'] > 1:
-                                st.session_state['page_tk'] -= 1
-                                st.rerun()
-                            
+                            st.session_state['page_tk'] -= 1
+                            st.rerun()
                     with col3:
                         if st.button("Sau ➡️", key="btn_next_tk", disabled=(st.session_state['page_tk'] >= total_pages)):
-                            if st.session_state['page_tk'] < total_pages:
-                                st.session_state['page_tk'] += 1
-                                st.rerun()
-                            
+                            st.session_state['page_tk'] += 1
+                            st.rerun()
                     with col2:
                         st.markdown(f"<div style='text-align: center; margin-top: 5px;'>Trang {st.session_state['page_tk']} / {total_pages}</div>", unsafe_allow_html=True)
 
-                    # Tính toán vị trí và cắt dữ liệu
                     start_idx = (st.session_state['page_tk'] - 1) * rows_per_page
                     end_idx = start_idx + rows_per_page
                     df_page = df_users.iloc[start_idx:end_idx]
                     
-                    # In bảng 10 dòng ra màn hình
-                    st.dataframe(
-                        df_page,
-                        use_container_width=True,
-                        hide_index=True
-                    )
-            #gb = GridOptionsBuilder.from_dataframe(df_users)
-            
-            # Kích hoạt thanh trượt ngang giống như mục Chuyến đi và Báo cáo
-            #gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=160)
-            #gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=10)
-            #gb.configure_column("Mã", width=80, minWidth=70)
-            
-            #custom_css = {
-            #    ".ag-header-cell": {"background-color": "#0b5394 !important"},
-            #    ".ag-header-cell-text": {"color": "white !important", "font-weight": "bold !important"}
-            #}
-            
-            #AgGrid(
-            #    df_users, 
-            #    gridOptions=gb.build(), 
-            #    custom_css=custom_css, 
-            #    theme="streamlit", 
-            #    fit_columns_on_grid_load=False, 
-            #    width="100%"
-            #)
+                    st.dataframe(df_page, use_container_width=True, hide_index=True)
         else:
             st.info("Hệ thống chưa ghi nhận tài khoản người dùng nào.")
     except Exception as e:
@@ -149,39 +147,44 @@ with tab2:
         
         c3, c4 = st.columns(2)
         new_name = c3.text_input("Họ và tên người dùng*", placeholder="VD: Nguyễn Văn Thuận", key=f"new_na_{st.session_state['reset_add_user']}")
-        new_role = c4.selectbox("Phân quyền hệ thống", options=[("Admin", "Quản trị viên"), ("Ke_Toan", "Kế toán"), ("Dieu_Do", "Điều độ")], format_func=lambda x: x[1], key=f"new_ro_{st.session_state['reset_add_user']}")
+        # --- ĐÃ SỬA: Thêm quyền Tai_Xe ---
+        new_role = c4.selectbox("Phân quyền hệ thống", options=[("Admin", "Quản trị viên"), ("Ke_Toan", "Kế toán"), ("Dieu_Do", "Điều độ"), ("Tai_Xe", "Tài xế")], format_func=lambda x: x[1], key=f"new_ro_{st.session_state['reset_add_user']}")
+        
+        # --- MỚI: Liên kết nhân viên ---
+        new_nv_id = st.selectbox(
+            "🔗 Liên kết tài khoản này với Nhân viên (Bắt buộc với Tài xế):", 
+            options=[None] + list(nhan_vien_dict.keys()), 
+            format_func=lambda x: "--- Không liên kết ---" if x is None else nhan_vien_dict[x],
+            key=f"new_nv_{st.session_state['reset_add_user']}"
+        )
         
         if st.form_submit_button("💾 Khởi tạo tài khoản", type="primary"):
             if not new_user or not new_pass or not new_name:
                 st.error("⚠️ Vui lòng điền đầy đủ các thông tin bắt buộc có dấu (*)")
+            elif new_role[0] == "Tai_Xe" and new_nv_id is None:
+                st.error("⚠️ Phân quyền 'Tài xế' bắt buộc phải được liên kết với một Hồ sơ Nhân viên!")
             else:
                 try:
-                    # Kiểm tra trùng tên đăng nhập
                     chk_exist = db.execute_query("SELECT id FROM users WHERE username = %s", (new_user.strip(),))
                     if isinstance(chk_exist, pd.DataFrame) and not chk_exist.empty:
                         st.error("❌ Tên đăng nhập này đã tồn tại trên hệ thống! Vui lòng chọn tên khác.")
                     else:
-                        
-                        # --- MỚI: MÃ HÓA MẬT KHẨU ---
                         bytes_pass = new_pass.strip().encode('utf-8')
                         hashed_pass = bcrypt.hashpw(bytes_pass, bcrypt.gensalt()).decode('utf-8')
 
-                        # 1. Đóng gói dữ liệu
+                        # Đóng gói dữ liệu kèm nhan_vien_id
                         user_data = {
                             'username': new_user.strip(),
-                            'password': hashed_pass, # Đã thay bằng mật khẩu băm
+                            'password': hashed_pass, 
                             'ho_ten': new_name.strip(),
                             'role': new_role[0],
-                            'trang_thai': 'Dang_Hoat_Dong'
+                            'trang_thai': 'Dang_Hoat_Dong',
+                            'nhan_vien_id': new_nv_id
                         }
                         
-                        # 2. Lấy tên người đang thao tác từ session
                         current_user = st.session_state.get('username', 'Admin_Chua_Dang_Nhap')
-                        
-                        # 3. Gọi hàm xử lý Transaction
                         success, result = handle_user_transaction_with_audit(db.pool, "TAO_MOI", user_data, current_user)
                         
-                                                                        
                         if success:
                             st.success(f"🎉 Đã khởi tạo tài khoản thành công! (ID: {result})")
                             st.session_state["reset_add_user"] += 1
@@ -193,14 +196,14 @@ with tab2:
                     st.error(f"⚠️ Lỗi kết nối CSDL: {ex}")
 
 # ==========================================
-# TAB 3: CHỨC NĂNG SỬA & XÓA TÀI KHOẢN (NÂNG CẤP)
+# TAB 3: CHỨC NĂNG SỬA & XÓA TÀI KHOẢN 
 # ==========================================
 with tab3:
     try:
         if "reset_edit_user" not in st.session_state: st.session_state["reset_edit_user"] = 0
         
-        # Tải toàn bộ danh sách tài khoản hiện có làm danh mục lựa chọn
-        df_all_us = db.execute_query("SELECT id, username, ho_ten, role, password, trang_thai FROM users")
+        # --- ĐÃ SỬA: Query thêm nhan_vien_id ---
+        df_all_us = db.execute_query("SELECT id, username, ho_ten, role, password, trang_thai, nhan_vien_id FROM users")
         
         if isinstance(df_all_us, pd.DataFrame) and not df_all_us.empty:
             user_opts = {row['id']: f"{row['ho_ten']} ({row['username']}) - Quyền: {row['role']}" for _, row in df_all_us.iterrows()}
@@ -215,7 +218,6 @@ with tab3:
             st.divider()
             
             if selected_user_id is not None:
-                # Lấy thông tin chi tiết của tài khoản được chọn
                 us_data = df_all_us[df_all_us['id'] == selected_user_id].iloc[0]
                 
                 with st.form("form_sua_xoa_tai_khoan"):
@@ -223,10 +225,10 @@ with tab3:
                     
                     c_ed1, c_ed2 = st.columns(2)
                     edit_name = c_ed1.text_input("Họ và Tên người dùng", value=str(us_data['ho_ten']))
-                    edit_pass = c_ed2.text_input("Đổi mật khẩu mới (Để trống nếu giữ nguyên mật khẩu cũ)", type="password", placeholder="Nhập mật khẩu mới nếu muốn thay đổi")
+                    edit_pass = c_ed2.text_input("Đổi mật khẩu mới (Để trống nếu giữ nguyên)", type="password", placeholder="Nhập mật khẩu mới")
                     
                     c_ed3, c_ed4 = st.columns(2)
-                    role_list = [("Admin", "Quản trị viên"), ("Ke_Toan", "Kế toán"), ("Dieu_Do", "Điều độ")]
+                    role_list = [("Admin", "Quản trị viên"), ("Ke_Toan", "Kế toán"), ("Dieu_Do", "Điều độ"), ("Tai_Xe", "Tài xế")]
                     current_role_idx = [x[0] for x in role_list].index(us_data['role']) if us_data['role'] in [x[0] for x in role_list] else 0
                     edit_role = c_ed3.selectbox("Thay đổi phân quyền", options=role_list, index=current_role_idx, format_func=lambda x: x[1])
                     
@@ -234,60 +236,60 @@ with tab3:
                     current_status_idx = [x[0] for x in status_list].index(us_data['trang_thai']) if us_data['trang_thai'] in [x[0] for x in status_list] else 0
                     edit_status = c_ed4.selectbox("Trạng thái tài khoản", options=status_list, index=current_status_idx, format_func=lambda x: x[1])
                     
+                    # --- MỚI: Xử lý Selectbox Liên kết Nhân viên ---
+                    raw_nv_id = us_data.get('nhan_vien_id', None)
+                    current_nv_id = int(raw_nv_id) if pd.notna(raw_nv_id) else None
+                    options_nv = [None] + list(nhan_vien_dict.keys())
+                    try:
+                        idx_nv = options_nv.index(current_nv_id)
+                    except ValueError:
+                        idx_nv = 0
+                        
+                    edit_nv_id = st.selectbox(
+                        "🔗 Liên kết Nhân viên:", 
+                        options=options_nv,
+                        index=idx_nv,
+                        format_func=lambda x: "--- Không liên kết ---" if x is None else nhan_vien_dict[x]
+                    )
+                    
                     st.divider()
                     b_save, b_del = st.columns(2)
                     
-                    
-                    # Nút 1: Lưu chỉnh sửa thông tin tài khoản
                     if b_save.form_submit_button("🔄 Lưu Cập Nhật", type="primary"):
-                        
-                        # --- MỚI: KIỂM TRA VÀ BĂM MẬT KHẨU NẾU CÓ THAY ĐỔI ---
-                        if edit_pass.strip() != "":
-                            # Nếu nhập pass mới -> Băm pass mới
-                            bytes_pass = edit_pass.strip().encode('utf-8')
-                            final_pass = bcrypt.hashpw(bytes_pass, bcrypt.gensalt()).decode('utf-8')
+                        if edit_role[0] == "Tai_Xe" and edit_nv_id is None:
+                            st.error("⚠️ Phân quyền 'Tài xế' bắt buộc phải được liên kết với một Hồ sơ Nhân viên!")
                         else:
-                            # Nếu để trống -> Giữ nguyên chuỗi băm cũ từ DB
-                            final_pass = us_data['password']
+                            if edit_pass.strip() != "":
+                                bytes_pass = edit_pass.strip().encode('utf-8')
+                                final_pass = bcrypt.hashpw(bytes_pass, bcrypt.gensalt()).decode('utf-8')
+                            else:
+                                final_pass = us_data['password']
+                            
+                            # Đóng gói dữ liệu kèm nhan_vien_id
+                            user_data = {
+                                'id': int(selected_user_id),
+                                'ho_ten': edit_name.strip(),
+                                'password': final_pass, 
+                                'role': edit_role[0],
+                                'trang_thai': edit_status[0],
+                                'nhan_vien_id': edit_nv_id
+                            }
+                            
+                            current_user = st.session_state.get('username', 'Admin_Chua_Dang_Nhap')
+                            success, result = handle_user_transaction_with_audit(db.pool, "CAP_NHAT", user_data, current_user)
                         
-                        # 1. Đóng gói dữ liệu
-                        user_data = {
-                            'id': int(selected_user_id),
-                            'ho_ten': edit_name.strip(),
-                            'password': final_pass, # Đã gán mật khẩu an toàn
-                            'role': edit_role[0],
-                            'trang_thai': edit_status[0]
-                        }
-                        
-                        # 2. Lấy tên người đang thao tác từ session
-                        current_user = st.session_state.get('username', 'Admin_Chua_Dang_Nhap')
-                        
-                        # 3. Gọi hàm xử lý Transaction
-                        success, result = handle_user_transaction_with_audit(db.pool, "CAP_NHAT", user_data, current_user)
+                                                
+                            if success:
+                                st.success(f"🎉 Đã cập nhật thành công tài khoản {us_data['username']}!")
+                                st.session_state["reset_edit_user"] += 1
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error(f"⚠️ Lỗi xử lý dữ liệu: {result}")
                     
-                                            
-                        if success:
-                            st.success(f"🎉 Đã cập nhật thành công tài khoản! {us_data['username']}!")
-                            st.session_state["reset_edit_user"] += 1
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error(f"⚠️ Lỗi xử lý dữ liệu: {result}")
-
-                        
-                    
-                    # Nút 2: Xóa vĩnh viễn tài khoản khỏi cơ sở dữ liệu
                     if b_del.form_submit_button("🗑️ XÓA VĨNH VIỄN TÀI KHOẢN"):
-                        
-                        # 1. Đóng gói dữ liệu
-                        user_data = {
-                            'id': int(selected_user_id)
-                        }
-                        
-                        # 2. Lấy tên người đang thao tác từ session
+                        user_data = {'id': int(selected_user_id)}
                         current_user = st.session_state.get('username', 'Admin_Chua_Dang_Nhap')
-                        
-                        # 3. Gọi hàm xử lý Transaction
                         success, result = handle_user_transaction_with_audit(db.pool, "XOA", user_data, current_user)
                         
                         if success:
@@ -297,9 +299,6 @@ with tab3:
                             st.rerun()
                         else:
                             st.error(f"⚠️ Lỗi xử lý dữ liệu: {result}")
-
-                        
-                        
                         
         else:
             st.info("Chưa có tài khoản nào trong hệ thống để thực hiện sửa đổi.")

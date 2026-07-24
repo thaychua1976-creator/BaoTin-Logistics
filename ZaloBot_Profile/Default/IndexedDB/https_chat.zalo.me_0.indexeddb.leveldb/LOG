@@ -1,0 +1,14 @@
+2026/07/23-17:07:07.168 3724 Reusing MANIFEST D:\PROJECT_COI\Logistics_App\ZaloBot_Profile\Default\IndexedDB\https_chat.zalo.me_0.indexeddb.leveldb/MANIFEST-000001
+2026/07/23-17:07:07.168 3724 Recovering log #18
+2026/07/23-17:07:07.226 3724 Reusing old log D:\PROJECT_COI\Logistics_App\ZaloBot_Profile\Default\IndexedDB\https_chat.zalo.me_0.indexeddb.leveldb/000018.log 
+2026/07/23-17:17:30.223 3724 Level-0 table #24: started
+2026/07/23-17:17:30.274 3724 Level-0 table #24: 1203954 bytes OK
+2026/07/23-17:17:30.275 3724 Delete type=0 #18
+2026/07/23-17:20:46.140 86c Compacting 1@1 + 2@2 files
+2026/07/23-17:20:46.259 86c Generated table #25@1: 33243 keys, 2176939 bytes
+2026/07/23-17:20:46.283 86c Generated table #26@1: 7181 keys, 424615 bytes
+2026/07/23-17:20:46.284 86c Compacted 1@1 + 2@2 files => 2601554 bytes
+2026/07/23-17:20:46.284 86c compacted to: files[ 0 0 2 0 0 0 0 ]
+2026/07/23-17:20:46.285 86c Delete type=2 #20
+2026/07/23-17:20:46.285 86c Delete type=2 #21
+2026/07/23-17:20:46.285 86c Delete type=2 #24

@@ -1,5 +1,7 @@
 import pandas as pd
 from audit_logger import log_thao_tac
+from utils_core import parse_money_input
+import json
 
 #2. HÀM TRANSACTION CỦA XE (Đã đổi tên gọi hàm log_thao_tac)
 def save_vehicle_transaction(db_pool, xe_data: dict, xe_id: int = None, nguoi_dung: str = "Admin"):
@@ -364,3 +366,192 @@ def get_bang_ke_tong_hop_xe(db_pool, xe_id, tu_ngay, den_ngay):
         return pd.DataFrame()
     finally:
         if 'conn' in locals() and conn: conn.close()
+###############
+
+
+def save_do_xang_transaction(db_pool, data_dict, nguoi_dung):
+    """
+    Xử lý lưu lịch sử đổ xăng, tự động tính hiệu suất Lít/100km và cảnh báo hao hụt.
+    Tuân thủ nguyên tắc Transaction và Audit Log của Bảo Tín Logistics.
+    """
+    conn = db_pool.get_connection()
+    if not conn:
+        return False, "❌ Lỗi kết nối cơ sở dữ liệu."
+
+    try:
+        # Bắt buộc: Tắt autocommit để bắt đầu Transaction
+        conn.autocommit = False 
+        cursor = conn.cursor(dictionary=True)
+
+        xe_id = data_dict['xe_id']
+        odo_moi = float(data_dict['odo_hien_tai'])
+        so_lit = float(data_dict['so_lit'])
+        # Xử lý chuỗi tiền tệ qua hàm chuẩn của hệ thống
+        tong_tien = parse_money_input(data_dict['tong_tien']) 
+        ghi_chu = data_dict.get('ghi_chu', '')
+        don_gia = tong_tien / so_lit if so_lit > 0 else 0
+
+        # 1. Truy vấn ODO cũ và Định mức của xe
+        cursor.execute("SELECT tong_km_hien_tai, dinh_muc_nhien_lieu FROM xe WHERE id = %s", (xe_id,))
+        xe_info = cursor.fetchone()
+        if not xe_info:
+            raise Exception("Không tìm thấy thông tin phương tiện.")
+
+        odo_cu = float(xe_info['tong_km_hien_tai'] or 0.0)
+        dinh_muc_chuan = float(xe_info['dinh_muc_nhien_lieu'] or 0.0)
+
+        if odo_moi < odo_cu:
+            raise Exception(f"Chỉ số ODO mới ({odo_moi}) không được nhỏ hơn ODO hiện tại của xe ({odo_cu}).")
+
+        # 2. Tính toán Hiệu suất & Cảnh báo (Cho phép sai số vượt 10% so với định mức)
+        quang_duong_da_chay = odo_moi - odo_cu
+        hieu_suat_thuc_te = 0.0
+        trang_thai_canh_bao = 'Binh_Thuong'
+
+        if quang_duong_da_chay > 0:
+            hieu_suat_thuc_te = (so_lit / quang_duong_da_chay) * 100
+            
+            if dinh_muc_chuan > 0 and hieu_suat_thuc_te > (dinh_muc_chuan * 1.1):
+                trang_thai_canh_bao = 'Hao_Hut_Bat_Thuong'
+
+        # 3. INSERT vào bảng lich_su_do_xang
+        sql_insert_xang = """
+            INSERT INTO lich_su_do_xang 
+            (xe_id, odo_hien_tai, so_lit, tong_tien, don_gia, hieu_suat_tieu_hao, trang_thai_canh_bao, ghi_chu, nguoi_nhap)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(sql_insert_xang, (
+            xe_id, odo_moi, so_lit, tong_tien, don_gia, hieu_suat_thuc_te, trang_thai_canh_bao, ghi_chu, nguoi_dung
+        ))
+        
+        # Kiểm tra rowcount theo nguyên tắc bắt buộc
+        if cursor.rowcount == 0:
+            raise Exception("Lỗi: Không thể ghi nhận lịch sử đổ xăng.")
+
+        # 4. CẬP NHẬT ODO mới vào bảng `xe`
+        cursor.execute("UPDATE xe SET tong_km_hien_tai = %s WHERE id = %s", (odo_moi, xe_id))
+        if cursor.rowcount == 0:
+            raise Exception("Lỗi: Không thể cập nhật chỉ số ODO cho xe.")
+
+        # 5. Ghi vết hệ thống (Audit Log)
+        chi_tiet_log = {
+            "odo_cu": odo_cu,
+            "odo_moi": odo_moi,
+            "quang_duong_tinh": quang_duong_da_chay,
+            "so_lit": so_lit,
+            "hieu_suat": hieu_suat_thuc_te,
+            "canh_bao": trang_thai_canh_bao
+        }
+        log_thao_tac(cursor, xe_id, nguoi_dung, "CAP_NHAT_NHIEN_LIEU", chi_tiet_log) 
+
+        # Hoàn tất Giao dịch
+        conn.commit() 
+        return True, "✅ Lưu biên lai đổ xăng và cập nhật ODO thành công!"
+
+    except Exception as e:
+        conn.rollback() # Hoàn tác nếu có lỗi
+        return False, f"❌ Lỗi hệ thống: {str(e)}"
+        
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        conn.close()
+
+###########################
+
+def update_do_xang_transaction(db_pool, record_id, data_dict, nguoi_dung):
+    """
+    Hàm cập nhật lịch sử đổ xăng đã lưu. Tự động tính toán lại hiệu suất nhiên liệu.
+    Tuân thủ nghiêm ngặt nguyên tắc Transaction và Audit Log[cite: 4].
+    """
+    conn = db_pool.get_connection()
+    if not conn:
+        return False, "❌ Lỗi kết nối cơ sở dữ liệu."
+
+    try:
+        # Bắt buộc: Tắt autocommit để quản lý Transaction[cite: 4]
+        conn.autocommit = False 
+        cursor = conn.cursor(dictionary=True)
+
+        odo_moi = float(data_dict['odo_hien_tai'])
+        so_lit = float(data_dict['so_lit'])
+        # Xử lý chuỗi tiền tệ qua hàm chuẩn[cite: 4]
+        tong_tien = parse_money_input(data_dict['tong_tien']) 
+        ghi_chu = data_dict.get('ghi_chu', '')
+        don_gia = tong_tien / so_lit if so_lit > 0 else 0
+
+        # 1. Truy xuất bản ghi đang cần sửa để lấy xe_id
+        cursor.execute("SELECT xe_id, odo_hien_tai FROM lich_su_do_xang WHERE id = %s", (record_id,))
+        current_record = cursor.fetchone()
+        if not current_record:
+            raise Exception("Không tìm thấy dữ liệu đổ xăng này trong hệ thống.")
+            
+        xe_id = current_record['xe_id']
+
+        # 2. Truy vấn ODO của lần đổ xăng NGAY TRƯỚC ĐÓ để tính quãng đường
+        cursor.execute("SELECT dinh_muc_nhien_lieu FROM xe WHERE id = %s", (xe_id,))
+        xe_info = cursor.fetchone()
+        dinh_muc_chuan = float(xe_info['dinh_muc_nhien_lieu'] or 0.0)
+        
+        cursor.execute("""
+            SELECT odo_hien_tai FROM lich_su_do_xang 
+            WHERE xe_id = %s AND id < %s 
+            ORDER BY id DESC LIMIT 1
+        """, (xe_id, record_id))
+        prev_record = cursor.fetchone()
+        odo_cu = float(prev_record['odo_hien_tai']) if prev_record else 0.0
+
+        # Chốt chặn logic
+        if odo_moi < odo_cu and odo_cu > 0:
+            raise Exception(f"ODO mới ({odo_moi}) không được nhỏ hơn ODO lần đổ trước ({odo_cu}).")
+
+        # 3. Tính toán lại Hiệu suất & Cảnh báo
+        quang_duong_da_chay = odo_moi - odo_cu if odo_cu > 0 else 0
+        hieu_suat_thuc_te = 0.0
+        trang_thai_canh_bao = 'Binh_Thuong'
+
+        if quang_duong_da_chay > 0:
+            hieu_suat_thuc_te = (so_lit / quang_duong_da_chay) * 100
+            if dinh_muc_chuan > 0 and hieu_suat_thuc_te > (dinh_muc_chuan * 1.1):
+                trang_thai_canh_bao = 'Hao_Hut_Bat_Thuong'
+
+        # 4. Thực thi UPDATE vào cơ sở dữ liệu
+        sql_update = """
+            UPDATE lich_su_do_xang 
+            SET odo_hien_tai=%s, so_lit=%s, tong_tien=%s, don_gia=%s, hieu_suat_tieu_hao=%s, trang_thai_canh_bao=%s, ghi_chu=%s
+            WHERE id = %s
+        """
+        cursor.execute(sql_update, (odo_moi, so_lit, tong_tien, don_gia, hieu_suat_thuc_te, trang_thai_canh_bao, ghi_chu, record_id))
+        
+        # Bắt buộc kiểm tra rowcount theo nguyên tắc của dự án[cite: 4]
+        if cursor.rowcount == 0:
+            # Nếu người dùng bấm Lưu nhưng không thay đổi số liệu, rowcount sẽ = 0. 
+            pass 
+
+        # 5. CẬP NHẬT ODO cho xe NẾU đây là phiếu đổ xăng mới nhất của xe đó
+        cursor.execute("SELECT MAX(id) as max_id FROM lich_su_do_xang WHERE xe_id = %s", (xe_id,))
+        max_id_row = cursor.fetchone()
+        if max_id_row and max_id_row['max_id'] == record_id:
+            cursor.execute("UPDATE xe SET tong_km_hien_tai = %s WHERE id = %s", (odo_moi, xe_id))
+
+        # 6. Ghi vết hệ thống (Audit Log)[cite: 4]
+        chi_tiet_log = {
+            "record_id": record_id,
+            "odo_cu": odo_cu,
+            "odo_moi": odo_moi,
+            "so_lit_moi": so_lit,
+            "tong_tien_moi": tong_tien
+        }
+        log_thao_tac(cursor, xe_id, nguoi_dung, "SUA_LICH_SU_XANG", chi_tiet_log) #[cite: 4]
+
+        # Hoàn tất Giao dịch thành công[cite: 4]
+        conn.commit() 
+        return True, "✅ Đã cập nhật thành công dữ liệu xăng dầu!"
+
+    except Exception as e:
+        # Bắt buộc rollback nếu có lỗi xảy ra[cite: 4]
+        conn.rollback() 
+        return False, f"❌ Lỗi hệ thống: {str(e)}"
+        
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        conn.close()

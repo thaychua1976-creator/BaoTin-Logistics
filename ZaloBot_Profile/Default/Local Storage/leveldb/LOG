@@ -1,0 +1,18 @@
+2026/07/23-17:07:03.743 1144 Reusing MANIFEST D:\PROJECT_COI\Logistics_App\ZaloBot_Profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/07/23-17:07:03.795 1144 Recovering log #21
+2026/07/23-17:07:03.801 1144 Reusing old log D:\PROJECT_COI\Logistics_App\ZaloBot_Profile\Default\Local Storage\leveldb/000021.log 
+2026/07/23-17:08:03.835 670 Level-0 table #25: started
+2026/07/23-17:08:03.850 670 Level-0 table #25: 66780 bytes OK
+2026/07/23-17:08:03.855 670 Delete type=0 #21
+2026/07/23-17:36:58.589 670 Level-0 table #27: started
+2026/07/23-17:36:58.594 670 Level-0 table #27: 22112 bytes OK
+2026/07/23-17:36:58.595 670 Delete type=0 #24
+2026/07/23-17:36:58.596 670 Compacting 4@0 + 1@1 files
+2026/07/23-17:36:58.606 670 Generated table #28@0: 433 keys, 77411 bytes
+2026/07/23-17:36:58.606 670 Compacted 4@0 + 1@1 files => 77411 bytes
+2026/07/23-17:36:58.607 670 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/07/23-17:36:58.608 670 Delete type=2 #16
+2026/07/23-17:36:58.608 670 Delete type=2 #19
+2026/07/23-17:36:58.608 670 Delete type=2 #22
+2026/07/23-17:36:58.608 670 Delete type=2 #25
+2026/07/23-17:36:58.608 670 Delete type=2 #27

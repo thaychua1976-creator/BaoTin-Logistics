@@ -24,22 +24,22 @@ def handle_user_transaction_with_audit(db_pool, action, user_data, current_user)
         
         # 1. THỰC THI CÂU LỆNH CHÍNH DỰA TRÊN HÀNH ĐỘNG
         if action == "TAO_MOI":
-            sql = """INSERT INTO users (username, password, ho_ten, role, trang_thai) 
-                     VALUES (%s, %s, %s, %s, %s)"""
+            sql = """INSERT INTO users (username, password, ho_ten, role, trang_thai, nhan_vien_id) 
+                     VALUES (%s, %s, %s, %s, %s,%s)"""
             cursor.execute(sql, (
                 user_data['username'], user_data['password'], 
-                user_data['ho_ten'], user_data['role'], user_data['trang_thai']
+                user_data['ho_ten'], user_data['role'], user_data['trang_thai'], user_data.get('nhan_vien_id')
             ))
             # Lấy ID của tài khoản vừa tạo an toàn [cite: 25]
             target_user_id = cursor.lastrowid 
             
         elif action == "CAP_NHAT":
             sql = """UPDATE users 
-                     SET ho_ten = %s, password = %s, role = %s, trang_thai = %s 
+                     SET ho_ten = %s, password = %s, role = %s, trang_thai = %s, nhan_vien_id=%s 
                      WHERE id = %s"""
             cursor.execute(sql, (
                 user_data['ho_ten'], user_data['password'], 
-                user_data['role'], user_data['trang_thai'], target_user_id
+                user_data['role'], user_data['trang_thai'],user_data.get('nhan_vien_id'), target_user_id
             ))
             
         elif action == "XOA":

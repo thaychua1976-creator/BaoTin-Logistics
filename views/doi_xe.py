@@ -5,7 +5,7 @@ import datetime, io, time, math
 import plotly.express as px
 import plotly.graph_objects as go
 from fleet_manager import  save_vehicle_transaction, delete_vehicle_transaction, get_canh_bao_bao_duong, save_lich_su_bao_duong,get_thong_ke_hoat_dong_xe,get_chi_tiet_bao_duong_xe,get_bieu_do_hoat_dong,get_bang_ke_tong_hop_xe
-
+from utils_core import  kiem_tra_va_gui_bao_cao_telegram,send_zalo_message
 # ==========================================
 # CSS ẨN HƯỚNG DẪN "PRESS ENTER TO SUBMIT"
 # ==========================================
@@ -22,7 +22,12 @@ hide_enter_submit_css = """
 st.markdown(hide_enter_submit_css, unsafe_allow_html=True)
 
 ########
+
+
+
+
 db = st.session_state['db']
+
 tab1, tab2, tab3, tab4,tab5,tab6 = st.tabs(["📋 Danh sách đội xe", "➕ Thêm xe mới", "🔧 Sửa/Xoá xe", "🚨 Cảnh báo pháp lý toàn diện","🛠️ Cảnh báo/Lập phiếu bảo dưỡng ","🔧 Báo cáo hiệu năng"])
 
 
@@ -39,6 +44,8 @@ with tab1:
                 x.id AS 'Mã', x.nhan_hieu_xe AS 'Nhãn Hiệu', x.bien_so_xe AS 'Biển Số', 
                 CAST(x.tai_trong_thiet_ke AS FLOAT) AS 'Tải Trọng (Tấn)', 
                 CAST(x.dung_tich_cbm AS FLOAT) AS 'Dung Tích (CBM)',
+                CAST(x.dinh_muc_bao_duong AS FLOAT) AS 'Định mức BD (Km)',
+                x.ghi_chu AS 'Ghi chú',
                 nv.ho_ten AS 'Tài xế cố định', x.loai_xe AS 'Loại Xe', x.trang_thai AS 'Trạng thái'
             FROM xe x LEFT JOIN nhan_vien nv ON x.tai_xe_co_dinh_id = nv.id
             WHERE x.trang_thai = 'Dang_Hoat_Dong' ORDER BY x.id ASC
@@ -113,6 +120,7 @@ with tab1:
 
 ## Thêm mới xe
 with tab2:
+    if "reset_tab2" not in st.session_state: st.session_state["reset_tab2"] = 0
     with st.form("form_them_xe", clear_on_submit=True):
         st.subheader("Thông tin Phương tiện & Phân bổ tài xế")
         c1, c2, c3, c4 = st.columns(4)
@@ -121,10 +129,19 @@ with tab2:
         tai_trong = c3.number_input("Tải trọng (Tấn)", min_value=0.0, step=0.1)
         dung_tich = c4.number_input("Dung tích xe (CBM / Khối)", min_value=0.0, step=0.1)
         
-        c5, c6 = st.columns(2)
+        c5, c6,c7,c8 = st.columns(4)
         loai_xe = c5.selectbox("Loại xe", ["XE TẢI THÙNG", "ĐẦU KÉO", "SƠ MI RƠ MOOC", "Khác"])
         tx_co_dinh = c6.selectbox("Gán Tài xế cố định", options=[None] + list(tx_dict.keys()), format_func=lambda x: tx_dict[x] if x else "Chưa gán tài xế")
+        num_dinh_muc_bd=c7.number_input("Định mức km bảo dưỡng", min_value=0.0, step=0.1)
+        txt_ghi_chu= c8.text_input("Ghi chú thêm")
+        # Kiểm tra nếu là NaN hoặc trống thì gán bằng chuỗi rỗng "", ngược lại thì ép kiểu chuỗi
         
+        if pd.isna(txt_ghi_chu)  or str(txt_ghi_chu).strip().lower() == 'nan':
+            gc_dat_moi=""
+        else: 
+            gc_dat_moi= str(txt_ghi_chu)
+
+       
         # --- SỬ DỤNG HÀM TRANSACTION CHO THÊM MỚI ---
         if st.form_submit_button("💾 Lưu Xe Mới", type="primary"):
             if not bien_so: 
@@ -136,8 +153,10 @@ with tab2:
                     'nhan_hieu_xe': nhan_hieu.strip(),
                     'tai_trong_thiet_ke': tai_trong,
                     'dung_tich_cbm': dung_tich,
+                    'dinh_muc_bao_duong':num_dinh_muc_bd,
                     'loai_xe': loai_xe,
-                    'tai_xe_co_dinh_id': tx_co_dinh
+                    'tai_xe_co_dinh_id': tx_co_dinh,
+                    'ghi_chu': gc_dat_moi
                 }
                 
                 # Gọi hàm với xe_id = None
@@ -145,7 +164,8 @@ with tab2:
                 
                 if is_ok:
                     st.success("✅ Đã thêm xe mới thành công!")
-                    #st.session_state["reset_tab2"] += 1
+                    st.balloons()
+                    st.session_state["reset_tab2"] += 1
                     time.sleep(1)
                     st.rerun()
                 else:
@@ -153,6 +173,7 @@ with tab2:
 
 ## Cập nhật xe 
 with tab3:
+    if "reset_tab3" not in st.session_state: st.session_state["reset_tab3"] = 0
     df_xe_active = db.execute_query("SELECT * FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'")
     if isinstance(df_xe_active, pd.DataFrame) and not df_xe_active.empty:
         dict_xe = {row['id']: f"{row['bien_so_xe']} - {row['nhan_hieu_xe'] or ''}" for _, row in df_xe_active.iterrows()}
@@ -161,12 +182,28 @@ with tab3:
         if xe_id:
             xe_data = df_xe_active[df_xe_active['id'] == xe_id].iloc[0]
             with st.form("form_update_xe"):
-                c_ed1, c_ed2, c_ed3, c_ed4 = st.columns(4)
+                c_ed1, c_ed2, c_ed3, c_ed4, c_ed5,c_ed6= st.columns(6)
                 upd_bs = c_ed1.text_input("Biển số", value=xe_data['bien_so_xe'])
                 upd_nh = c_ed2.text_input("Nhãn hiệu", value=xe_data['nhan_hieu_xe'] if pd.notna(xe_data['nhan_hieu_xe']) else "")
-                upd_tt = c_ed3.number_input("Tải trọng thiết kế (Tấn)", value=float(xe_data['tai_trong_thiet_ke'] or 0.0))
+                upd_tt = c_ed3.number_input("Tải trọng TK(Tấn)", value=float(xe_data['tai_trong_thiet_ke'] or 0.0))
                 upd_dt = c_ed4.number_input("Dung tích (CBM)", value=float(xe_data['dung_tich_cbm'] or 0.0))
+                upd_dinhmuc_bd = c_ed5.number_input("Định mức BD (Km)", value=float(xe_data['dinh_muc_bao_duong'] or 0.0))
+                # 1. Bắt lấy giá trị gốc và làm sạch TRƯỚC KHI đưa vào form
+                ghi_chu_goc = xe_data['ghi_chu']
+
+                # Kiểm tra nếu là NaN của pandas, là None, hoặc xui xẻo nó đã bị biến thành chuỗi "nan"
+                if pd.isna(ghi_chu_goc) or str(ghi_chu_goc).strip().lower() == 'nan':
+                    ghi_chu_hien_thi = ""
+                else:
+                    ghi_chu_hien_thi = str(ghi_chu_goc)
+
+                # 2. Đưa giá trị đã làm sạch vào form
+                upd_ghi_chu = c_ed6.text_input("Ghi chú thêm", value=ghi_chu_hien_thi)
+
+                # 3. Lấy kết quả lưu xuống Database (text_input luôn trả về chuỗi, nên chỉ cần strip() cắt khoảng trắng thừa)
+                gc_update = upd_ghi_chu.strip()
                 
+ 
                 # Sửa lỗi cú pháp danh sách Index từ code cũ
                 danh_sach_tx = [None] + list(tx_dict.keys())
                 current_tx_id = xe_data['tai_xe_co_dinh_id']
@@ -194,14 +231,17 @@ with tab3:
                             'nhan_hieu_xe': upd_nh.strip(),
                             'tai_trong_thiet_ke': upd_tt,
                             'dung_tich_cbm': upd_dt,
-                            'tai_xe_co_dinh_id': upd_tx
+                            'dinh_muc_bao_duong': upd_dinhmuc_bd,
+                            'tai_xe_co_dinh_id': upd_tx,
+                            'ghi_chu':gc_update
                         }
                         
                         is_ok, msg = save_vehicle_transaction(db.pool, update_xe_data, xe_id=xe_id)
                         
                         if is_ok:
                             st.success("✅ Đã cập nhật thông tin xe thành công!")
-                            #st.session_state["reset_tab3"] += 1
+                            st.balloons()
+                            st.session_state["reset_tab3"] += 1
                             time.sleep(1)
                             st.rerun()
                         else:
@@ -294,14 +334,54 @@ with tab4:
                     series = df_xe_display[col].astype(str)
                     max_len = max(series.map(len).max() if not series.empty else 0, len(str(col))) + 2
                     worksheet.set_column(idx, idx, min(max_len, 30))
+            # Bắt buộc phải có dòng này để con trỏ đọc file quay về vị trí đầu tiên (byte 0)
+            excel_buffer_xe.seek(0)        
+            # Tạo 3 cột để chứa 3 nút bấm
+            col_btn1, col_btn2,col_btn3 = st.columns([1, 1,1])
+            
+        
+            with col_btn1:
+                st.download_button(
+                    label="🚨 TẢI EXCEL ",
+                    data=excel_buffer_xe.getvalue(),
+                    file_name=f"Canh_Bao_Giay_To_Xe_{datetime.date.today().strftime('%d%m%Y')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary"
+                )
+            # Thêm key='btn_gui_telegram_xe'
+            with col_btn2:
+                if st.button("🚀 Gửi File lên Telegram", key='btn_gui_telegram_xe', type="primary", use_container_width=True):
                     
-            st.download_button(
-                label="🚨 TẢI FILE EXCEL DANH SÁCH XE CẦN GIA HẠN",
-                data=excel_buffer_xe.getvalue(),
-                file_name=f"Canh_Bao_Giay_To_Xe_{datetime.date.today().strftime('%d%m%Y')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary"
-            )
+                    with st.spinner("Đang kiểm tra và gửi..."):
+                        success, message = kiem_tra_va_gui_bao_cao_telegram(
+                        df_xe_danger, 
+                          "XE", 
+                          excel_buffer_xe
+                        )
+                        if success:
+                            st.success("✅ Đã gửi danh sách tới hạn lên Telegram!")
+                        else:
+                            st.warning(f"Thông tin: {message}")
+            with col_btn3:
+                # Nút Gửi Zalo (Dùng hàm send_zalo_message từ utils_core.py)
+                if st.button("💬 GỬI ZALO (BÁO CÁO)", key='btn_gui_zalo_xe', type="secondary", use_container_width=True):
+                    with st.spinner("Đang gửi tin nhắn Zalo..."):
+                        # Lấy thông tin tài xế cần gia hạn từ df_tx_danger
+                        so_luong = len(df_xe_danger)
+                        noi_dung_tom_tat = f"Co {so_luong} xe sap het han giay to."
+                        
+                        # Giả định số điện thoại của quản lý hoặc bộ phận nhân sự nhận thông báo
+                        # Bạn cần thay '09xxxxxxxx' bằng số điện thoại người nhận thực tế
+                        success = send_zalo_message(
+                            phone="09xxxxxxxx", 
+                            khach_hang="XE", 
+                            lo_trinh=noi_dung_tom_tat
+                        )
+                        
+                        if success:
+                            st.success("✅ Đã gửi Zalo thành công!")
+                        else:
+                            st.error("❌ Không thể gửi Zalo, vui lòng kiểm tra API.")
         else:
             st.success("✅ Toàn bộ xe đều an toàn pháp lý.")
 
@@ -347,16 +427,61 @@ with tab4:
                     series = df_tx_display[col].astype(str)
                     max_len = max(series.map(len).max() if not series.empty else 0, len(str(col))) + 2
                     worksheet_tx.set_column(idx, idx, min(max_len, 30))
-                    
-            st.download_button(
-                label="🚨 TẢI FILE EXCEL DANH SÁCH TÀI XẾ CẦN GIA HẠN",
-                data=excel_buffer_tx.getvalue(),
-                file_name=f"Canh_Bao_Giay_To_Tai_Xe_{datetime.date.today().strftime('%d%m%Y')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary"
-            )
+            # Bắt buộc phải có dòng này để con trỏ đọc file quay về vị trí đầu tiên (byte 0)
+            excel_buffer_tx.seek(0)        
+            # Tạo 2 cột để chứa 2 nút bấm
+            col_btn4, col_btn5,col_btn6 = st.columns([1, 1,1])
+
+            with col_btn4:
+                    st.download_button(
+                        label="🚨 TẢI FILE EXCEL ",
+                        data=excel_buffer_tx.getvalue(),
+                        file_name=f"Canh_Bao_Giay_To_Tai_Xe_{datetime.date.today().strftime('%d%m%Y')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary",
+                        use_container_width=True # Giúp nút dàn đều ra cột
+                    )
+
+            with col_btn5:
+                    # Nút gửi Telegram cùng hàng, cùng loại "primary"
+                    if st.button("🚀 GỬI FILE LÊN TELEGRAM", key='btn_gui_telegram_tx', type="primary", use_container_width=True):
+                        with st.spinner("Đang kiểm tra và gửi..."):
+                            success, message = kiem_tra_va_gui_bao_cao_telegram(
+                                df_tx_danger, 
+                                "TAIXE", 
+                                excel_buffer_tx 
+                            )
+                            if success:
+                                st.success("✅ Đã gửi danh sách tới hạn lên Telegram!")
+                            else:
+                                st.warning(f"Thông tin: {message}")
+            with col_btn6:
+                    # Nút Gửi Zalo (Dùng hàm send_zalo_message từ utils_core.py)
+                    if st.button("💬 GỬI ZALO (BÁO CÁO)", key='btn_gui_zalo_tx', type="secondary", use_container_width=True):
+                        with st.spinner("Đang gửi tin nhắn Zalo..."):
+                            # Lấy thông tin tài xế cần gia hạn từ df_tx_danger
+                            so_luong = len(df_tx_danger)
+                            noi_dung_tom_tat = f"Co {so_luong} tai xe sap het han giay to."
+                            
+                            # Giả định số điện thoại của quản lý hoặc bộ phận nhân sự nhận thông báo
+                            # Bạn cần thay '09xxxxxxxx' bằng số điện thoại người nhận thực tế
+                            success = send_zalo_message(
+                                phone="09xxxxxxxx", 
+                                khach_hang="PHONG_NHAN_SU", 
+                                lo_trinh=noi_dung_tom_tat
+                            )
+                            
+                            if success:
+                                st.success("✅ Đã gửi Zalo thành công!")
+                            else:
+                                st.error("❌ Không thể gửi Zalo, vui lòng kiểm tra API.")
         else:
             st.success("✅ Toàn bộ tài xế đều đầy đủ giấy phép hợp lệ.")
+    
+
+        
+
+             
 ###############################
 with tab5:
     try:
