@@ -87,7 +87,6 @@ if isinstance(df_tx_full, pd.DataFrame) and not df_tx_full.empty:
 with tab1:
     tao_tieu_de_kem_nut_refresh("📋 Danh sách chuyến đi trong ngày", "ref_tab1")
     try:
-        # ĐÃ FIX: SỬA DATE_SUB(NOW()) THÀNH CURDATE()
         sql_list = """
             SELECT cd.id AS 'Mã', cd.ngay_chuyen_di AS 'Ngày', cd.ten_khach_hang AS 'Khách hàng',
                    x.bien_so_xe AS 'Biển Số', nv.ho_ten AS 'Tài Xế', cd.dia_diem_giao_nhan AS 'Lộ trình', 
@@ -124,10 +123,60 @@ with tab1:
             for col_money in ['Lương chuyến', 'Thưởng thêm','Doanh thu']:
                 df_chuyen[col_money] = df_chuyen[col_money].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
             
-            # --- PHÂN TRANG VÀ HIỂN THỊ TẤT CẢ CHO CHUYẾN ĐI ---
-            col_opt1, col_opt2 = st.columns([1, 7]) 
+            # --- [TÍNH NĂNG MỚI] XỬ LÝ DỮ LIỆU XUẤT EXCEL GỬI ZALO ---
+            danh_sach_zalo = []
+            for _, row in df_chuyen.iterrows():
+                # Tạo tên group từ biển số (Loại bỏ ký tự đặc biệt)
+                bien_so = str(row['Biển Số']) if pd.notna(row['Biển Số']) else "CHUA_GAN_XE"
+                ten_group = "".join([c for c in bien_so if c.isalnum()]).upper()
+                
+                # Xử lý ghi chú
+                ghi_chu = str(row['Ghi chú']) if pd.notna(row['Ghi chú']) and str(row['Ghi chú']).strip() != "" else 'Không'
+                
+                # Định dạng nội dung tin nhắn Zalo chuẩn
+                noi_dung_chat = (
+                    f"🚗 LỆNH ĐIỀU XE BẢO TÍN 🚗\n"
+                    f"🔹 Mã chuyến: {row['Mã']}\n"
+                    f"🔹 Ngày chạy: {row['Ngày']}\n"
+                    f"🔹 Khách hàng: {row['Khách hàng']}\n"
+                    f"🔹 Lộ trình: {row['Lộ trình']}\n"
+                    f"🔹 Ghi chú: {ghi_chu}\n"
+                    f"Vui lòng chuẩn bị hàng hóa!"
+                )
+                
+                danh_sach_zalo.append({
+                    "ten_group": ten_group,
+                    "noi_dung_chat": noi_dung_chat,
+                    "Mã Hệ Thống (Trip ID)": row['Mã'],
+                    "Ngày Chạy": row['Ngày'],
+                    "Khách Hàng": row['Khách hàng'],
+                    "Biển Số Xe": row['Biển Số'],
+                    "Tên Tài Xế": row['Tài Xế'],
+                    "Lộ Trình": row['Lộ trình'],
+                    "Trạng Thái": row['Trạng thái']
+                })
+            
+            # Ghi ra bộ nhớ đệm Buffer để tải xuống
+            df_zalo_export = pd.DataFrame(danh_sach_zalo)
+            buffer_zalo = io.BytesIO()
+            with pd.ExcelWriter(buffer_zalo, engine='xlsxwriter') as writer:
+                df_zalo_export.to_excel(writer, index=False, sheet_name="Lich_Chay_Zalo")
+            # -----------------------------------------------------------
+
+            # --- GIAO DIỆN PHÂN TRANG & NÚT XUẤT EXCEL ---
+            # Chia cột lại để có khoảng trống cho nút Export Excel bên phải
+            col_opt1, col_opt2, col_opt3 = st.columns([2, 5, 3]) 
             with col_opt1:
                 che_do_xem_chuyen = st.selectbox("Hiển thị:", ["20 dòng", "Tất cả"], key="xem_chuyen")
+                
+            with col_opt3:
+                st.download_button(
+                    label="📥 Xuất Excel (Kèm Text Zalo)", 
+                    data=buffer_zalo.getvalue(), 
+                    file_name=f"Lich_Chay_Va_Zalo_HomNay_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx", 
+                    type="primary",
+                    use_container_width=True
+                )
             
             if che_do_xem_chuyen == "Tất cả":
                 st.caption(f"Đang hiển thị toàn bộ {len(df_chuyen)} chuyến đi.")
