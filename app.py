@@ -123,9 +123,7 @@ st.markdown("""
         <hr style='border: 0; height: 2px; background-image: linear-gradient(to right, rgba(11, 83, 148, 0), rgba(11, 83, 148, 0.75), rgba(11, 83, 148, 0));'>
     </div>
 """, unsafe_allow_html=True)
-# Trong file app.py
-#from apscheduler.schedulers.background import BackgroundScheduler
-#from scheduler_tasks import task_gui_bao_cao_phap_ly_tu_dong
+
 
 
 if 'db_config' in sys.modules:
@@ -136,23 +134,12 @@ def init_database_pool():
     from db_config import Database
     return Database()
 
-#def start_scheduler(db_pool):
-#    scheduler = BackgroundScheduler()
-    # Chạy vào 8:00 sáng mỗi ngày
-#    scheduler.add_job(
-#        task_gui_bao_cao_phap_ly_tu_dong, 
-#        'cron', 
-#        hour=8, 
-#        minute=0, 
-#        args=[db_pool]
-#    )
-#    scheduler.start()
-#    return scheduler
+
 
 db = init_database_pool()
 st.session_state['db'] = db
 # Khởi tạo ngay sau khi có db_pool
-#scheduler = start_scheduler(db)
+
 
 # =====================================================================
 # BƯỚC 4: XỬ LÝ TRẠNG THÁI ĐĂNG NHẬP (GIAO DIỆN & LOGIC)
