@@ -141,7 +141,7 @@ with tab1:
                     f" Khách hàng: {row['Khách hàng']}\n"
                     f" Lộ trình: {row['Lộ trình']}\n"
                     f" Ghi chú: {ghi_chu}\n"
-                    f" Vui lòng chuẩn bị hàng hóa!"
+                    
                 )
                 
                 danh_sach_zalo.append({
