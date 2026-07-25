@@ -438,3 +438,33 @@ def goi_gps_theo_thoi_gian_tuy_chinh(db_instance, chuyen_di_id, tg_bat_dau_quet,
     finally:
         if 'cursor' in locals() and cursor: cursor.close()
         if 'conn' in locals() and conn: conn.close()
+####################### add 25/7/2026
+import pandas as pd
+
+def get_cong_no_khach_hang(db_pool, khach_hang_id, tu_ngay, den_ngay):
+    """
+    Truy xuất danh sách chuyến đi của một khách hàng trong khoảng thời gian 
+    để lên bảng kê hóa đơn công nợ.
+    """
+    sql = """
+        SELECT 
+            cd.ngay_chuyen_di,
+            cd.dia_diem_giao_nhan,
+            x.bien_so_xe,
+            cd.doanh_thu,
+            kh.ten_khach_hang,
+            kh.ma_so_thue,
+            kh.dia_chi
+        FROM chuyen_di cd
+        JOIN khach_hang kh ON cd.khach_hang_id = kh.id
+        LEFT JOIN xe x ON cd.xe_id = x.id
+        WHERE cd.khach_hang_id = %s 
+          AND cd.ngay_chuyen_di >= %s AND cd.ngay_chuyen_di <= %s
+          AND cd.trang_thai_chuyen = 'Hoan_Thanh'
+        ORDER BY cd.ngay_chuyen_di ASC
+    """
+    try:
+        return db_pool.execute_query(sql, (khach_hang_id, tu_ngay, den_ngay))
+    except Exception as e:
+        print(f"Lỗi truy xuất công nợ: {e}")
+        return None

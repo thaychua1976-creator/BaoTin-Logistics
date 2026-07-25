@@ -238,6 +238,7 @@ else:
     page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", default=True)
     page_bao_cao   = st.Page("views/bao_cao.py", title="Báo cáo & Thống kê", icon="📊")
     page_nhan_vien = st.Page("views/nhan_vien.py", title="Quản lý Nhân viên", icon="🧑‍✈️")
+    page_khach_hang = st.Page("views/khach_hang.py", title="Quản lý Khách hàng", icon="🧑")
     page_doi_xe    = st.Page("views/doi_xe.py", title="Quản lý Đội xe", icon="🚛")
     page_tai_khoan = st.Page("views/tai_khoan.py", title="Quản lý Tài khoản", icon="👤")
     page_config_thuong= st.Page("views/config_thuong.py", title="Cấu hình Thưởng", icon="💰")
@@ -253,7 +254,7 @@ else:
         pages_structure = {
             "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di, page_bao_cao,page_tool_fuel_manager],
             "📦 TOOL TIỆN ÍCH": [page_tool_zalo],
-            "⚙️ DANH MỤC QUẢN TRỊ": [page_nhan_vien, page_doi_xe, page_tai_khoan, page_config_thuong, page_kinh_doanh_result]
+            "⚙️ DANH MỤC QUẢN TRỊ": [page_nhan_vien, page_doi_xe,page_khach_hang, page_tai_khoan, page_config_thuong, page_kinh_doanh_result]
         }
     elif role == 'Tai_Xe':
         pages_structure = {

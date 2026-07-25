@@ -5,6 +5,7 @@ import io
 import math
 from utils_core import tao_tieu_de_kem_nut_refresh
 from st_aggrid import AgGrid, GridOptionsBuilder  # 👉 Bổ sung import AgGrid đồng bộ
+from trip_manager import get_cong_no_khach_hang
 
 db = st.session_state['db']
 
@@ -24,6 +25,125 @@ hide_enter_submit_css = """
 st.markdown(hide_enter_submit_css, unsafe_allow_html=True)
 
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>📊 TRUNG TÂM BÁO CÁO THỐNG KÊ & XUẤT DỮ LIỆU EXCEL</h3>", unsafe_allow_html=True)
+
+def render_tab_cong_no_khach_hang(db):
+    st.markdown("### 💰 ĐỐI SOÁT CÔNG NỢ KHÁCH HÀNG")
+    
+    # 1. BỘ LỌC TÌM KIẾM
+    col1, col2, col3 = st.columns(3)
+    
+    # Lấy danh sách khách hàng
+    df_kh = db.execute_query("SELECT id, ten_khach_hang, ma_so_thue FROM khach_hang")
+    dict_kh = {}
+    if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
+         dict_kh = {row['id']: f"{row['ten_khach_hang']} (MST: {row['ma_so_thue']})" for _, row in df_kh.iterrows()}
+    
+    with col1:
+        khach_hang_id = st.selectbox("🏢 Chọn Khách hàng", options=list(dict_kh.keys()), format_func=lambda x: dict_kh.get(x, "Không xác định"))
+    with col2:
+        tu_ngay = st.date_input("🗓️ Từ ngày", value=datetime.date.today().replace(day=1))
+    with col3:
+        den_ngay = st.date_input("🗓️ Đến ngày", value=datetime.date.today())
+        
+    st.divider()
+    
+    # 2. XỬ LÝ DỮ LIỆU
+    if st.button("🔍 Xem bảng kê đối soát", type="primary"):
+        df_cong_no = get_cong_no_khach_hang(db, khach_hang_id, tu_ngay.strftime('%Y-%m-%d'), den_ngay.strftime('%Y-%m-%d'))
+        
+        if isinstance(df_cong_no, pd.DataFrame) and not df_cong_no.empty:
+            # Thông tin Header khách hàng
+            ten_kh = df_cong_no.iloc[0]['ten_khach_hang']
+            mst_kh = df_cong_no.iloc[0]['ma_so_thue'] or "Chưa cập nhật"
+            dia_chi_kh = df_cong_no.iloc[0]['dia_chi'] or "Chưa cập nhật"
+            
+            st.info(f"**Đơn vị:** {ten_kh} | **MST:** {mst_kh} | **Địa chỉ:** {dia_chi_kh}")
+            
+            danh_sach_hoa_don = []
+            tong_tien = 0.0
+            
+            # Chuẩn hóa dữ liệu theo cấu trúc cột của Hóa đơn VAT
+            for index, row in df_cong_no.iterrows():
+                lo_trinh = str(row['dia_diem_giao_nhan']).replace(" ➡️ ", " đi ")
+                bien_so = row['bien_so_xe'] if pd.notna(row['bien_so_xe']) else "Chưa xác định"
+                don_gia = float(row['doanh_thu'])
+                tong_tien += don_gia
+                
+                # Nối chuỗi tạo tên hàng hóa chuẩn mực
+                ten_hang_hoa = f"Cước vận chuyển từ {lo_trinh}, BKS: {bien_so}"
+                
+                danh_sach_hoa_don.append({
+                    "STT": index + 1,
+                    "Tên hàng hóa, dịch vụ": ten_hang_hoa,
+                    "Đơn vị tính": "Chuyến",
+                    "Số lượng": 1,
+                    "Đơn giá": don_gia,
+                    "Thành tiền": don_gia
+                })
+            
+            df_export = pd.DataFrame(danh_sach_hoa_don)
+            
+            # Hiển thị xem trước trên web
+            df_display = df_export.copy()
+            df_display['Đơn giá'] = df_display['Đơn giá'].apply(lambda x: f"{int(x):,}")
+            df_display['Thành tiền'] = df_display['Thành tiền'].apply(lambda x: f"{int(x):,}")
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+            
+            st.markdown(f"#### 💵 Tổng cộng tiền thanh toán: {int(tong_tien):,} VNĐ")
+            
+            # 3. KẾT XUẤT EXCEL CHUẨN FORM
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                workbook = writer.book
+                worksheet = workbook.add_worksheet('Bang_Ke_Hoa_Don')
+                
+                # Định dạng style
+                format_bold = workbook.add_format({'bold': True, 'font_size': 12})
+                format_money = workbook.add_format({'num_format': '#,##0', 'valign': 'vcenter'})
+                format_center = workbook.add_format({'align': 'center', 'valign': 'vcenter'})
+                format_wrap = workbook.add_format({'text_wrap': True, 'valign': 'vcenter'})
+                
+                # Ghi Header thông tin công ty vào Excel
+                worksheet.write('A1', f"Tên đơn vị: {ten_kh}", format_bold)
+                worksheet.write('A2', f"Mã số thuế: {mst_kh}", format_bold)
+                worksheet.write('A3', f"Địa chỉ: {dia_chi_kh}", format_bold)
+                
+                # Ghi tiêu đề cột
+                headers = ["STT", "Tên hàng hóa, dịch vụ", "Đơn vị tính", "Số lượng", "Đơn giá", "Thành tiền"]
+                for col_num, data in enumerate(headers):
+                    worksheet.write(4, col_num, data, format_bold)
+                
+                # Đổ dữ liệu
+                for row_num, row_data in enumerate(danh_sach_hoa_don):
+                    worksheet.write(row_num + 5, 0, row_data["STT"], format_center)
+                    worksheet.write(row_num + 5, 1, row_data["Tên hàng hóa, dịch vụ"], format_wrap)
+                    worksheet.write(row_num + 5, 2, row_data["Đơn vị tính"], format_center)
+                    worksheet.write(row_num + 5, 3, row_data["Số lượng"], format_center)
+                    worksheet.write(row_num + 5, 4, row_data["Đơn giá"], format_money)
+                    worksheet.write(row_num + 5, 5, row_data["Thành tiền"], format_money)
+                
+                # Tùy chỉnh độ rộng cột
+                worksheet.set_column('A:A', 6)
+                worksheet.set_column('B:B', 60)
+                worksheet.set_column('C:C', 12)
+                worksheet.set_column('D:D', 10)
+                worksheet.set_column('E:F', 15)
+                
+                # Dòng tổng cộng
+                last_row = len(danh_sach_hoa_don) + 5
+                worksheet.write(last_row, 1, "Tổng cộng tiền thanh toán:", format_bold)
+                worksheet.write(last_row, 5, tong_tien, format_money)
+
+            st.download_button(
+                label="⬇️ Tải Bảng Kê (Excel)",
+                data=buffer.getvalue(),
+                file_name=f"Bang_Ke_Doi_Soat_{ten_kh.replace(' ', '_')}_{tu_ngay.strftime('%m%Y')}.xlsx",
+                type="primary",
+                use_container_width=True
+            )
+        else:
+            st.warning("Không tìm thấy chuyến đi nào đã hoàn thành cho khách hàng này trong thời gian trên.")
+            
 
 # ==========================================
 # 1. KHU VỰC BỘ LỌC THÔNG MINH (NGÀY & TÀI XẾ)
@@ -53,7 +173,7 @@ st.divider()
 # ==========================================
 # 2. KHU VỰC HIỂN THỊ: CHIA 2 TAB BÁO CÁO
 # ==========================================
-tab_bc1, tab_bc2,tab_bc3,tab_bc4 = st.tabs(["📊 Chuyến đi trong ngày ","📊 Chuyến theo ngày chọn ","⚠️ Cảnh báo Xe tồn đọng / Quá hạn","📊 Thống kê lương tài xế "])
+tab_bc1, tab_bc2,tab_bc3,tab_bc4,tab_bc5 = st.tabs(["📊 Chuyến đi trong ngày ","📊 Chuyến theo ngày chọn ","⚠️ Cảnh báo Xe tồn đọng / Quá hạn","📊 Thống kê lương tài xế ","🏢 Đối soát Công nợ"])
 
 # ==========================================
 # KHU VỰC: DANH SÁCH CHUYẾN ĐI
@@ -330,7 +450,7 @@ with tab_bc3:
     except Exception as e:
         st.error(f"⚠️ Chi tiết lỗi truy vấn Cảnh báo: {e}")
 # ---------------------------------------------------------
-# TAB 1: BÁO CÁO TÀI CHÍNH (CÁC CHUYẾN ĐÃ HOÀN THÀNH)
+# TAB 4: BÁO CÁO TÀI CHÍNH (CÁC CHUYẾN ĐÃ HOÀN THÀNH)
 # ---------------------------------------------------------
 with tab_bc4:
     try:
@@ -454,4 +574,14 @@ with tab_bc4:
 
     except Exception as e:
         st.error(f"⚠️ Chi tiết lỗi truy vấn Báo cáo: {e}")
+##################### báo cáo thống kế công nợ khách hàng
+with tab_bc5:
+    try:
+        # Gọi hàm đã định nghĩa ở trên (nhớ lấy db từ session_state)
+        db = st.session_state['db']
+        render_tab_cong_no_khach_hang(db)
+    except Exception as e:
+            st.error(f"⚠️ Chi tiết lỗi truy vấn Báo cáo: {e}")    
+
+
 

@@ -10,6 +10,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 
 
 # Tạo thư mục lưu cấu hình đăng nhập (Cookie) ngay tại thư mục chứa code
@@ -22,7 +25,10 @@ def mo_trinh_duyet_zalo():
     """Hàm chỉ chịu trách nhiệm mở và giữ Chrome luôn bật"""
     st.info("🚀 Đang khởi động Google Chrome...")
     
+    # Gộp toàn bộ cấu hình vào bên trong hàm này
     options = webdriver.ChromeOptions()
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
     options.add_argument("--disable-notifications")
     
     # LỆNH QUAN TRỌNG: Ngăn Chrome tự động đóng khi chạy xong hàm
@@ -32,7 +38,10 @@ def mo_trinh_duyet_zalo():
     options.add_argument(f"user-data-dir={PROFILE_DIR}")
     
     try:
-        driver = webdriver.Chrome(options=options)
+        # Sử dụng Service để quản lý phiên bản ChromeDriver tự động
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
+        
         driver.get("https://chat.zalo.me")
         # Đưa driver vào session_state để dùng lại được khi bấm nút gửi
         st.session_state['zalo_driver'] = driver
