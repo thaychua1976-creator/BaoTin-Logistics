@@ -191,3 +191,108 @@ def update_bonus_config_transaction(db_pool, updated_values: dict, nguoi_dung: s
         cursor.close()
         conn.close() # Trả kết nối về Pool
 ################################
+import datetime
+import json
+import decimal
+from audit_logger import ghi_log_he_thong
+
+def thuc_hien_sao_luu_db_python(db_pool, nguoi_thuc_hien="Admin"):
+    """
+    Kết xuất toàn bộ Cấu trúc (DDL) và Dữ liệu (DML) của Database thành chuỗi SQL.
+    Đảm bảo tương thích tuyệt đối với MySQL / Aiven DB.
+    """
+    conn = None
+    cursor = None
+    try:
+        conn = db_pool.get_connection() if hasattr(db_pool, 'get_connection') else db_pool.pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # 1. Lấy danh sách tất cả các bảng trong Database
+        cursor.execute("SHOW TABLES")
+        tables_result = cursor.fetchall()
+        if not tables_result:
+            return False, "Không tìm thấy bảng nào trong cơ sở dữ liệu.", None
+            
+        tables = [list(row.values())[0] for row in tables_result]
+        
+        now_time = datetime.datetime.now()
+        now_str = now_time.strftime("%Y-%m-%d %H:%M:%S")
+        file_time_str = now_time.strftime("%Y%m%d_%H%M%S")
+        file_name = f"Backup_BaoTin_Logistics_{file_time_str}.sql"
+        
+        # Header file SQL
+        sql_lines = [
+            f"-- ==================================================",
+            f"-- BẢN SAO LƯU CƠ SỞ DỮ LIỆU - BẢO TÍN LOGISTICS",
+            f"-- Thời gian tạo: {now_str}",
+            f"-- Người thực hiện: {nguoi_thuc_hien}",
+            f"-- ==================================================\n",
+            "SET FOREIGN_KEY_CHECKS = 0;\n",
+            "SET SQL_MODE = 'NO_AUTO_VALUE_ON_ZERO';\n"
+        ]
+        
+        # 2. Duyệt qua từng bảng để trích xuất DDL và Data
+        for table in tables:
+            sql_lines.append(f"\n-- --------------------------------------------------")
+            sql_lines.append(f"-- Cấu trúc & Dữ liệu bảng: `{table}`")
+            sql_lines.append(f"-- --------------------------------------------------")
+            sql_lines.append(f"DROP TABLE IF EXISTS `{table}`;")
+            
+            # Lấy câu lệnh CREATE TABLE (DDL)
+            cursor.execute(f"SHOW CREATE TABLE `{table}`")
+            ddl_row = cursor.fetchone()
+            create_sql = list(ddl_row.values())[1]
+            sql_lines.append(f"{create_sql};\n")
+            
+            # Lấy toàn bộ Dữ liệu (DML)
+            cursor.execute(f"SELECT * FROM `{table}`")
+            rows = cursor.fetchall()
+            
+            if rows:
+                cols = list(rows[0].keys())
+                col_names = ", ".join([f"`{c}`" for c in cols])
+                
+                val_strings = []
+                for row in rows:
+                    vals = []
+                    for col in cols:
+                        v = row[col]
+                        if v is None:
+                            vals.append("NULL")
+                        elif isinstance(v, (int, float, decimal.Decimal)):
+                            vals.append(str(v))
+                        elif isinstance(v, (datetime.date, datetime.datetime)):
+                            vals.append(f"'{v.strftime('%Y-%m-%d %H:%M:%S')}'" if isinstance(v, datetime.datetime) else f"'{v.strftime('%Y-%m-%d')}'")
+                        elif isinstance(v, (dict, list)):
+                            json_str = json.dumps(v, ensure_ascii=False).replace("\\", "\\\\").replace("'", "''")
+                            vals.append(f"'{json_str}'")
+                        else:
+                            escaped_val = str(v).replace("\\", "\\\\").replace("'", "''")
+                            vals.append(f"'{escaped_val}'")
+                    val_strings.append(f"({', '.join(vals)})")
+                
+                # Ghép câu lệnh INSERT batch
+                sql_lines.append(f"INSERT INTO `{table}` ({col_names}) VALUES")
+                sql_lines.append(",\n".join(val_strings) + ";\n")
+        
+        sql_lines.append("\nSET FOREIGN_KEY_CHECKS = 1;")
+        full_sql_content = "\n".join(sql_lines)
+        
+        # 3. Ghi vết Audit Log
+        cursor_log = conn.cursor()
+        log_detail = {
+            "file_name": file_name,
+            "tong_so_bang": len(tables),
+            "dung_luong_bytes": len(full_sql_content.encode('utf-8'))
+        }
+        ghi_log_he_thong(cursor_log, "SAO_LUU_DU_LIEU", None, nguoi_thuc_hien, "TAO_BAN_SAO_LUU", json.dumps(log_detail, ensure_ascii=False))
+        conn.commit()
+        
+        return True, full_sql_content, file_name
+
+    except Exception as e:
+        if conn: conn.rollback()
+        return False, f"Lỗi trong quá trình tạo bản sao lưu: {str(e)}", None
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()

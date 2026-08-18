@@ -239,21 +239,27 @@ else:
     page_bao_cao   = st.Page("views/bao_cao.py", title="Báo cáo & Thống kê", icon="📊")
     page_nhan_vien = st.Page("views/nhan_vien.py", title="Quản lý Nhân viên", icon="🧑‍✈️")
     page_khach_hang = st.Page("views/khach_hang.py", title="Quản lý Khách hàng", icon="🧑")
+    page_to_khai_hq = st.Page("views/khai_bao_hq.py", title="Khai báo Hải Quan", icon="🧑‍✈️")
+    page_quan_ly_co = st.Page("views/quan_ly_co.py", title="Quản lý CO", icon="🧑‍✈️")
     page_doi_xe    = st.Page("views/doi_xe.py", title="Quản lý Đội xe", icon="🚛")
     page_tai_khoan = st.Page("views/tai_khoan.py", title="Quản lý Tài khoản", icon="👤")
     page_config_thuong= st.Page("views/config_thuong.py", title="Cấu hình Thưởng", icon="💰")
     page_kinh_doanh_result= st.Page("views/kinh_doanh_result.py", title="Kết quả Kinh doanh", icon="📈")
     page_app_tai_xe = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", default=True)
     page_tool_zalo= st.Page("views/tool_send_zalo.py", title="Gửi Group Zalo", icon="🚛")
+    page_tool_import_pricing= st.Page("views/import_pricing_ui_2.py", title=" Tool Import Pricing ", icon="📈")
+    page_tool_import_pricing_first= st.Page("views/import_pricing_ui_first.py", title=" Tool Import Pricing First", icon="📈")
+    page_tool_import_pricing_haiquan= st.Page("views/ui_hai_quan.py", title=" Tool Import Pricing Hải quan ", icon="📈")
     page_tool_fuel_manager= st.Page("views/fuel_manager_ui.py", title="Quản lý nhiên liệu/Hiệu suất", icon="🚛")
+    page_tool_backup_database= st.Page("views/backup_database.py", title="Backup Database", icon="🚛")
 
     # Phân quyền (RBAC) cấu trúc danh mục
     role = st.session_state.get('role', 'User')
     
     if role == 'Admin':
         pages_structure = {
-            "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di, page_bao_cao,page_tool_fuel_manager],
-            "📦 TOOL TIỆN ÍCH": [page_tool_zalo],
+            "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di, page_bao_cao,page_to_khai_hq,page_quan_ly_co,page_tool_fuel_manager],
+            "📦 TOOL TIỆN ÍCH": [page_tool_import_pricing,page_tool_import_pricing_first,page_tool_import_pricing_haiquan,page_tool_backup_database, page_tool_zalo],
             "⚙️ DANH MỤC QUẢN TRỊ": [page_nhan_vien, page_doi_xe,page_khach_hang, page_tai_khoan, page_config_thuong, page_kinh_doanh_result]
         }
     elif role == 'Tai_Xe':
@@ -262,8 +268,8 @@ else:
         }
     else:
         pages_structure = {
-            "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di, page_bao_cao,page_tool_fuel_manager],
-            "📦 TOOL TIỆN ÍCH": [page_tool_zalo]
+            "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di, page_bao_cao,page_to_khai_hq,page_quan_ly_co,page_tool_fuel_manager],
+            "📦 TOOL TIỆN ÍCH": [page_tool_import_pricing,page_tool_import_pricing_first,page_tool_import_pricing_haiquan,page_tool_backup_database, page_tool_zalo]
         }
         
     pg = st.navigation(pages_structure, position="sidebar")
