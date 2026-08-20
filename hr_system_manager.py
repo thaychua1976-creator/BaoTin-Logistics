@@ -296,3 +296,69 @@ def thuc_hien_sao_luu_db_python(db_pool, nguoi_thuc_hien="Admin"):
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+#################################
+import json
+import pandas as pd
+
+def update_phu_cap_matrix_transaction(db_pool, df_edited, current_user):
+    """
+    Cập nhật toàn bộ bảng ma trận phụ cấp từ giao diện Streamlit vào Database.
+    Tuân thủ quy tắc Transaction và ghi log.
+    """
+    conn = db_pool.get_connection()
+    try:
+        conn.autocommit = False
+        cursor = conn.cursor(dictionary=True)
+        
+        # 1. Lấy ID mapping
+        cursor.execute("SELECT id, ten_hien_thi FROM dm_tai_trong_phu_cap")
+        tt_map = {row['ten_hien_thi']: row['id'] for row in cursor.fetchall()}
+        
+        cursor.execute("SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap")
+        tc_map = {row['ten_tieu_chi']: row['id'] for row in cursor.fetchall()}
+        
+        cap_nhat_count = 0
+        
+        # 2. Quét ma trận và Upsert dữ liệu
+        for tt_name, row_data in df_edited.iterrows():
+            tt_id = tt_map.get(tt_name)
+            if not tt_id: continue
+            
+            for tc_name, val in row_data.items():
+                tc_id = tc_map.get(tc_name)
+                if not tc_id: continue
+                
+                # Dọn dẹp dữ liệu số
+                so_tien = 0.0
+                if pd.notna(val) and str(val).strip() != "":
+                    try:
+                        so_tien = float(str(val).replace(",", "").replace(" ", ""))
+                    except: pass
+                
+                # Cú pháp UPSERT an toàn của MySQL
+                sql_upsert = """
+                    INSERT INTO ma_tran_phu_cap (tai_trong_id, tieu_chi_id, so_tien)
+                    VALUES (%s, %s, %s)
+                    ON DUPLICATE KEY UPDATE so_tien = VALUES(so_tien)
+                """
+                cursor.execute(sql_upsert, (tt_id, tc_id, so_tien))
+                cap_nhat_count += 1
+                
+        # 3. Ghi vết hệ thống (Audit Log) theo chuẩn dự án
+        chi_tiet_log = json.dumps({"so_o_cap_nhat": cap_nhat_count}, ensure_ascii=False)
+        sql_log = """
+            INSERT INTO audit_logs (phan_he, nguoi_thuc_hien, hanh_dong, chi_tiet)
+            VALUES (%s, %s, %s, %s)
+        """
+        cursor.execute(sql_log, ('QUAN_LY_PHU_CAP', current_user, 'CAP_NHAT_MA_TRAN', chi_tiet_log))
+        
+        conn.commit()
+        return True, "Cập nhật thành công Bảng phụ cấp!"
+    except Exception as e:
+        conn.rollback()
+        return False, str(e)
+    finally:
+        cursor.close()
+        conn.close()
+##################
+

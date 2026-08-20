@@ -1067,3 +1067,165 @@ def create_single_phu_phi_transaction(db_pool, data_add_pp, current_user):
             cursor.close()
         if conn:
             conn.close()
+####################
+def tinh_tong_phu_cap_tu_dong(db_pool, xe_id, danh_sach_tieu_chi_id):
+    """
+    Hệ thống tự động dò ma trận để tính phụ cấp dựa trên Tải trọng xe và Tiêu chí phát sinh.
+    Trả về: (tong_tien_phu_cap, chuoi_dien_giai_de_ghi_chu)
+    """
+    if not danh_sach_tieu_chi_id:
+        return 0.0, ""
+
+    conn = db_pool.get_connection()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        
+        # 1. Lấy tải trọng thiết kế của xe
+        cursor.execute("SELECT tai_trong_thiet_ke FROM xe WHERE id = %s", (xe_id,))
+        xe_info = cursor.fetchone()
+        if not xe_info or not xe_info['tai_trong_thiet_ke']:
+            return 0.0, ""
+            
+        tai_trong_xe = float(xe_info['tai_trong_thiet_ke'])
+
+        # 2. Tìm Khung tải trọng (tai_trong_id) tương ứng trong danh mục
+        sql_tim_khung = """
+            SELECT id FROM dm_tai_trong_phu_cap 
+            WHERE tai_trong_min <= %s AND tai_trong_max >= %s
+            ORDER BY tai_trong_min DESC LIMIT 1
+        """
+        cursor.execute(sql_tim_khung, (tai_trong_xe, tai_trong_xe))
+        khung_tt = cursor.fetchone()
+        
+        if not khung_tt:
+            return 0.0, "" # Không có khung phù hợp
+            
+        tai_trong_id = khung_tt['id']
+
+        # 3. Tính tổng tiền từ Ma trận và lấy tên tiêu chí
+        format_strings = ','.join(['%s'] * len(danh_sach_tieu_chi_id))
+        sql_tinh_tien = f"""
+            SELECT mt.so_tien, tc.ten_tieu_chi 
+            FROM ma_tran_phu_cap mt
+            JOIN dm_tieu_chi_phu_cap tc ON mt.tieu_chi_id = tc.id
+            WHERE mt.tai_trong_id = %s AND mt.tieu_chi_id IN ({format_strings})
+        """
+        
+        params = [tai_trong_id] + danh_sach_tieu_chi_id
+        cursor.execute(sql_tinh_tien, tuple(params))
+        ket_qua = cursor.fetchall()
+        
+        tong_tien = 0.0
+        chi_tiet_phu_cap = []
+        
+        for row in ket_qua:
+            tong_tien += float(row['so_tien'])
+            chi_tiet_phu_cap.append(f"{row['ten_tieu_chi']} (+{float(row['so_tien']):,.0f}đ)")
+
+        chuoi_dien_giai = " | ".join(chi_tiet_phu_cap)
+        return tong_tien, chuoi_dien_giai
+
+    except Exception as e:
+        print(f"Lỗi tính phụ cấp tự động: {e}")
+        return 0.0, ""
+    finally:
+        cursor.close()
+        conn.close()
+############################
+import json
+import pandas as pd
+import re
+
+def parse_tai_trong_excel(text):
+    """Hàm AI bóc tách Tải Trọng Min/Max từ Text Excel (Ví dụ: 1<=2T, 3.5T, >15T)"""
+    text = str(text).upper().replace('T', '').replace(' ', '')
+    if '<=' in text:
+        parts = text.split('<=')
+        if len(parts) == 2:
+            min_val = float(parts[0]) if parts[0] else 0.0
+            max_val = float(parts[1]) if parts[1] else 99.0
+            return min_val, max_val
+    if '-' in text:
+        parts = text.split('-')
+        return float(parts[0]), float(parts[1])
+    
+    nums = re.findall(r'\d+\.?\d*', text)
+    if nums:
+        val = float(nums[0])
+        return val, val # Nếu chỉ ghi "3.5T" thì min = max = 3.5
+    return 0.0, 99.0
+#################################################################
+def import_excel_phu_cap_transaction(db_pool, df, current_user):
+    """Hàm Import Excel tuân thủ Transaction & Ghi Log[cite: 5]"""
+    conn = db_pool.get_connection()
+    try:
+        conn.autocommit = False
+        cursor = conn.cursor(dictionary=True)
+        
+        # --- 1. XỬ LÝ TRỤC Y: BẢNG TẢI TRỌNG ---
+        tt_map = {}
+        cursor.execute("SELECT id, ten_hien_thi FROM dm_tai_trong_phu_cap")
+        for row in cursor.fetchall(): tt_map[row['ten_hien_thi']] = row['id']
+            
+        tt_col = df.columns[0] # Cột đầu tiên luôn là Tải trọng
+        for tt_name in df[tt_col].dropna().unique():
+            if tt_name not in tt_map:
+                min_val, max_val = parse_tai_trong_excel(tt_name)
+                cursor.execute(
+                    "INSERT INTO dm_tai_trong_phu_cap (ten_hien_thi, tai_trong_min, tai_trong_max) VALUES (%s, %s, %s)",
+                    (str(tt_name).strip(), min_val, max_val)
+                )
+                tt_map[tt_name] = cursor.lastrowid
+                
+        # --- 2. XỬ LÝ TRỤC X: BẢNG TIÊU CHÍ ---
+        tc_map = {}
+        cursor.execute("SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap")
+        for row in cursor.fetchall(): tc_map[row['ten_tieu_chi']] = row['id']
+            
+        tieu_chi_cols = df.columns[1:]
+        for tc_name in tieu_chi_cols:
+            tc_clean = str(tc_name).strip()
+            if tc_clean not in tc_map:
+                cursor.execute("INSERT INTO dm_tieu_chi_phu_cap (ten_tieu_chi) VALUES (%s)", (tc_clean,))
+                tc_map[tc_clean] = cursor.lastrowid
+                
+        # --- 3. XỬ LÝ MA TRẬN & UPSERT DỮ LIỆU ---
+        so_luong_update = 0
+        for index, row in df.iterrows():
+            tt_name = row[tt_col]
+            if pd.isna(tt_name): continue
+            tt_id = tt_map.get(tt_name)
+            
+            for tc_name in tieu_chi_cols:
+                tc_clean = str(tc_name).strip()
+                tc_id = tc_map.get(tc_clean)
+                
+                val = row[tc_name]
+                so_tien = 0.0
+                if pd.notna(val) and str(val).strip() != "":
+                    try: so_tien = float(str(val).replace(",", "").replace(" ", ""))
+                    except: pass
+                    
+                # Kiểm tra tồn tại để Insert hoặc Update
+                cursor.execute("SELECT so_tien FROM ma_tran_phu_cap WHERE tai_trong_id=%s AND tieu_chi_id=%s", (tt_id, tc_id))
+                if cursor.fetchone():
+                    cursor.execute("UPDATE ma_tran_phu_cap SET so_tien=%s WHERE tai_trong_id=%s AND tieu_chi_id=%s", (so_tien, tt_id, tc_id))
+                else:
+                    cursor.execute("INSERT INTO ma_tran_phu_cap (tai_trong_id, tieu_chi_id, so_tien) VALUES (%s, %s, %s)", (tt_id, tc_id, so_tien))
+                so_luong_update += 1
+                
+        # --- 4. GHI AUDIT LOG ---
+        chi_tiet = json.dumps({"so_o_cap_nhat": so_luong_update, "nguon": "Import_Excel_2"}, ensure_ascii=False)
+        cursor.execute("""
+            INSERT INTO audit_logs (phan_he, nguoi_thuc_hien, hanh_dong, chi_tiet)
+            VALUES (%s, %s, %s, %s)
+        """, ('QUAN_LY_PHU_CAP', current_user, 'IMPORT_EXCEL_MA_TRAN', chi_tiet))
+        
+        conn.commit()
+        return True, f"✅ Đã Import thành công toàn bộ {so_luong_update} ô dữ liệu vào Ma trận Phụ cấp!"
+    except Exception as e:
+        conn.rollback()
+        return False, str(e)
+    finally:
+        cursor.close()
+        conn.close()
