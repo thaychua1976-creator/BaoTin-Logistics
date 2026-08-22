@@ -41,7 +41,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 ])
 
 # Lấy dữ liệu danh mục
-sql_xe_trong = "SELECT id, bien_so_xe, tai_trong_thiet_ke, tai_xe_co_dinh_id FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'"
+sql_xe_trong = "SELECT id, bien_so_xe,loai_xe, tai_trong_thiet_ke, tai_xe_co_dinh_id FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'"
 df_xe_full = db.execute_query(sql_xe_trong)
 xe_map = {int(r['id']): r for _, r in df_xe_full.iterrows()} if isinstance(df_xe_full, pd.DataFrame) and not df_xe_full.empty else {}
 
@@ -337,7 +337,7 @@ with tab2:
             if kieu_nghiep_vu == "Nghiệp vụ Xe Tải":
                 col_hl1, col_hl2 = st.columns(2)
                 khoi_luong = col_hl1.number_input("📦 Khối lượng (KG)*", min_value=0.0, value=float(trip_data.get('khoi_luong_kg') or 0.0), step=1.0, key=kg_key)
-                so_cbm = col_hl2.number_input("🧊 Thể tích (CBM)", min_value=0.0, value=float(trip_data.get('the_tich_cbm') or 1.0), step=0.1, key=cbm_key)
+                so_cbm = col_hl2.number_input("🧊 Thể tích (CBM)", min_value=0.0, value=float(trip_data.get('the_tich_cbm') or 0.0), step=0.1, key=cbm_key)
             else:
                 c_c1, c_c2 = st.columns(2)
                 so_cont_input = c_c1.text_input("🔢 Số Container", value=so_cont_val, key=f"so_cont_{trip_suffix}")
@@ -345,10 +345,13 @@ with tab2:
                 
                 c_c3, c_c4, c_c5 = st.columns(3)
                 loai_cont_opts = ["20DC", "40DC", "40HC", "45HC", "20RF (Lạnh)", "40RF (Lạnh)", "Khác"]
-                loai_cont_input = c_c3.selectbox("🧊 Loại Cont", options=loai_cont_opts, index=get_idx(loai_cont_opts, loai_cont_val), key=f"loai_cont_{trip_suffix}")
+                loai_cont_input = c_c3.selectbox("🧊 Loại Cont", options=loai_cont_opts,  key=f"loai_cont_{trip_suffix}",index= None)
+                #loai_cont_input = c_c3.selectbox("🧊 Loại Cont", options=loai_cont_opts, index=get_idx(loai_cont_opts, loai_cont_val), key=f"loai_cont_{trip_suffix}")
                 
                 chieu_opts = ["Nhập", "Xuất", "Nội Địa", "Chạy Rỗng"]
-                chieu_cont_input = c_c4.selectbox("🔄 Chiều Hàng", options=chieu_opts, index=get_idx(chieu_opts, chieu_cont_val), key=f"chieu_cont_{trip_suffix}")
+                chieu_cont_input = c_c4.selectbox("🔄 Chiều Hàng", options=chieu_opts, key=f"chieu_cont_{trip_suffix}", index= None)
+                #chieu_cont_input = c_c4.selectbox("🔄 Chiều Hàng", options=chieu_opts, index=get_idx(chieu_opts, chieu_cont_val), key=f"chieu_cont_{trip_suffix}")
+                
                 
                 khoi_luong = c_c5.number_input("⚖️ Trọng lượng hàng (KG)*", min_value=0.0, value=float(trip_data.get('khoi_luong_kg') or 0.0), step=1.0, key=kg_key)
                 so_cbm = 0.0 # Container không chú trọng CBM khi điều xe
@@ -381,13 +384,14 @@ with tab2:
                                 st.warning("⚠️ Vui lòng nhập Khối lượng (KG) lớn hơn 0 để phần mềm tìm xe.")
                             else:
                                 sql_xe_ranh = """
-                                    SELECT x.id, x.tai_xe_co_dinh_id, x.tai_trong_thiet_ke, x.dung_tich_cbm,
+                                    SELECT x.id, x.tai_xe_co_dinh_id, x.tai_trong_thiet_ke, x.dung_tich_cbm, x.loai_xe,
                                            COALESCE(SUM(cd.khoi_luong_kg), 0) as da_cho_kg,
                                            COALESCE(SUM(cd.the_tich_cbm), 0) as da_cho_cbm
                                     FROM xe x 
                                     LEFT JOIN chuyen_di cd ON x.id = cd.xe_id AND cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di')
-                                    WHERE x.trang_thai = 'Dang_Hoat_Dong'
-                                    GROUP BY x.id, x.tai_xe_co_dinh_id, x.tai_trong_thiet_ke, x.dung_tich_cbm
+                                    WHERE x.trang_thai = 'Dang_Hoat_Dong' 
+                                    AND (LOWER(x.loai_xe) LIKE '%tai%' OR LOWER(x.loai_xe) LIKE '%tải%')
+                                    GROUP BY x.id, x.tai_xe_co_dinh_id, x.tai_trong_thiet_ke, x.dung_tich_cbm, x.loai_xe
                                     ORDER BY x.tai_trong_thiet_ke ASC, x.dung_tich_cbm ASC
                                 """
                                 df_xe_ranh = db.execute_query(sql_xe_ranh)
@@ -427,7 +431,22 @@ with tab2:
                         # LOGIC LỌC: Nếu không tick "Ghép chuyến" -> Ẩn xe đang bận (Trừ khi xe đó là xe đang được sửa)
                         if not is_ghep_chuyen and is_busy and int(k) != trip_data.get('xe_id'):
                             continue
-
+                        # LOGIC LỌC 2: Phân luồng xe theo loại nghiệp vụ
+                        loai_xe_db = str(v.get('loai_xe', '')).lower()
+                        
+                        if kieu_nghiep_vu == "Nghiệp vụ Xe Tải":
+                            # Chỉ lấy xe tải (Bắt buộc chứa chữ 'tải' hoặc 'tai')
+                            if 'tải' not in loai_xe_db and 'tai' not in loai_xe_db:
+                                continue
+                        else:
+                            # Nghiệp vụ Container: Lấy các xe CÒN LẠI (Đầu kéo/Cont)
+                            # LOẠI BỎ: Xe tải, Xe du lịch, Xe 4 chỗ, Xe 7 chỗ
+                            if ('tải' in loai_xe_db or 'tai' in loai_xe_db or 
+                                '4 chỗ' in loai_xe_db or '7 chỗ' in loai_xe_db or 
+                                '4 cho' in loai_xe_db or '7 cho' in loai_xe_db or 
+                                'du lịch' in loai_xe_db or 'du lich' in loai_xe_db):
+                                continue        
+                                
                         tx_id_raw = v.get('tai_xe_co_dinh_id')
                         ten_tx = "Chưa gán TX"
                         if pd.notna(tx_id_raw) and int(float(tx_id_raw)) in tx_opts:
@@ -1052,7 +1071,7 @@ with tab3:
                 cd.trang_thai_chuyen, cd.doanh_thu, cd.dia_diem_giao_nhan,
                 cd.cong_chuyen, cd.tien_them,
                 cd.phi_hai_quan, cd.phi_boc_xep, cd.phi_khac, cd.ghi_chu_quyet_toan,
-                cd.is_gop_chuyen, cd.stt_chuyen_ghep, cd.is_ve_khuya, cd.khoi_luong_kg, cd.the_tich_cbm,
+                cd.is_gop_chuyen, cd.stt_chuyen_ghep, cd.is_ve_khuya, cd.khoi_luong_kg, cd.the_tich_cbm,cd.is_hang_tra_ve,
                 cd.is_thue_ngoai, cd.chi_phi_thue_ngoai, cd.hinh_thuc_thanh_toan_ngoai
             FROM chuyen_di cd
             LEFT JOIN xe x ON cd.xe_id = x.id
@@ -1094,12 +1113,17 @@ with tab3:
             # 📦 THÊM GIAO DIỆN CHỌN THUỘC TÍNH HÀNG HÓA & CONTAINER
             # ========================================================
             st.markdown("##### 📦 Khai báo Tính chất Hàng hóa & Container")
-            col_hh1, col_hh2, col_hh3 = st.columns(3)
+            # 🚀 CHỈNH SỬA: Tăng lên 4 cột và kéo Checkbox "Hàng về" ra khỏi Form để load giá Real-time
+            col_hh1, col_hh2, col_hh3, col_hh4 = st.columns(4)
             loai_hang_ui = col_hh1.selectbox("Tính chất hàng", options=["Thường", "Nguy hiểm"], key=f"lh_{cd_id}")
             loai_cont_ui = col_hh2.selectbox("Loại Container", options=["Thường", "Lạnh (RF)"], key=f"lc_{cd_id}")
             chieu_cont_ui = col_hh3.selectbox("Chiều Cont", options=["Không phân biệt", "Nhập", "Xuất"], key=f"chieu_{cd_id}")
+            
+            is_hang_ve_db_val = bool(row_sel.get('is_hang_tra_ve', 0))
+            is_hang_ve_ui = col_hh4.checkbox("🔄 Chở hàng về (Lấy giá 2 chiều)", value=is_hang_ve_db_val, key=f"is_ve_{cd_id}")
 
-            dt_state_key = f"cached_dt_{cd_id}_{loai_hang_ui}_{loai_cont_ui}"
+            # Đính kèm biến is_hang_ve_ui vào key để AI biết mà load lại giá khi check/uncheck
+            dt_state_key = f"cached_dt_{cd_id}_{loai_hang_ui}_{loai_cont_ui}_{is_hang_ve_ui}"
             
             if dt_state_key not in st.session_state:
                 doanh_thu_db = float(row_sel.get('doanh_thu', 0) or 0.0)
@@ -1114,13 +1138,22 @@ with tab3:
                         ddi = parts[0].strip()
                         dden = parts[1].strip()
                         
+                        # 🚀 NÂNG CẤP SQL: TÌM GIÁ KẾT HỢP BIẾN HÀNG VỀ & LOGIC ĐẢO CHIỀU
+                        flag_hang_ve = 1 if is_hang_ve_ui else 0
+                        
                         sql_rc = """
                             SELECT id, don_gia_cuoc,gia_chuyen_tiep_noi, phan_loai_phuong_tien, loai_xe_quy_cach 
                             FROM rate_cards 
-                            WHERE khach_hang_id = %s AND diem_di LIKE %s AND diem_den LIKE %s 
+                            WHERE khach_hang_id = %s AND diem_di LIKE %s AND diem_den LIKE %s AND is_hang_tra_ve = %s
                             ORDER BY id DESC
                         """
-                        df_rc = db.execute_query(sql_rc, (kh_id_qt, f"%{ddi}%", f"%{dden}%"))
+                        df_rc = db.execute_query(sql_rc, (kh_id_qt, f"%{ddi}%", f"%{dden}%", flag_hang_ve))
+                        
+                        # 💡 BỘ LỌC DỰ PHÒNG (FALLBACK): 
+                        # Nếu là chuyến bình thường (flag_hang_ve = 0) mà lại không tìm thấy giá gốc.
+                        # -> Đảo ngược Điểm Đến & Điểm Đi để lấy 100% giá chiều đi (VD: Cát Lái -> Cty sẽ lấy giá của Cty -> Cát Lái)
+                        if flag_hang_ve == 0 and (not isinstance(df_rc, pd.DataFrame) or df_rc.empty):
+                            df_rc = db.execute_query(sql_rc, (kh_id_qt, f"%{dden}%", f"%{ddi}%", 0))
                         
                         if isinstance(df_rc, pd.DataFrame) and not df_rc.empty:
                             matched_price = 0.0
@@ -1276,7 +1309,7 @@ with tab3:
                 f_boc = c_f6.checkbox("📦 Có bốc xếp")
                 f_overload_cont = c_f7.checkbox("🛂 Quá tải container")
 
-                # GIAO DIỆN MỚI CHO CÁC NGHIỆP VỤ CAO CẤP
+                # GIAO DIỆN MỚI CHO CÁC NGHIỆP VỤ CAO CẤP (Đã bỏ checkbox hàng về)
                 c_f8, c_f9, c_f10, c_f11,c_f12 = st.columns(5)
                 f_seal = c_f8.checkbox("🔒 Lấy Seal/Cont sớm 1 ngày")
                 f_khac_khu = c_f9.checkbox("🏢 Giao khác khu nội bộ")
@@ -1291,12 +1324,48 @@ with tab3:
                 selected_tc_ids = []
                 if not is_thue_ngoai:
                     st.markdown("##### 🎁 3. Khai báo Phụ cấp Tài xế (Theo ma trận tải trọng)")
+                    
+                    # 🚀 LẤY KHOẢNG CÁCH TỪ BẢNG GIÁ ĐỂ TỰ ĐỘNG CHỌN TIÊU CHÍ PHỤ CẤP
+                    kc_auto = 0.0
+                    auto_tc_ids = []
+                    try:
+                        if "➡️" in str(row_sel.get('dia_diem_giao_nhan', '')) and kh_id_qt:
+                            parts = str(row_sel['dia_diem_giao_nhan']).split("➡️")
+                            df_kc = db.execute_query("SELECT khoang_cach FROM rate_cards WHERE khach_hang_id=%s AND diem_di LIKE %s AND diem_den LIKE %s LIMIT 1", (kh_id_qt, f"%{parts[0].strip()}%", f"%{parts[1].strip()}%"))
+                            if isinstance(df_kc, pd.DataFrame) and not df_kc.empty:
+                                kc_auto = float(df_kc.iloc[0]['khoang_cach'] or 0.0)
+                                
+                            if kc_auto > 0:
+                                # 🚀 Tự động map ID tiêu chí phụ cấp dựa trên Cự ly (km_min, km_max) VÀ Tính chất Hàng về
+                                sql_find_tc = "SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap WHERE %s >= km_min AND %s <= km_max"
+                                df_find_tc = db.execute_query(sql_find_tc, (kc_auto, kc_auto))
+                                if isinstance(df_find_tc, pd.DataFrame) and not df_find_tc.empty:
+                                    for _, r_tc in df_find_tc.iterrows():
+                                        tc_id = int(r_tc['id'])
+                                        ten_tc = str(r_tc['ten_tieu_chi']).lower()
+                                        
+                                        # Phân tích xem tên tiêu chí có yêu cầu "hàng về" hay không
+                                        is_tieu_chi_hang_ve = any(kw in ten_tc for kw in ["hàng về", "hang ve", "2 chiều", "2 chieu", "hai chiều", "hai chieu", "nhận về", "nhan ve"])
+                                        
+                                        # THUẬT TOÁN ĐÃ ĐƯỢC SỬA LẠI:
+                                        if is_tieu_chi_hang_ve:
+                                            # Tiêu chí này YÊU CẦU có hàng về. Chỉ tự động tick nếu ô "Có chở hàng về" được check
+                                            if is_hang_ve_ui:
+                                                auto_tc_ids.append(tc_id)
+                                        else:
+                                            # Tiêu chí KHÔNG yêu cầu hàng về (Tiêu chí cự ly bình thường).
+                                            # Luôn tự động tick nếu thỏa mãn số Km.
+                                            auto_tc_ids.append(tc_id)
+                    except Exception: pass
+
                     df_tc = db.execute_query("SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap")
                     if isinstance(df_tc, pd.DataFrame) and not df_tc.empty:
                         tc_cols = st.columns(2)
                         for i, r_tc in df_tc.iterrows():
-                            if tc_cols[i % 2].checkbox(r_tc['ten_tieu_chi'], key=f"tc_{cd_id}_{r_tc['id']}"):
-                                selected_tc_ids.append(int(r_tc['id']))
+                            tc_id = int(r_tc['id'])
+                            is_checked = tc_id in auto_tc_ids # Tự động tick nếu khớp cự ly
+                            if tc_cols[i % 2].checkbox(r_tc['ten_tieu_chi'].upper(), value=is_checked, key=f"tc_{cd_id}_{tc_id}"):
+                                selected_tc_ids.append(tc_id)
                     st.divider()
 
                 st.markdown("##### 🧾 4. Quyết toán Phí thủ công & Ghi chú")
@@ -1362,6 +1431,7 @@ with tab3:
                             'is_cont_rong_trai_tuyen': (f_cont_rong == "Trái tuyến (Lấy/Hạ)"),
                             'loai_cont_rong_text': f_cont_rong,
                             'is_lam_hang_cang': f_lam_hang_cang,
+                            'is_hang_tra_ve': is_hang_ve_ui,
                             'is_chu_nhat': is_chu_nhat
                         }
                         
@@ -1400,14 +1470,16 @@ with tab3:
                                 qc_moi = f"{tt_xe_tan}T"
                                 
                                 sql_insert_rc = """
-                                    INSERT INTO rate_cards (khach_hang_id, diem_di, diem_den, phan_loai_phuong_tien, loai_xe_quy_cach, don_gia_cuoc, gia_chuyen_tiep_noi) 
-                                    VALUES (%s, %s, %s, %s, %s, %s, 0)
+                                    INSERT INTO rate_cards (khach_hang_id, diem_di, diem_den, phan_loai_phuong_tien, loai_xe_quy_cach, don_gia_cuoc, gia_chuyen_tiep_noi, is_hang_tra_ve) 
+                                    VALUES (%s, %s, %s, %s, %s, %s, 0, %s)
                                 """
                                 try:
-                                    db.execute_non_query(sql_insert_rc, (kh_id_qt, ddi_save, dden_save, 'Hang_Le', qc_moi, doanh_thu_val))
+                                    flag_luu_db = 1 if is_hang_ve_ui else 0
+                                    db.execute_non_query(sql_insert_rc, (kh_id_qt, ddi_save, dden_save, 'Hang_Le', qc_moi, doanh_thu_val, flag_luu_db))
                                     st.toast(f"✅ Đã tự động thêm lộ trình mới cho mức tải {qc_moi} vào Bảng giá!")
                                 except Exception as e:
-                                    st.error(f"Lỗi khi lưu Bảng giá: {e}")    
+                                    st.error(f"Lỗi khi lưu Bảng giá: {e}")
+                                        
                             trang_thai_luu = 'Hoan_Thanh' if submit_chot else row_sel['trang_thai_chuyen']
                             is_ok, msg = settle_trip_transaction(db.pool, data_dict_thu_cong, trang_thai_luu, cd_id)
                             if is_ok:
@@ -1832,6 +1904,7 @@ with tab5:
                                                     "Khách Hàng": khach_hang_ten,
                                                     "Địa Chỉ Khách Hàng": dia_chi_kh,
                                                     "Biển Số Xe": xe_phu_hop['bien_so_xe'],
+                                                    "Tải Trọng Đã Book (KG)": req_kg,
                                                     "Tài Xế Phụ Trách": xe_phu_hop['ten_tai_xe'], 
                                                     "Số Điện Thoại Tài Xế": xe_phu_hop['sdt_tai_xe'] if pd.notna(xe_phu_hop['sdt_tai_xe']) else "Chưa cập nhật",
                                                     "CCCD Tài Xế": xe_phu_hop['cccd_tai_xe'] if pd.notna(xe_phu_hop['cccd_tai_xe']) else "Chưa cập nhật",
@@ -1863,6 +1936,7 @@ with tab5:
                     f"- Khách hàng: {row['Khách Hàng']}\n"
                     f"- Địa chỉ KH: {row['Địa Chỉ Khách Hàng']}\n"
                     f"- Biển số xe: {row['Biển Số Xe']}\n"
+                    f"- Tải trọng: {float(row['Tải Trọng Đã Book (KG)']):,.0f} KG\n" # <-- BỔ SUNG VÀO LỆNH ZALO
                     f"- Tài xế: {row['Tài Xế Phụ Trách']} (SĐT: {row['Số Điện Thoại Tài Xế']})\n"
                     f"- CCCD Tài xế: {row['CCCD Tài Xế']}\n"
                     f"- Lộ trình: {row['Lộ Trình']}\n"
@@ -1925,6 +1999,7 @@ with tab5:
                 "LAY_SEAL_SOM": 0,
                 "GIAO_KHAC_KHU": 0,
                 "CONT_RONG": "Không",
+                "IS_HANG_VE": 0, # <--- CỘT BỔ SUNG
                 "DS_PHU_CAP_TAI_XE": "1, 3 (Hoặc gõ chữ: Bốc xếp, Về khuya)", # Cột tên mới
                 "GHI_CHU": "Chốt cuối tháng"
             }])
@@ -2025,20 +2100,35 @@ with tab5:
                                     if doanh_thu_chuyen == 0: doanh_thu_chuyen = doanh_thu_db
                                         
                                     # ĐỐI CHIẾU RATE CARDS
-                                    if doanh_thu_chuyen == 0 and "➡️" in lo_trinh_hien_tai and kh_id:
+                                    matched_khoang_cach = 0.0
+                                    
+                                    # 🚀 LẤY BIẾN is_hang_ve_excel TỪ SỚM ĐỂ PHỤC VỤ TÌM BẢNG GIÁ
+                                    is_hang_ve_excel = parse_excel_bool(r.get('IS_HANG_VE'))
+                                    
+                                    # Loại bỏ điều kiện doanh_thu_chuyen == 0 để luôn vào đây lấy khoang_cach
+                                    if "➡️" in lo_trinh_hien_tai and kh_id:
                                         try:
                                             parts = lo_trinh_hien_tai.split("➡️")
                                             ddi = parts[0].strip()
                                             dden = parts[1].strip()
                                             
+                                            # 🚀 NÂNG CẤP SQL: TÌM GIÁ KẾT HỢP BIẾN HÀNG VỀ & LOGIC ĐẢO CHIỀU
+                                            flag_hang_ve = 1 if is_hang_ve_excel else 0
+                                            
                                             sql_rc = """
-                                                SELECT id, don_gia_cuoc, phan_loai_phuong_tien, loai_xe_quy_cach 
+                                                SELECT id, don_gia_cuoc, phan_loai_phuong_tien, loai_xe_quy_cach, khoang_cach 
                                                 FROM rate_cards 
-                                                WHERE khach_hang_id = %s AND diem_di LIKE %s AND diem_den LIKE %s 
+                                                WHERE khach_hang_id = %s AND diem_di LIKE %s AND diem_den LIKE %s AND is_hang_tra_ve = %s
                                                 ORDER BY id DESC
                                             """
-                                            df_rc = db.execute_query(sql_rc, (kh_id, f"%{ddi}%", f"%{dden}%"))
+                                            df_rc = db.execute_query(sql_rc, (kh_id, f"%{ddi}%", f"%{dden}%", flag_hang_ve))
                                             
+                                            # 💡 BỘ LỌC DỰ PHÒNG (FALLBACK): 
+                                            # Nếu là chuyến bình thường (flag_hang_ve = 0) mà lại không tìm thấy giá gốc.
+                                            # -> Đảo ngược Điểm Đến & Điểm Đi để lấy 100% giá chiều đi
+                                            if flag_hang_ve == 0 and (not isinstance(df_rc, pd.DataFrame) or df_rc.empty):
+                                                df_rc = db.execute_query(sql_rc, (kh_id, f"%{dden}%", f"%{ddi}%", 0))
+
                                             if isinstance(df_rc, pd.DataFrame) and not df_rc.empty:
                                                 matched_price = 0.0
                                                 
@@ -2080,9 +2170,10 @@ with tab5:
 
                                                         if is_weight_match and is_prop_match:
                                                             matched_price = float(rc['don_gia_cuoc'])
+                                                            matched_khoang_cach = float(rc.get('khoang_cach', 0.0) or 0.0)
                                                             break
                                                 
-                                                if matched_price > 0:
+                                                if matched_price > 0  and doanh_thu_chuyen == 0:
                                                     doanh_thu_chuyen = matched_price
                                         except Exception as ex: pass
                                     
@@ -2100,7 +2191,8 @@ with tab5:
                                     chieu_cont_excel = str(r.get('CHIEU_CONT', '')).strip().lower()
                                     chieu_val = 'nhap' if 'nhập' in chieu_cont_excel or 'nhap' in chieu_cont_excel else ('xuat' if 'xuất' in chieu_cont_excel or 'xuat' in chieu_cont_excel else '')
                                     cont_rong_excel = str(r.get('CONT_RONG', 'Không')).strip()
-                                    
+                                    # Lấy thông tin có chở hàng về không từ Excel
+                                    is_hang_ve_excel = parse_excel_bool(r.get('IS_HANG_VE'))
                                     # 💡 BỔ SUNG CỘT "SO_NGAY_NEO_XE_NHA_MAY" VÀO FACTS
                                     facts = {
                                         'so_km_phat_sinh': parse_excel_money(r.get('SO_KM_PHAT_SINH')),
@@ -2119,6 +2211,7 @@ with tab5:
                                         'is_cont_rong': (cont_rong_excel.lower() not in ['không', 'khong', '0', 'nan', '']),
                                         'is_cont_rong_trai_tuyen': ('trái tuyến' in cont_rong_excel.lower() or 'trai tuyen' in cont_rong_excel.lower()),
                                         'loai_cont_rong_text': cont_rong_excel,
+                                        'is_hang_tra_ve': is_hang_ve_excel,
                                         'is_chu_nhat': is_chu_nhat
                                     }
                                     
@@ -2148,7 +2241,53 @@ with tab5:
                                                     if not k_name.isdigit() and item_lower in k_name:
                                                         selected_tc_ids_excel.append(v_id)
                                                         break
-                                        selected_tc_ids_excel = list(set(selected_tc_ids_excel)) # Lọc trùng lặp
+                                    # 🚀 TỰ ĐỘNG MÓC NỐI PHỤ CẤP DỰA TRÊN KHOẢNG CÁCH, HÀNG VỀ VÀ ĐỊA DANH
+                                    if matched_khoang_cach > 0:
+                                        try:
+                                            sql_find_tc = "SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap WHERE %s >= km_min AND %s <= km_max"
+                                            df_find_tc = db.execute_query(sql_find_tc, (matched_khoang_cach, matched_khoang_cach))
+                                            
+                                            if isinstance(df_find_tc, pd.DataFrame) and not df_find_tc.empty:
+                                                lo_trinh_lower = lo_trinh_hien_tai.lower()
+                                                
+                                                # 🛡️ MẢNG TỪ KHÓA ĐỊA DANH ĐẶC THÙ (Đã thêm DakLak)
+                                                ds_dia_danh = ["nhơn trạch", "cát lái", "cái mép", "hiệp phước", "vict", "sóng thần", "mỹ phước", "ngoại quan", "phú hữu", "bến lức", "đức hòa", "củ chi", "daklak", "đắk lắk"]
+                                                
+                                                for _, r_tc in df_find_tc.iterrows():
+                                                    tc_id = int(r_tc['id'])
+                                                    ten_tc = str(r_tc['ten_tieu_chi']).lower()
+                                                    
+                                                    # 1. BỘ LỌC ĐỊA DANH: Chống map nhầm tuyến
+                                                    is_sai_tuyen = False
+                                                    for dd in ds_dia_danh:
+                                                        if (dd in ten_tc) and (dd not in lo_trinh_lower):
+                                                            is_sai_tuyen = True
+                                                            break
+                                                    
+                                                    if is_sai_tuyen: 
+                                                        continue # Tên tiêu chí ghim địa danh nhưng thực tế không đi qua -> BỎ QUA NGAY
+                                                    
+                                                    # 2. 🧠 BỘ LỌC TÍNH CHẤT HÀNG VỀ (NÂNG CẤP XỬ LÝ NGÔN NGỮ)
+                                                    # A. Từ khóa PHỦ ĐỊNH (Không hàng về, 1 chiều)
+                                                    phu_dinh_kws = ["không nhận hàng về", "khong nhan hang ve", "không có hàng về", "khong co hang ve", "không hàng về", "khong hang ve", "1 chiều", "1 chieu", "một chiều", "mot chieu", "giao đi", "giao di"]
+                                                    is_tieu_chi_khong_hang_ve = any(kw in ten_tc for kw in phu_dinh_kws)
+                                                    
+                                                    # B. Từ khóa KHẲNG ĐỊNH (Có hàng về). LƯU Ý: Phải loại trừ trường hợp bị trùng chữ ở câu phủ định!
+                                                    khang_dinh_kws = ["hàng về", "hang ve", "2 chiều", "2 chieu", "hai chiều", "hai chieu", "nhận về", "nhan ve"]
+                                                    is_tieu_chi_hang_ve = any(kw in ten_tc for kw in khang_dinh_kws) and not is_tieu_chi_khong_hang_ve
+                                                    
+                                                    # 3. THUẬT TOÁN ĐỐI CHIẾU CHUNG CUỘC
+                                                    if is_hang_ve_excel: 
+                                                        # TRƯỜNG HỢP: Chuyến đi CÓ HÀNG VỀ (Bắt các tiêu chí khẳng định có hàng về, hoặc tiêu chí cự ly chung chung)
+                                                        if is_tieu_chi_hang_ve or (not is_tieu_chi_hang_ve and not is_tieu_chi_khong_hang_ve):
+                                                            selected_tc_ids_excel.append(tc_id)
+                                                    else: 
+                                                        # TRƯỜNG HỢP: Chuyến đi KHÔNG HÀNG VỀ (Bắt các tiêu chí phủ định không hàng về, hoặc tiêu chí cự ly chung chung)
+                                                        if is_tieu_chi_khong_hang_ve or (not is_tieu_chi_hang_ve and not is_tieu_chi_khong_hang_ve):
+                                                            selected_tc_ids_excel.append(tc_id)
+                                        except: pass
+                                        
+                                    selected_tc_ids_excel = list(set(selected_tc_ids_excel)) # Lọc trùng lặp
 
                                     tien_phu_cap_tx, chuoi_phu_cap_tx = tinh_phu_cap_tai_xe(db, row_db.get('xe_id'), selected_tc_ids_excel)
                                     tien_them_final = float(row_db.get('tien_them', 0.0) or 0.0) + tien_phu_cap_tx

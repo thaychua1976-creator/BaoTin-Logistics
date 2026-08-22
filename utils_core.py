@@ -233,8 +233,8 @@ def import_bang_gia_transaction(db_pool, df_rates, df_surcharges, current_user):
                 INSERT INTO rate_cards (
                     khach_hang_id, ten_bang_gia, diem_di, diem_den, 
                     phan_loai_phuong_tien, loai_xe_quy_cach, gioi_han_kg, 
-                    gioi_han_cbm, is_hang_tra_ve, don_gia_cuoc,gia_chuyen_tiep_noi, ghi_chu
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)
+                    gioi_han_cbm, is_hang_tra_ve, don_gia_cuoc,gia_chuyen_tiep_noi,khoang_cach, ghi_chu
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s,%s)
             """
             for _, row in df_rates.iterrows():
                 kh_input = row.get('KHACH_HANG')
@@ -245,6 +245,7 @@ def import_bang_gia_transaction(db_pool, df_rates, df_surcharges, current_user):
                     ten_bang_gia = str(row.get('TEN_BANG_GIA', '')).strip()
                     diem_di = str(row.get('DIEM_DI', '')).strip().upper()
                     diem_den = str(row.get('DIEM_DEN', '')).strip().upper()
+                    khoang_cach= clean_limit_number(row.get('KHOANG_CACH', 0))
                     phan_loai = str(row.get('PHAN_LOAI_PHUONG_TIEN', '')).strip()
                     loai_xe = str(row.get('LOAI_XE_QUY_CACH', '')).strip()
                     gh_kg = clean_limit_number(row.get('GIOI_HAN_KG', 0))
@@ -290,7 +291,7 @@ def import_bang_gia_transaction(db_pool, df_rates, df_surcharges, current_user):
                         val_di = (
                             kh_id, ten_bang_gia, diem_di, diem_den, 
                             phan_loai, loai_xe, gh_kg, gh_cbm, 
-                            0, don_gia_di, gia_tiep_noi_val, ghi_chu_val if ghi_chu_val else None
+                            0, don_gia_di, gia_tiep_noi_val,khoang_cach, ghi_chu_val if ghi_chu_val else None
                         )
                         cursor.execute(sql_insert_rate, val_di)
                         if cursor.rowcount > 0:
@@ -484,6 +485,7 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                 # SỬA LỖI Ở ĐÂY: Lấy điểm đi/đến và kiểm tra chặt chẽ
                 diem_di = str(row.get('DIEM_DI') if pd.notna(row.get('DIEM_DI')) else row.get('DIA_CHI_KHO_DI', '')).strip().upper()
                 diem_den = str(row.get('DIEM_DEN') if pd.notna(row.get('DIEM_DEN')) else row.get('DIA_CHI_KHO_DEN', '')).strip().upper()
+                khoang_cach= clean_limit_number(row.get('KHOANG_CACH', 0))
 
                 # CHỐT CHẶN BẢO MẬT: Bắt buộc phải có Lộ trình mới tính là Bảng giá hợp lệ
                 if not diem_di or not diem_den or diem_di == 'NAN' or diem_den == 'NAN':
@@ -530,19 +532,19 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                         UPDATE rate_cards
                         SET khach_hang_id=%s, ten_bang_gia=%s, diem_di=%s, diem_den=%s,
                             phan_loai_phuong_tien=%s, loai_xe_quy_cach=%s, gioi_han_kg=%s, gioi_han_cbm=%s,
-                            is_hang_tra_ve=%s, don_gia_cuoc=%s, gia_chuyen_tiep_noi=%s, ghi_chu=%s
+                            is_hang_tra_ve=%s, don_gia_cuoc=%s, gia_chuyen_tiep_noi=%s,khoang_cach=%s, ghi_chu=%s
                         WHERE id=%s
                     """
-                    cursor.execute(sql_update, (kh_id, ten_bg, diem_di, diem_den, phan_loai, quy_cach, gh_kg, gh_cbm, is_tra_ve, don_gia_di, gia_tiep_noi_val, ghi_chu, bg_id))
+                    cursor.execute(sql_update, (kh_id, ten_bg, diem_di, diem_den, phan_loai, quy_cach, gh_kg, gh_cbm, is_tra_ve, don_gia_di, gia_tiep_noi_val, khoang_cach,ghi_chu, bg_id))
                     if cursor.rowcount > 0: rates_updated += 1 
                 else:
                     # INSERT
                     if don_gia_di > 0:
                         sql_insert = """
-                            INSERT INTO rate_cards (khach_hang_id, ten_bang_gia, diem_di, diem_den, phan_loai_phuong_tien, loai_xe_quy_cach, gioi_han_kg, gioi_han_cbm, is_hang_tra_ve, don_gia_cuoc, gia_chuyen_tiep_noi, ghi_chu) 
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            INSERT INTO rate_cards (khach_hang_id, ten_bang_gia, diem_di, diem_den, phan_loai_phuong_tien, loai_xe_quy_cach, gioi_han_kg, gioi_han_cbm, is_hang_tra_ve, don_gia_cuoc, gia_chuyen_tiep_noi,khoang_cach,ghi_chu) 
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)
                         """
-                        cursor.execute(sql_insert, (kh_id, ten_bg, diem_di, diem_den, phan_loai, quy_cach, gh_kg, gh_cbm, is_tra_ve, don_gia_di, gia_tiep_noi_val, ghi_chu))
+                        cursor.execute(sql_insert, (kh_id, ten_bg, diem_di, diem_den, phan_loai, quy_cach, gh_kg, gh_cbm, is_tra_ve, don_gia_di, gia_tiep_noi_val,khoang_cach,ghi_chu))
                         if cursor.rowcount > 0: rates_inserted += 1
                             
                 # TÁCH DÒNG CHIỀU VỀ
@@ -577,10 +579,10 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                         if cursor.rowcount > 0: rates_updated += 1
                     else:
                         sql_ins_ve = """
-                            INSERT INTO rate_cards (khach_hang_id, ten_bang_gia, diem_di, diem_den, phan_loai_phuong_tien, loai_xe_quy_cach, gioi_han_kg, gioi_han_cbm, is_hang_tra_ve, don_gia_cuoc, gia_chuyen_tiep_noi, ghi_chu) 
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            INSERT INTO rate_cards (khach_hang_id, ten_bang_gia, diem_di, diem_den, phan_loai_phuong_tien, loai_xe_quy_cach, gioi_han_kg, gioi_han_cbm, is_hang_tra_ve, don_gia_cuoc, gia_chuyen_tiep_noi,khoang_cach, ghi_chu) 
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)
                         """
-                        cursor.execute(sql_ins_ve, (kh_id, ten_bg, diem_den, diem_di, phan_loai, quy_cach, gh_kg, gh_cbm, 1, gia_chieu_ve, 0.0, ghi_chu))
+                        cursor.execute(sql_ins_ve, (kh_id, ten_bg, diem_den, diem_di, phan_loai, quy_cach, gh_kg, gh_cbm, 1, gia_chieu_ve, 0.0,khoang_cach, ghi_chu))
                         if cursor.rowcount > 0: rates_inserted += 1
 
         # ==========================================
@@ -801,7 +803,7 @@ def update_single_rate_card_transaction(db_pool, rate_id, data_dict, current_use
             SET ten_bang_gia = %s, diem_di = %s, diem_den = %s, 
                 phan_loai_phuong_tien = %s, loai_xe_quy_cach = %s, 
                 gioi_han_kg = %s, gioi_han_cbm = %s, is_hang_tra_ve = %s, 
-                don_gia_cuoc = %s, gia_chuyen_tiep_noi = %s, ghi_chu = %s
+                don_gia_cuoc = %s, gia_chuyen_tiep_noi = %s,khoang_cach=%s, ghi_chu = %s
             WHERE id = %s
         """
         # Làm sạch tiền tệ qua parse_money_input theo quy tắc[cite: 4]
@@ -819,6 +821,7 @@ def update_single_rate_card_transaction(db_pool, rate_id, data_dict, current_use
             int(data_dict.get('is_hang_tra_ve', 0)),
             don_gia,
             gia_tiep_noi,
+            float(data_dict.get('khoang_cach', 0) or 0),
             data_dict.get('ghi_chu', ''),
             rate_id
         )
@@ -956,8 +959,8 @@ def create_single_rate_card_transaction(db_pool, data_dict, current_user):
                 khach_hang_id, ten_bang_gia, diem_di, diem_den, 
                 phan_loai_phuong_tien, loai_xe_quy_cach, 
                 gioi_han_kg, gioi_han_cbm, is_hang_tra_ve, 
-                don_gia_cuoc, gia_chuyen_tiep_noi, ghi_chu
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                don_gia_cuoc, gia_chuyen_tiep_noi,khoang_cach, ghi_chu
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         # Parse tiền tệ chuẩn xác
         don_gia = parse_money_input(str(data_dict.get('don_gia_cuoc', 0)))
@@ -975,6 +978,7 @@ def create_single_rate_card_transaction(db_pool, data_dict, current_user):
             int(data_dict.get('is_hang_tra_ve', 0)),
             don_gia,
             gia_tiep_noi,
+            float(data_dict.get('khoang_cach', 0) or 0),
             data_dict.get('ghi_chu', '')
         )
         

@@ -85,7 +85,7 @@ with tab1:
     st.divider()
 
     sql_base = """
-        SELECT r.id, kh.ten_khach_hang, r.diem_di, r.diem_den, r.ten_bang_gia,
+        SELECT r.id, kh.ten_khach_hang, r.diem_di, r.diem_den,r.khoang_cach, r.ten_bang_gia,
                r.phan_loai_phuong_tien, r.loai_xe_quy_cach, r.gioi_han_kg, r.gioi_han_cbm,
                r.is_hang_tra_ve, r.don_gia_cuoc, r.gia_chuyen_tiep_noi, r.ghi_chu
         FROM rate_cards r
@@ -121,25 +121,26 @@ with tab1:
 
             selected_kh_create = st.selectbox("🏢 Chọn Khách Hàng*", options=list(kh_list.keys()), format_func=lambda x: kh_list[x], index=default_kh_index)
             
-            c1, c2, c3 = st.columns(3)
+            c1, c2, c3,c4 = st.columns(4)
             e_ten_bg = c1.text_input("Tên bảng giá")
             e_diem_di = c2.text_input("Điểm đi*")
             e_diem_den = c3.text_input("Điểm đến*")
+            e_khoang_cach = c4.number_input("Khoảng cách km", min_value=0.0, value=0.0,step=1.0)
             
-            c4, c5, c6 = st.columns(3)
+            c5, c6, c7 = st.columns(3)
             phan_loai_opts = ['Container', 'Xe_Tai', 'Hang_Le', 'Hang_Air', 'Xe_May']
-            e_phan_loai = c4.selectbox("Phân loại", phan_loai_opts, index=1)
-            e_quy_cach = c5.text_input("Loại xe quy cách")
-            e_is_ve = c6.selectbox("Chiều hàng", options=[0, 1], format_func=lambda x: "Chiều Đi (0)" if x==0 else "Chiều Về (1)")
+            e_phan_loai = c5.selectbox("Phân loại", phan_loai_opts, index=1)
+            e_quy_cach = c6.text_input("Loại xe quy cách")
+            e_is_ve = c7.selectbox("Chiều hàng", options=[0, 1], format_func=lambda x: "Chiều Đi (0)" if x==0 else "Chiều Về (1)")
 
-            c7, c8, c9 = st.columns(3)
-            e_gh_kg = c7.number_input("Giới hạn KG (LCL)", min_value=0.0, value=0.0, step=1.0)
-            e_gh_cbm = c8.number_input("Giới hạn CBM (LCL)", min_value=0.0, value=0.0, step=0.1)
-            e_gia_tp = c9.text_input("Giá chuyến tiếp nối (VNĐ)", value="0")
+            c8, c9, c10 = st.columns(3)
+            e_gh_kg = c8.number_input("Giới hạn KG (LCL)", min_value=0.0, value=0.0, step=1.0)
+            e_gh_cbm = c9.number_input("Giới hạn CBM (LCL)", min_value=0.0, value=0.0, step=0.1)
+            e_gia_tp = c10.text_input("Giá chuyến tiếp nối (VNĐ)", value="0")
 
-            c10, c11 = st.columns(2)
-            e_don_gia = c10.text_input("Đơn giá cước (VNĐ)*", value="0")
-            e_ghi_chu = c11.text_input("Ghi chú")
+            c11, c12 = st.columns(2)
+            e_don_gia = c11.text_input("Đơn giá cước (VNĐ)*", value="0")
+            e_ghi_chu = c12.text_input("Ghi chú")
 
             if st.form_submit_button("💾 Xác Nhận Thêm Mới", type="primary"):
                 if not selected_kh_create or not e_diem_di.strip() or not e_diem_den.strip():
@@ -148,6 +149,7 @@ with tab1:
                     data_add = {
                         "khach_hang_id": selected_kh_create, "ten_bang_gia": e_ten_bg.strip(), 
                         "diem_di": e_diem_di.strip().upper(), "diem_den": e_diem_den.strip().upper(),
+                        "khoang_cach": e_khoang_cach, # mới add 21/08/2026
                         "phan_loai_phuong_tien": e_phan_loai, "loai_xe_quy_cach": e_quy_cach.strip(),
                         "gioi_han_kg": e_gh_kg, "gioi_han_cbm": e_gh_cbm, "is_hang_tra_ve": e_is_ve,
                         "don_gia_cuoc": e_don_gia, "gia_chuyen_tiep_noi": e_gia_tp, "ghi_chu": e_ghi_chu.strip()
@@ -201,33 +203,42 @@ with tab1:
                     
                     # FIX: Đã thụt lề chuẩn toàn bộ khối lệnh vào bên trong form
                     with st.form(f"form_edit_single_rate_{selected_rate_id}", clear_on_submit=False):
-                        c1, c2, c3 = st.columns(3)
+                        c1, c2, c3,c4 = st.columns(4)
                         #e_ten_bg = c1.text_input("Tên bảng giá", value=str(row_info.get('ten_bang_gia'), ''))
                         e_ten_bg = c1.text_input("Tên bảng giá", value=str(row_info.get('ten_bang_gia', '')))
                         e_diem_di = c2.text_input("Điểm đi", value=str(row_info.get('diem_di', '')))
                         e_diem_den = c3.text_input("Điểm đến", value=str(row_info.get('diem_den', '')))
+                        # Lấy giá trị thô từ database
+                        kc_raw = row_info.get('khoang_cach')
+
+                        # Xử lý an toàn: Nếu là None, NaN hoặc chuỗi rỗng thì gán mặc định là 0.0
+                        kc_safe = float(kc_raw) if pd.notna(kc_raw) and str(kc_raw).strip() != "" else 0.0
+
+                        # Khai báo ô nhập liệu với value đã được làm sạch
+                        e_khoang_cach = c4.number_input("Khoảng cách km", value=kc_safe, step=1.0)
+                        #e_khoang_cach= c4.number_input ("Khoảng cách km",value=float(row_info.get('khoang_cach', 0))) 
                         
-                        c4, c5, c6 = st.columns(3)
+                        c5, c6, c7 = st.columns(3)
                         phan_loai_opts = ['Container', 'Xe_Tai', 'Hang_Le', 'Hang_Air', 'Xe_May']
                         default_pl = phan_loai_opts.index(row_info['phan_loai_phuong_tien']) if row_info['phan_loai_phuong_tien'] in phan_loai_opts else 1
-                        e_phan_loai = c4.selectbox("Phân loại", phan_loai_opts, index=default_pl)
-                        e_quy_cach = c5.text_input("Loại xe quy cách", value=str(row_info['loai_xe_quy_cach'] or ''))
-                        e_is_ve = c6.selectbox("Chiều hàng", options=[0, 1], index=int(row_info['is_hang_tra_ve']), format_func=lambda x: "Chiều Đi (0)" if x==0 else "Chiều Về (1)")
+                        e_phan_loai = c5.selectbox("Phân loại", phan_loai_opts, index=default_pl)
+                        e_quy_cach = c6.text_input("Loại xe quy cách", value=str(row_info['loai_xe_quy_cach'] or ''))
+                        e_is_ve = c7.selectbox("Chiều hàng", options=[0, 1], index=int(row_info['is_hang_tra_ve']), format_func=lambda x: "Chiều Đi (0)" if x==0 else "Chiều Về (1)")
 
-                        c7, c8, c9 = st.columns(3)
-                        e_gh_kg = c7.number_input("Giới hạn KG (LCL)", value=float(row_info['gioi_han_kg'] or 0))
-                        e_gh_cbm = c8.number_input("Giới hạn CBM (LCL)", value=float(row_info['gioi_han_cbm'] or 0))
+                        c8, c9, c10 = st.columns(3)
+                        e_gh_kg = c8.number_input("Giới hạn KG (LCL)", value=float(row_info.get('gioi_han_kg',  0)))
+                        e_gh_cbm = c9.number_input("Giới hạn CBM (LCL)", value=float(row_info.get('gioi_han_cbm', 0)))
                         val_tiep_noi = float(row_info['gia_chuyen_tiep_noi'] or 0)
-                        e_gia_tp = c9.text_input("Giá chuyến tiếp nối", value=f"{val_tiep_noi:,.0f}")
+                        e_gia_tp = c10.text_input("Giá chuyến tiếp nối", value=f"{val_tiep_noi:,.0f}")
 
-                        c10, c11 = st.columns(2)
+                        c11, c12 = st.columns(2)
                         val_don_gia = float(row_info['don_gia_cuoc'] or 0)
-                        e_don_gia = c10.text_input("Đơn giá cước (VNĐ)*", value=f"{val_don_gia:,.0f}")
-                        e_ghi_chu = c11.text_input("Ghi chú", value=str(row_info['ghi_chu'] or ''))
+                        e_don_gia = c11.text_input("Đơn giá cước (VNĐ)*", value=f"{val_don_gia:,.0f}")
+                        e_ghi_chu = c12.text_input("Ghi chú", value=str(row_info['ghi_chu'] or ''))
 
                         if st.form_submit_button("💾 Lưu Thay Đổi Mức Giá", type="primary"):
                             data_edit = {
-                                "ten_bang_gia": e_ten_bg, "diem_di": e_diem_di, "diem_den": e_diem_den,
+                                "ten_bang_gia": e_ten_bg, "diem_di": e_diem_di, "diem_den": e_diem_den, "khoang_cach": e_khoang_cach,
                                 "phan_loai_phuong_tien": e_phan_loai, "loai_xe_quy_cach": e_quy_cach,
                                 "gioi_han_kg": e_gh_kg, "gioi_han_cbm": e_gh_cbm, "is_hang_tra_ve": e_is_ve,
                                 "don_gia_cuoc": parse_money_input(e_don_gia), 
