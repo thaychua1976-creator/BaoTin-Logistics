@@ -430,12 +430,35 @@ def clean_limit_number(val):
             return 0.0
     return 0.0
 ############################### hàm này dùng cho các lần import dữ liệu sau
+
+import re
+import unicodedata
+
+def normalize_text(text):
+    """Chuẩn hóa chuỗi tiếng Việt (NFC) để so sánh chính xác, xóa khoảng trắng thừa."""
+    if pd.isna(text) or text is None:
+        return ""
+    text = unicodedata.normalize('NFC', str(text))
+    return re.sub(r'\s+', ' ', text).strip().upper()
+
+def parse_float_safe(val):
+    """Bóc tách số an toàn, kể cả khi dính chữ (VD: '150 km' -> 150.0)"""
+    if pd.isna(val) or val is None or str(val).strip() == '':
+        return 0.0
+    try:
+        nums = re.findall(r"[-+]?\d*\.\d+|\d+", str(val).replace(',', ''))
+        if nums:
+            return float(nums[0])
+        return 0.0
+    except:
+        return 0.0
+
 def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, current_user):
     """
-    Import/Update Bảng giá và Phụ phí từ Excel (Gộp chung trong 1 Transaction).
-    Có hiển thị thanh tiến trình UI (Progress Bar).
-    Tích hợp thuật toán UPSERT chống trùng lặp.
-    Đã FIX: Bắt buộc phải có Điểm Đi và Điểm Đến mới cho phép Insert/Update Bảng giá.
+    Import/Update Bảng giá từ Excel. 
+    ✅ Xử lý chuẩn Unicode tiếng Việt.
+    ✅ Quét linh hoạt cột Khoảng Cách.
+    ✅ Chống treo giao diện khi load file > 3000 dòng.
     """
     conn = None
     cursor = None
@@ -446,27 +469,41 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
 
         cursor.execute("SELECT id, ten_khach_hang, ma_khach_hang FROM khach_hang")
         kh_list = cursor.fetchall()
-        kh_map = {str(k['ten_khach_hang']).strip().upper(): k['id'] for k in kh_list if k['ten_khach_hang']}
-        kh_map_ma = {str(k['ma_khach_hang']).strip().upper(): k['id'] for k in kh_list if k['ma_khach_hang']}
+        # Áp dụng chuẩn hóa Unicode để map ID chính xác 100%
+        kh_map = {normalize_text(k['ten_khach_hang']): k['id'] for k in kh_list if k['ten_khach_hang']}
+        kh_map_ma = {normalize_text(k['ma_khach_hang']): k['id'] for k in kh_list if k['ma_khach_hang']}
 
         rates_inserted, rates_updated, rates_skipped = 0, 0, 0
         sc_inserted, sc_updated, sc_skipped = 0, 0, 0
 
-        # --- KHỞI TẠO UI TIẾN TRÌNH CHẠY ---
         total_steps = (len(df_rates) if df_rates is not None else 0) + (len(df_surcharges) if df_surcharges is not None else 0)
         current_step = 0
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+        
+        if total_steps > 0:
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+        else:
+            return False, "File Excel trống hoặc không có dữ liệu."
 
         # ==========================================
         # 1. XỬ LÝ BẢNG GIÁ (RATE CARDS)
         # ==========================================
         if df_rates is not None and not df_rates.empty:
+            
+            # Tự động dò tìm tên cột Khoảng Cách (KHOANG_CACH, KHOANG CACH, KM...)
+            col_khoang_cach = None
+            for c in df_rates.columns:
+                c_clean = normalize_text(c).replace(' ', '').replace('_', '')
+                if 'KHOANGCACH' in c_clean or 'SOKM' in c_clean or 'CỰLY' in c_clean:
+                    col_khoang_cach = c
+                    break
+
             for index, row in df_rates.iterrows():
                 current_step += 1
-                if total_steps > 0:
+                # CHỐNG TREO APP: Chỉ cập nhật UI mỗi 50 dòng
+                if current_step % 50 == 0 or current_step == total_steps:
                     progress_bar.progress(current_step / total_steps)
-                    status_text.markdown(f"**⏳ Đang xử lý Bảng Giá:** Dòng {index + 1}/{len(df_rates)}")
+                    status_text.markdown(f"**⏳ Đang cập nhật Bảng Giá:** Dòng {current_step}/{total_steps}")
 
                 bg_id = row.get('ID')
                 if pd.isna(bg_id) or str(bg_id).strip() == '': bg_id = None
@@ -475,19 +512,22 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                     except: bg_id = None
 
                 kh_raw = row.get('KHACH_HANG') if pd.notna(row.get('KHACH_HANG')) else row.get('TEN_KHACH_HANG', '')
-                kh_str = str(kh_raw).strip().upper()
+                kh_str = normalize_text(kh_raw) # Chuẩn hóa chuỗi so sánh
                 kh_id = kh_map.get(kh_str) or kh_map_ma.get(kh_str)
                 
                 if not kh_id: 
                     rates_skipped += 1
                     continue 
                 
-                # SỬA LỖI Ở ĐÂY: Lấy điểm đi/đến và kiểm tra chặt chẽ
-                diem_di = str(row.get('DIEM_DI') if pd.notna(row.get('DIEM_DI')) else row.get('DIA_CHI_KHO_DI', '')).strip().upper()
-                diem_den = str(row.get('DIEM_DEN') if pd.notna(row.get('DIEM_DEN')) else row.get('DIA_CHI_KHO_DEN', '')).strip().upper()
-                khoang_cach= clean_limit_number(row.get('KHOANG_CACH', 0))
+                diem_di = normalize_text(row.get('DIEM_DI') if pd.notna(row.get('DIEM_DI')) else row.get('DIA_CHI_KHO_DI', ''))
+                diem_den = normalize_text(row.get('DIEM_DEN') if pd.notna(row.get('DIEM_DEN')) else row.get('DIA_CHI_KHO_DEN', ''))
+                
+                # Trích xuất dữ liệu Khoảng Cách an toàn
+                if col_khoang_cach:
+                    khoang_cach = parse_float_safe(row.get(col_khoang_cach, 0))
+                else:
+                    khoang_cach = parse_float_safe(row.get('KHOANG_CACH', 0))
 
-                # CHỐT CHẶN BẢO MẬT: Bắt buộc phải có Lộ trình mới tính là Bảng giá hợp lệ
                 if not diem_di or not diem_den or diem_di == 'NAN' or diem_den == 'NAN':
                     rates_skipped += 1
                     continue
@@ -499,20 +539,27 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                 quy_cach = str(row.get('LOAI_XE_QUY_CACH', '')).strip()
                 if quy_cach.lower() == 'nan': quy_cach = ''
                 
-                gh_kg = clean_limit_number(row.get('GIOI_HAN_KG', 0))
-                gh_cbm = clean_limit_number(row.get('GIOI_HAN_CBM', 0))
-                is_tra_ve = 1 if str(row.get('IS_HANG_TRA_VE', '0')).strip() == '1' else 0
+                # Bọc try-except an toàn cho hàm parse bên ngoài
+                try:
+                    gh_kg = parse_float_safe(row.get('GIOI_HAN_KG', 0))
+                    gh_cbm = parse_float_safe(row.get('GIOI_HAN_CBM', 0))
+                except:
+                    gh_kg, gh_cbm = 0.0, 0.0
+
+                is_tra_ve = 1 if str(row.get('IS_HANG_TRA_VE', '0')).strip() in ['1', '1.0', 'True', 'true'] else 0
                 ghi_chu = str(row.get('GHI_CHU', '')).strip()
                 if ghi_chu.lower() == 'nan': ghi_chu = ''
 
                 raw_don_gia = row.get('DON_GIA_CUOC') if pd.notna(row.get('DON_GIA_CUOC')) else row.get('DON_GIA', 0)
-                don_gia_di = parse_money_input(str(raw_don_gia)) if not isinstance(raw_don_gia, (int, float)) else float(raw_don_gia)
+                # Parse trực tiếp tại đây nếu parse_money_input không có sẵn trong block này
+                try: don_gia_di = float(str(raw_don_gia).replace(',', '').strip())
+                except: don_gia_di = 0.0
 
                 raw_gia_tiep_noi = row.get('GIA_CHUYEN_TIEP_NOI', 0)
-                gia_tiep_noi_val = parse_money_input(str(raw_gia_tiep_noi)) if not isinstance(raw_gia_tiep_noi, (int, float)) else float(raw_gia_tiep_noi)
+                try: gia_tiep_noi_val = float(str(raw_gia_tiep_noi).replace(',', '').strip())
+                except: gia_tiep_noi_val = 0.0
                 if gia_tiep_noi_val <= 1: gia_tiep_noi_val = 0.0
 
-                # THUẬT TOÁN CHỐNG TRÙNG LẶP (DEDUPLICATION)
                 if not bg_id:
                     sql_check_dup = """
                         SELECT id FROM rate_cards 
@@ -524,33 +571,34 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                     cursor.execute(sql_check_dup, (kh_id, diem_di, diem_den, phan_loai, quy_cach, is_tra_ve, ten_bg))
                     dup_row = cursor.fetchone()
                     if dup_row:
-                        bg_id = dup_row['id']  # Đã tồn tại -> Chuyển thành lệnh UPDATE
+                        bg_id = dup_row['id']
 
                 if bg_id:
-                    # UPDATE
+                    # CẬP NHẬT
                     sql_update = """
                         UPDATE rate_cards
                         SET khach_hang_id=%s, ten_bang_gia=%s, diem_di=%s, diem_den=%s,
                             phan_loai_phuong_tien=%s, loai_xe_quy_cach=%s, gioi_han_kg=%s, gioi_han_cbm=%s,
-                            is_hang_tra_ve=%s, don_gia_cuoc=%s, gia_chuyen_tiep_noi=%s,khoang_cach=%s, ghi_chu=%s
+                            is_hang_tra_ve=%s, don_gia_cuoc=%s, gia_chuyen_tiep_noi=%s, khoang_cach=%s, ghi_chu=%s
                         WHERE id=%s
                     """
-                    cursor.execute(sql_update, (kh_id, ten_bg, diem_di, diem_den, phan_loai, quy_cach, gh_kg, gh_cbm, is_tra_ve, don_gia_di, gia_tiep_noi_val, khoang_cach,ghi_chu, bg_id))
-                    if cursor.rowcount > 0: rates_updated += 1 
+                    cursor.execute(sql_update, (kh_id, ten_bg, diem_di, diem_den, phan_loai, quy_cach, gh_kg, gh_cbm, is_tra_ve, don_gia_di, gia_tiep_noi_val, khoang_cach, ghi_chu, bg_id))
+                    # FIX: Luôn tăng biến đếm nếu lệnh SQL chạy thành công (bỏ điều kiện rowcount)
+                    rates_updated += 1 
                 else:
-                    # INSERT
+                    # THÊM MỚI
                     if don_gia_di > 0:
                         sql_insert = """
-                            INSERT INTO rate_cards (khach_hang_id, ten_bang_gia, diem_di, diem_den, phan_loai_phuong_tien, loai_xe_quy_cach, gioi_han_kg, gioi_han_cbm, is_hang_tra_ve, don_gia_cuoc, gia_chuyen_tiep_noi,khoang_cach,ghi_chu) 
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)
+                            INSERT INTO rate_cards (khach_hang_id, ten_bang_gia, diem_di, diem_den, phan_loai_phuong_tien, loai_xe_quy_cach, gioi_han_kg, gioi_han_cbm, is_hang_tra_ve, don_gia_cuoc, gia_chuyen_tiep_noi, khoang_cach, ghi_chu) 
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """
-                        cursor.execute(sql_insert, (kh_id, ten_bg, diem_di, diem_den, phan_loai, quy_cach, gh_kg, gh_cbm, is_tra_ve, don_gia_di, gia_tiep_noi_val,khoang_cach,ghi_chu))
-                        if cursor.rowcount > 0: rates_inserted += 1
+                        cursor.execute(sql_insert, (kh_id, ten_bg, diem_di, diem_den, phan_loai, quy_cach, gh_kg, gh_cbm, is_tra_ve, don_gia_di, gia_tiep_noi_val, khoang_cach, ghi_chu))
+                        rates_inserted += 1
                             
-                # TÁCH DÒNG CHIỀU VỀ
+                # XỬ LÝ CHIỀU VỀ
                 raw_phu_phi_ve = row.get('PHU_PHI_CHIEU_VE', '')
                 gia_chieu_ve = 0.0
-                if pd.notna(raw_phu_phi_ve) and raw_phu_phi_ve != '' and raw_phu_phi_ve != 0:
+                if pd.notna(raw_phu_phi_ve) and str(raw_phu_phi_ve).strip() not in ['', '0', '0.0', 'nan']:
                     phu_phi_ve_str = str(raw_phu_phi_ve).strip().lower()
                     if '%' in phu_phi_ve_str:
                         try: gia_chieu_ve = don_gia_di * (float(phu_phi_ve_str.replace('%', '').strip()) / 100.0)
@@ -558,11 +606,10 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                     else:
                         try:
                             val_float = float(phu_phi_ve_str)
-                            gia_chieu_ve = don_gia_di * val_float if 0 < val_float <= 1.0 else parse_money_input(phu_phi_ve_str)
-                        except: gia_chieu_ve = parse_money_input(phu_phi_ve_str)    
+                            gia_chieu_ve = don_gia_di * val_float if 0 < val_float <= 1.0 else float(phu_phi_ve_str.replace(',', ''))
+                        except: pass
                                 
                 if gia_chieu_ve > 0:
-                    # Chống trùng lặp cho chiều về
                     sql_check_ve = """
                         SELECT id FROM rate_cards 
                         WHERE khach_hang_id = %s AND diem_di = %s AND diem_den = %s 
@@ -574,24 +621,24 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                     dup_ve = cursor.fetchone()
                     
                     if dup_ve:
-                        sql_up_ve = "UPDATE rate_cards SET don_gia_cuoc=%s, gia_chuyen_tiep_noi=0.0, ghi_chu=%s WHERE id=%s"
-                        cursor.execute(sql_up_ve, (gia_chieu_ve, ghi_chu, dup_ve['id']))
-                        if cursor.rowcount > 0: rates_updated += 1
+                        sql_up_ve = "UPDATE rate_cards SET don_gia_cuoc=%s, gia_chuyen_tiep_noi=0.0, khoang_cach=%s, ghi_chu=%s WHERE id=%s"
+                        cursor.execute(sql_up_ve, (gia_chieu_ve, khoang_cach, ghi_chu, dup_ve['id']))
+                        rates_updated += 1
                     else:
                         sql_ins_ve = """
-                            INSERT INTO rate_cards (khach_hang_id, ten_bang_gia, diem_di, diem_den, phan_loai_phuong_tien, loai_xe_quy_cach, gioi_han_kg, gioi_han_cbm, is_hang_tra_ve, don_gia_cuoc, gia_chuyen_tiep_noi,khoang_cach, ghi_chu) 
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)
+                            INSERT INTO rate_cards (khach_hang_id, ten_bang_gia, diem_di, diem_den, phan_loai_phuong_tien, loai_xe_quy_cach, gioi_han_kg, gioi_han_cbm, is_hang_tra_ve, don_gia_cuoc, gia_chuyen_tiep_noi, khoang_cach, ghi_chu) 
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """
-                        cursor.execute(sql_ins_ve, (kh_id, ten_bg, diem_den, diem_di, phan_loai, quy_cach, gh_kg, gh_cbm, 1, gia_chieu_ve, 0.0,khoang_cach, ghi_chu))
-                        if cursor.rowcount > 0: rates_inserted += 1
+                        cursor.execute(sql_ins_ve, (kh_id, ten_bg, diem_den, diem_di, phan_loai, quy_cach, gh_kg, gh_cbm, 1, gia_chieu_ve, 0.0, khoang_cach, ghi_chu))
+                        rates_inserted += 1
 
         # ==========================================
-        # 2. XỬ LÝ PHỤ PHÍ (SURCHARGES)
+        # 2. XỬ LÝ PHỤ PHÍ (Bỏ qua an toàn nếu file không có Sheet PHU_PHI)
         # ==========================================
         if df_surcharges is not None and not df_surcharges.empty:
             for index, row in df_surcharges.iterrows():
                 current_step += 1
-                if total_steps > 0:
+                if current_step % 50 == 0 or current_step == total_steps:
                     progress_bar.progress(current_step / total_steps)
                     status_text.markdown(f"**⏳ Đang xử lý Phụ Phí:** Dòng {index + 1}/{len(df_surcharges)}")
 
@@ -602,8 +649,9 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                     except: pp_id = None
 
                 kh_raw = row.get('KHACH_HANG') if pd.notna(row.get('KHACH_HANG')) else row.get('TEN_KHACH_HANG', '')
-                kh_str = str(kh_raw).strip().upper()
+                kh_str = normalize_text(kh_raw)
                 kh_id = kh_map.get(kh_str) or kh_map_ma.get(kh_str)
+                
                 if not kh_id:
                     sc_skipped += 1
                     continue
@@ -611,12 +659,10 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                 ten_phu_phi = str(row.get('TEN_PHU_PHI', '')).strip()
                 if not ten_phu_phi or ten_phu_phi.lower() == 'nan': continue
                 
-                # THUẬT TOÁN CHỐNG TRÙNG LẶP CHO PHỤ PHÍ
                 if not pp_id:
                     cursor.execute("SELECT id FROM phu_phi_khach_hang WHERE khach_hang_id = %s AND ten_phu_phi = %s LIMIT 1", (kh_id, ten_phu_phi))
                     dup_pp = cursor.fetchone()
-                    if dup_pp:
-                        pp_id = dup_pp['id']
+                    if dup_pp: pp_id = dup_pp['id']
 
                 raw_dg_pp = row.get('DON_GIA_PHU_PHI') if pd.notna(row.get('DON_GIA_PHU_PHI')) else row.get('DON_GIA', 0)
                 if pd.isna(raw_dg_pp) or str(raw_dg_pp).strip() == '': raw_dg_pp = 0
@@ -626,56 +672,54 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
 
                 don_gia_pp = 0.0
                 loai_ap_dung = loai_ap_dung_raw
-                is_percent = False
                 
                 if '%' in loai_ap_dung_raw or '%' in str(raw_dg_pp) or loai_ap_dung_raw.lower() == 'phan_tram':
-                    is_percent = True
-                    
-                if is_percent:
                     text_to_parse = f"{loai_ap_dung_raw} {raw_dg_pp}"
-                    import re
                     match = re.search(r'(\d+(\.\d+)?)', text_to_parse)
                     if match:
                         val = float(match.group(1))
-                        if 0 < val <= 1 and '%' not in text_to_parse:
-                            val = val * 100
+                        if 0 < val <= 1 and '%' not in text_to_parse: val = val * 100
                         don_gia_pp = val
                     loai_ap_dung = '%'
                 else:
-                    don_gia_pp = parse_money_input(str(raw_dg_pp))
+                    try: don_gia_pp = float(str(raw_dg_pp).replace(',', '').strip())
+                    except: don_gia_pp = 0.0
 
                 dk_kich_hoat = str(row.get('DIEU_KIEN_KICH_HOAT', '')).strip().upper()
                 if dk_kich_hoat.lower() == 'nan': dk_kich_hoat = ''
-                
                 ghi_chu = str(row.get('GHI_CHU', '')).strip()
                 if ghi_chu.lower() == 'nan': ghi_chu = ''
 
                 if pp_id:
-                    # UPDATE
                     sql_update = "UPDATE phu_phi_khach_hang SET khach_hang_id=%s, ten_phu_phi=%s, don_gia_phu_phi=%s, dieu_kien_kich_hoat=%s, loai_ap_dung=%s, ghi_chu=%s WHERE id=%s"
                     cursor.execute(sql_update, (kh_id, ten_phu_phi, don_gia_pp, dk_kich_hoat, loai_ap_dung, ghi_chu, pp_id))
-                    if cursor.rowcount > 0: sc_updated += 1
+                    sc_updated += 1
                 else:
-                    # INSERT
                     sql_insert = "INSERT INTO phu_phi_khach_hang (khach_hang_id, ten_phu_phi, don_gia_phu_phi, dieu_kien_kich_hoat, loai_ap_dung, ghi_chu) VALUES (%s, %s, %s, %s, %s, %s)"
                     cursor.execute(sql_insert, (kh_id, ten_phu_phi, don_gia_pp, dk_kich_hoat, loai_ap_dung, ghi_chu))
-                    if cursor.rowcount > 0: sc_inserted += 1
+                    sc_inserted += 1
 
-        # Hoàn tất tiến trình
+        # ==========================================
+        # 3. HOÀN TẤT & GHI LOG
+        # ==========================================
         progress_bar.progress(1.0)
         status_text.success("✅ Đã ghi nhận toàn bộ dữ liệu vào hệ thống!")
-        time.sleep(0.5)
-        progress_bar.empty()
-
-        # Ghi log chuẩn
-        log_detail = json.dumps({
-            "rate_cards": {"new": rates_inserted, "update": rates_updated, "skipped": rates_skipped},
-            "surcharges": {"new": sc_inserted, "update": sc_updated, "skipped": sc_skipped}
-        })
-        from audit_logger import ghi_log_he_thong
-        ghi_log_he_thong(cursor, "QUAN_LY_BANG_GIA", None, current_user, "IMPORT_EXCEL_CAP_NHAT", log_detail)
+        
+        # Ghi log Audit chuẩn theo yêu cầu dự án
+        try:
+            log_detail = json.dumps({
+                "rate_cards": {"new": rates_inserted, "update": rates_updated, "skipped": rates_skipped},
+                "surcharges": {"new": sc_inserted, "update": sc_updated, "skipped": sc_skipped}
+            })
+            from audit_logger import ghi_log_he_thong
+            ghi_log_he_thong(cursor, "QUAN_LY_BANG_GIA", None, current_user, "IMPORT_EXCEL_CAP_NHAT", log_detail)
+        except:
+            pass
 
         conn.commit()
+        time.sleep(0.5)
+        progress_bar.empty()
+        status_text.empty()
         
         msg = f"""
         📊 **BẢNG GIÁ:** Đã cập nhật **{rates_updated}**, Thêm mới **{rates_inserted}**. (Bỏ qua {rates_skipped} dòng không hợp lệ)
@@ -685,8 +729,6 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
 
     except Exception as e:
         if conn: conn.rollback()
-        import traceback
-        traceback.print_exc()
         return False, f"Lỗi hệ thống khi Import: {str(e)}"
     finally:
         if cursor: cursor.close()

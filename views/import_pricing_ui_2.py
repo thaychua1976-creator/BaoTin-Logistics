@@ -68,7 +68,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
 with tab1:
     st.markdown("#### 📋 Quản lý Biểu cước Vận chuyển (Rate Cards)")
     
-    # Lấy danh sách khách hàng làm bộ lọc (Để trống option đầu tiên)
+    # Lấy danh sách khách hàng làm bộ lọc
     df_kh = db.execute_query("SELECT id, ten_khach_hang FROM khach_hang ORDER BY ten_khach_hang ASC")
     kh_opts = {"ALL": "🌟 TẤT CẢ CÔNG TY / KHÁCH HÀNG"}
     if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
@@ -80,201 +80,205 @@ with tab1:
         options=list(kh_opts.keys()),
         format_func=lambda x: kh_opts[x],
         key="filter_rate_tab1",
-        index=0
+        index=None, 
+        placeholder="-- Vui lòng chọn Khách hàng để tải dữ liệu --"
     )
     st.divider()
 
-    sql_base = """
-        SELECT r.id, kh.ten_khach_hang, r.diem_di, r.diem_den,r.khoang_cach, r.ten_bang_gia,
-               r.phan_loai_phuong_tien, r.loai_xe_quy_cach, r.gioi_han_kg, r.gioi_han_cbm,
-               r.is_hang_tra_ve, r.don_gia_cuoc, r.gia_chuyen_tiep_noi, r.ghi_chu
-        FROM rate_cards r
-        JOIN khach_hang kh ON r.khach_hang_id = kh.id
-    """
-    if chon_kh_id == "ALL":
-        df_rates = db.execute_query(sql_base + " ORDER BY r.id DESC")
-        file_export_name = f"Bang_Gia_TatCa_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
+    if chon_kh_id is None:
+        st.info("💡 Mẹo: Hãy chọn một Khách hàng cụ thể từ danh sách trên để xem bảng giá. Hệ thống sẽ tải dữ liệu cực nhanh!")
     else:
-        df_rates = db.execute_query(sql_base + " WHERE r.khach_hang_id = %s ORDER BY r.id DESC", (chon_kh_id,))
-        clean_name = "".join([c if c.isalnum() else "_" for c in kh_opts[chon_kh_id]])
-        file_export_name = f"Bang_Gia_{clean_name}_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
+        sql_base = """
+            SELECT r.id, kh.ten_khach_hang, r.diem_di, r.diem_den,r.khoang_cach, r.ten_bang_gia,
+                   r.phan_loai_phuong_tien, r.loai_xe_quy_cach, r.gioi_han_kg, r.gioi_han_cbm,
+                   r.is_hang_tra_ve, r.don_gia_cuoc, r.gia_chuyen_tiep_noi, r.ghi_chu
+            FROM rate_cards r
+            JOIN khach_hang kh ON r.khach_hang_id = kh.id
+        """
+        
+        if chon_kh_id == "ALL":
+            st.warning("⚠️ Chế độ xem toàn bộ: Giao diện web chỉ hiển thị 500 dòng mới nhất để đảm bảo tốc độ. Hãy dùng nút 'Xuất Excel' bên dưới để lấy toàn bộ dữ liệu.")
+            df_rates_ui = db.execute_query(sql_base + " ORDER BY r.id DESC LIMIT 500")
+            df_rates_export = db.execute_query(sql_base + " ORDER BY r.id DESC")
+            file_export_name = f"Bang_Gia_TatCa_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
+        else:
+            df_rates_ui = db.execute_query(sql_base + " WHERE r.khach_hang_id = %s ORDER BY r.id DESC", (chon_kh_id,))
+            df_rates_export = df_rates_ui 
+            clean_name = "".join([c if c.isalnum() else "_" for c in kh_opts[chon_kh_id]])
+            file_export_name = f"Bang_Gia_{clean_name}_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
 
-    # Đưa thanh Menu ra ngoài để có thể Thêm Mới khi DB chưa có dữ liệu
-    mode_thao_tac = st.radio(
-        "📌 Chọn hành động:", 
-        ["👀 Xem danh sách & Xuất Excel", "➕ Thêm mới tuyến đường", "✏️ Sửa trực tiếp tuyến đường", "🗑️ Xóa tuyến đường"], 
-        horizontal=True, 
-        key="mode_rate_t1"
-    )
-    st.markdown("<br>", unsafe_allow_html=True)
+        mode_thao_tac = st.radio(
+            "📌 Chọn hành động:", 
+            ["👀 Xem danh sách & Xuất Excel", "➕ Thêm mới tuyến đường", "✏️ Sửa trực tiếp tuyến đường", "🗑️ Xóa tuyến đường"], 
+            horizontal=True, 
+            key="mode_rate_t1"
+        )
+        st.markdown("<br>", unsafe_allow_html=True)
 
-    # ===============================================
-    # CHỨC NĂNG 1: THÊM MỚI
-    # ===============================================
-    if mode_thao_tac == "➕ Thêm mới tuyến đường":
-        st.markdown("#### ➕ Thêm mới tuyến đường (Báo giá)")
-        with st.form("form_add_single_rate", clear_on_submit=True):
-            kh_list = {k: v for k, v in kh_opts.items() if k != "ALL"}
-            default_kh_index = 0
-            if chon_kh_id != "ALL" and chon_kh_id in kh_list:
-                default_kh_index = list(kh_list.keys()).index(chon_kh_id)
+        # ===============================================
+        # CHỨC NĂNG 1: THÊM MỚI
+        # ===============================================
+        if mode_thao_tac == "➕ Thêm mới tuyến đường":
+            st.markdown("#### ➕ Thêm mới tuyến đường (Báo giá)")
+            with st.form("form_add_single_rate", clear_on_submit=True):
+                kh_list = {k: v for k, v in kh_opts.items() if k != "ALL"}
+                default_kh_index = 0
+                if chon_kh_id != "ALL" and chon_kh_id in kh_list:
+                    default_kh_index = list(kh_list.keys()).index(chon_kh_id)
 
-            selected_kh_create = st.selectbox("🏢 Chọn Khách Hàng*", options=list(kh_list.keys()), format_func=lambda x: kh_list[x], index=default_kh_index)
-            
-            c1, c2, c3,c4 = st.columns(4)
-            e_ten_bg = c1.text_input("Tên bảng giá")
-            e_diem_di = c2.text_input("Điểm đi*")
-            e_diem_den = c3.text_input("Điểm đến*")
-            e_khoang_cach = c4.number_input("Khoảng cách km", min_value=0.0, value=0.0,step=1.0)
-            
-            c5, c6, c7 = st.columns(3)
-            phan_loai_opts = ['Container', 'Xe_Tai', 'Hang_Le', 'Hang_Air', 'Xe_May']
-            e_phan_loai = c5.selectbox("Phân loại", phan_loai_opts, index=1)
-            e_quy_cach = c6.text_input("Loại xe quy cách")
-            e_is_ve = c7.selectbox("Chiều hàng", options=[0, 1], format_func=lambda x: "Chiều Đi (0)" if x==0 else "Chiều Về (1)")
+                selected_kh_create = st.selectbox("🏢 Chọn Khách Hàng*", options=list(kh_list.keys()), format_func=lambda x: kh_list[x], index=default_kh_index)
+                
+                c1, c2, c3,c4 = st.columns(4)
+                e_ten_bg = c1.text_input("Tên bảng giá")
+                e_diem_di = c2.text_input("Điểm đi*")
+                e_diem_den = c3.text_input("Điểm đến*")
+                e_khoang_cach = c4.number_input("Khoảng cách km", min_value=0.0, value=0.0,step=1.0)
+                
+                c5, c6, c7 = st.columns(3)
+                phan_loai_opts = ['Container', 'Xe_Tai', 'Hang_Le', 'Hang_Air', 'Xe_May']
+                e_phan_loai = c5.selectbox("Phân loại", phan_loai_opts, index=1)
+                e_quy_cach = c6.text_input("Loại xe quy cách")
+                e_is_ve = c7.selectbox("Chiều hàng", options=[0, 1], format_func=lambda x: "Chiều Đi (0)" if x==0 else "Chiều Về (1)")
 
-            c8, c9, c10 = st.columns(3)
-            e_gh_kg = c8.number_input("Giới hạn KG (LCL)", min_value=0.0, value=0.0, step=1.0)
-            e_gh_cbm = c9.number_input("Giới hạn CBM (LCL)", min_value=0.0, value=0.0, step=0.1)
-            e_gia_tp = c10.text_input("Giá chuyến tiếp nối (VNĐ)", value="0")
+                c8, c9, c10 = st.columns(3)
+                e_gh_kg = c8.number_input("Giới hạn KG (LCL)", min_value=0.0, value=0.0, step=1.0)
+                e_gh_cbm = c9.number_input("Giới hạn CBM (LCL)", min_value=0.0, value=0.0, step=0.1)
+                e_gia_tp = c10.text_input("Giá chuyến tiếp nối (VNĐ)", value="0")
 
-            c11, c12 = st.columns(2)
-            e_don_gia = c11.text_input("Đơn giá cước (VNĐ)*", value="0")
-            e_ghi_chu = c12.text_input("Ghi chú")
+                c11, c12 = st.columns(2)
+                e_don_gia = c11.text_input("Đơn giá cước (VNĐ)*", value="0")
+                e_ghi_chu = c12.text_input("Ghi chú")
 
-            if st.form_submit_button("💾 Xác Nhận Thêm Mới", type="primary"):
-                if not selected_kh_create or not e_diem_di.strip() or not e_diem_den.strip():
-                    st.error("⚠️ Vui lòng điền đầy đủ thông tin Khách hàng, Điểm đi và Điểm đến.")
-                else:
-                    data_add = {
-                        "khach_hang_id": selected_kh_create, "ten_bang_gia": e_ten_bg.strip(), 
-                        "diem_di": e_diem_di.strip().upper(), "diem_den": e_diem_den.strip().upper(),
-                        "khoang_cach": e_khoang_cach, # mới add 21/08/2026
-                        "phan_loai_phuong_tien": e_phan_loai, "loai_xe_quy_cach": e_quy_cach.strip(),
-                        "gioi_han_kg": e_gh_kg, "gioi_han_cbm": e_gh_cbm, "is_hang_tra_ve": e_is_ve,
-                        "don_gia_cuoc": e_don_gia, "gia_chuyen_tiep_noi": e_gia_tp, "ghi_chu": e_ghi_chu.strip()
-                    }
-                    # FIX: Dùng current_user thay vì st.session_state.username
-                    success, message = create_single_rate_card_transaction(db.pool, data_add, current_user)
-                    if success:
-                        st.success(message)
-                        time.sleep(1)
-                        st.rerun()
+                if st.form_submit_button("💾 Xác Nhận Thêm Mới", type="primary"):
+                    if not selected_kh_create or not e_diem_di.strip() or not e_diem_den.strip():
+                        st.error("⚠️ Vui lòng điền đầy đủ thông tin Khách hàng, Điểm đi và Điểm đến.")
                     else:
-                        st.error(message)
-
-    # ===============================================
-    # CHỨC NĂNG: XEM, SỬA, XÓA KHI CÓ DỮ LIỆU
-    # ===============================================
-    else:
-        if isinstance(df_rates, pd.DataFrame) and not df_rates.empty:
-            
-            # --- CHỨC NĂNG 2: XEM & XUẤT EXCEL ---
-            if mode_thao_tac == "👀 Xem danh sách & Xuất Excel":
-                st.caption(f"Tìm thấy **{len(df_rates)}** mức giá.")
-                df_display = df_rates.copy()
-                for col in ['don_gia_cuoc', 'gia_chuyen_tiep_noi']:
-                    if col in df_display.columns:
-                        df_display[col] = pd.to_numeric(df_display[col], errors='coerce').fillna(0).apply(lambda x: f"{x:,.0f}")
-                st.dataframe(df_display, use_container_width=True, hide_index=True)
-                
-                st.markdown("<br>", unsafe_allow_html=True)
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                    df_rates.to_excel(writer, index=False, sheet_name='RateCards')
-                    worksheet = writer.sheets['RateCards']
-                    for i, col in enumerate(df_rates.columns):
-                        max_len = df_rates[col].fillna('').astype(str).str.len().max() if not df_rates.empty else 0
-                        col_width = int(max(max_len if not pd.isna(max_len) else 0, len(str(col)))) + 2
-                        worksheet.set_column(i, i, col_width)
-
-                st.download_button(label="⬇️ XUẤT RA EXCEL BẢNG GIÁ", data=buffer.getvalue(), file_name=file_export_name, mime="application/vnd.ms-excel", type="primary")
-
-            # --- CHỨC NĂNG 3: SỬA TRỰC TIẾP ---
-            elif mode_thao_tac == "✏️ Sửa trực tiếp tuyến đường":
-                rate_opts = {None: "-- Vui lòng chọn tuyến đường cần sửa --"}
-                for _, r in df_rates.iterrows():
-                    rate_opts[r['id']] = f"ID: {r['id']} | [{r['ten_khach_hang']}] {r['diem_di']} ➡️ {r['diem_den']} | Xe: {r['loai_xe_quy_cach']} | Giá: {float(r['don_gia_cuoc']):,}"
-                        
-                selected_rate_id = st.selectbox("🔍 Chọn dòng giá cần sửa:", options=list(rate_opts.keys()), format_func=lambda x: rate_opts[x], index=0)
-                    
-                if selected_rate_id is not None:
-                    row_info = df_rates[df_rates['id'] == selected_rate_id].iloc[0]
-                    
-                    # FIX: Đã thụt lề chuẩn toàn bộ khối lệnh vào bên trong form
-                    with st.form(f"form_edit_single_rate_{selected_rate_id}", clear_on_submit=False):
-                        c1, c2, c3,c4 = st.columns(4)
-                        #e_ten_bg = c1.text_input("Tên bảng giá", value=str(row_info.get('ten_bang_gia'), ''))
-                        e_ten_bg = c1.text_input("Tên bảng giá", value=str(row_info.get('ten_bang_gia', '')))
-                        e_diem_di = c2.text_input("Điểm đi", value=str(row_info.get('diem_di', '')))
-                        e_diem_den = c3.text_input("Điểm đến", value=str(row_info.get('diem_den', '')))
-                        # Lấy giá trị thô từ database
-                        kc_raw = row_info.get('khoang_cach')
-
-                        # Xử lý an toàn: Nếu là None, NaN hoặc chuỗi rỗng thì gán mặc định là 0.0
-                        kc_safe = float(kc_raw) if pd.notna(kc_raw) and str(kc_raw).strip() != "" else 0.0
-
-                        # Khai báo ô nhập liệu với value đã được làm sạch
-                        e_khoang_cach = c4.number_input("Khoảng cách km", value=kc_safe, step=1.0)
-                        #e_khoang_cach= c4.number_input ("Khoảng cách km",value=float(row_info.get('khoang_cach', 0))) 
-                        
-                        c5, c6, c7 = st.columns(3)
-                        phan_loai_opts = ['Container', 'Xe_Tai', 'Hang_Le', 'Hang_Air', 'Xe_May']
-                        default_pl = phan_loai_opts.index(row_info['phan_loai_phuong_tien']) if row_info['phan_loai_phuong_tien'] in phan_loai_opts else 1
-                        e_phan_loai = c5.selectbox("Phân loại", phan_loai_opts, index=default_pl)
-                        e_quy_cach = c6.text_input("Loại xe quy cách", value=str(row_info['loai_xe_quy_cach'] or ''))
-                        e_is_ve = c7.selectbox("Chiều hàng", options=[0, 1], index=int(row_info['is_hang_tra_ve']), format_func=lambda x: "Chiều Đi (0)" if x==0 else "Chiều Về (1)")
-
-                        c8, c9, c10 = st.columns(3)
-                        e_gh_kg = c8.number_input("Giới hạn KG (LCL)", value=float(row_info.get('gioi_han_kg',  0)))
-                        e_gh_cbm = c9.number_input("Giới hạn CBM (LCL)", value=float(row_info.get('gioi_han_cbm', 0)))
-                        val_tiep_noi = float(row_info['gia_chuyen_tiep_noi'] or 0)
-                        e_gia_tp = c10.text_input("Giá chuyến tiếp nối", value=f"{val_tiep_noi:,.0f}")
-
-                        c11, c12 = st.columns(2)
-                        val_don_gia = float(row_info['don_gia_cuoc'] or 0)
-                        e_don_gia = c11.text_input("Đơn giá cước (VNĐ)*", value=f"{val_don_gia:,.0f}")
-                        e_ghi_chu = c12.text_input("Ghi chú", value=str(row_info['ghi_chu'] or ''))
-
-                        if st.form_submit_button("💾 Lưu Thay Đổi Mức Giá", type="primary"):
-                            data_edit = {
-                                "ten_bang_gia": e_ten_bg, "diem_di": e_diem_di, "diem_den": e_diem_den, "khoang_cach": e_khoang_cach,
-                                "phan_loai_phuong_tien": e_phan_loai, "loai_xe_quy_cach": e_quy_cach,
-                                "gioi_han_kg": e_gh_kg, "gioi_han_cbm": e_gh_cbm, "is_hang_tra_ve": e_is_ve,
-                                "don_gia_cuoc": parse_money_input(e_don_gia), 
-                                "gia_chuyen_tiep_noi": parse_money_input(e_gia_tp), 
-                                "ghi_chu": e_ghi_chu
-                            }
-                            # FIX: Dùng current_user
-                            success, message = update_single_rate_card_transaction(db.pool, selected_rate_id, data_edit, current_user)
-                            if success:
-                                st.success(message)
-                                time.sleep(1)
-                                st.rerun()
-                            else:
-                                st.error(message)
-
-            # --- CHỨC NĂNG 4: XÓA ---
-            elif mode_thao_tac == "🗑️ Xóa tuyến đường":
-                rate_opts_del = {None: "-- Vui lòng chọn tuyến đường cần xóa --"}
-                for _, r in df_rates.iterrows():
-                    rate_opts_del[r['id']] = f"ID: {r['id']} | [{r['ten_khach_hang']}] {r['diem_di']} ➡️ {r['diem_den']} | Giá: {float(r['don_gia_cuoc']):,}"
-                    
-                selected_rate_id = st.selectbox("🗑️ Chọn dòng giá cần xóa:", options=list(rate_opts_del.keys()), format_func=lambda x: rate_opts_del[x], index=0)
-                
-                if selected_rate_id is not None:
-                    st.warning(f"⚠️ Bạn có chắc chắn muốn xóa vĩnh viễn dòng báo giá mã **ID {selected_rate_id}** này không?")
-                    if st.button("🗑️ Xác Nhận Xóa Vĩnh Viễn", type="primary"):
-                        # FIX: Dùng current_user
-                        success, message = delete_single_rate_card_transaction(db.pool, selected_rate_id, current_user)
+                        data_add = {
+                            "khach_hang_id": selected_kh_create, "ten_bang_gia": e_ten_bg.strip(), 
+                            "diem_di": e_diem_di.strip().upper(), "diem_den": e_diem_den.strip().upper(),
+                            "khoang_cach": e_khoang_cach, 
+                            "phan_loai_phuong_tien": e_phan_loai, "loai_xe_quy_cach": e_quy_cach.strip(),
+                            "gioi_han_kg": e_gh_kg, "gioi_han_cbm": e_gh_cbm, "is_hang_tra_ve": e_is_ve,
+                            "don_gia_cuoc": e_don_gia, "gia_chuyen_tiep_noi": e_gia_tp, "ghi_chu": e_ghi_chu.strip()
+                        }
+                        success, message = create_single_rate_card_transaction(db.pool, data_add, current_user)
                         if success:
                             st.success(message)
                             time.sleep(1)
+                            # 🚀 TỐI ƯU: Chuyển hướng về tab xem danh sách, xóa trắng Form
+                            st.session_state['mode_rate_t1'] = "👀 Xem danh sách & Xuất Excel"
                             st.rerun()
                         else:
                             st.error(message)
+
+        # ===============================================
+        # CHỨC NĂNG: XEM, SỬA, XÓA KHI CÓ DỮ LIỆU
+        # ===============================================
         else:
-            st.info("📭 Chưa có dữ liệu bảng giá nào trong hệ thống khớp với bộ lọc. Hãy chọn 'Thêm mới tuyến đường' để tạo báo giá đầu tiên.")
+            if isinstance(df_rates_ui, pd.DataFrame) and not df_rates_ui.empty:
+                
+                # --- CHỨC NĂNG 2: XEM & XUẤT EXCEL ---
+                if mode_thao_tac == "👀 Xem danh sách & Xuất Excel":
+                    st.caption(f"Đang hiển thị **{len(df_rates_ui)}** mức giá trên giao diện.")
+                    df_display = df_rates_ui.copy()
+                    for col in ['don_gia_cuoc', 'gia_chuyen_tiep_noi']:
+                        if col in df_display.columns:
+                            df_display[col] = pd.to_numeric(df_display[col], errors='coerce').fillna(0).apply(lambda x: f"{x:,.0f}")
+                    st.dataframe(df_display, use_container_width=True, hide_index=True)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                        df_rates_export.to_excel(writer, index=False, sheet_name='RateCards')
+                        worksheet = writer.sheets['RateCards']
+                        for i, col in enumerate(df_rates_export.columns):
+                            max_len = df_rates_export[col].fillna('').astype(str).str.len().max() if not df_rates_export.empty else 0
+                            col_width = int(max(max_len if not pd.isna(max_len) else 0, len(str(col)))) + 2
+                            worksheet.set_column(i, i, col_width)
+
+                    st.download_button(label="⬇️ XUẤT RA EXCEL BẢNG GIÁ (TẢI TOÀN BỘ)", data=buffer.getvalue(), file_name=file_export_name, mime="application/vnd.ms-excel", type="primary")
+
+                # --- CHỨC NĂNG 3: SỬA TRỰC TIẾP ---
+                elif mode_thao_tac == "✏️ Sửa trực tiếp tuyến đường":
+                    rate_opts = {None: "-- Vui lòng chọn tuyến đường cần sửa --"}
+                    for _, r in df_rates_ui.iterrows():
+                        rate_opts[r['id']] = f"ID: {r['id']} | [{r['ten_khach_hang']}] {r['diem_di']} ➡️ {r['diem_den']} | Xe: {r['loai_xe_quy_cach']} | Giá: {float(r['don_gia_cuoc']):,}"
+                            
+                    selected_rate_id = st.selectbox("🔍 Chọn dòng giá cần sửa:", options=list(rate_opts.keys()), format_func=lambda x: rate_opts[x], index=0)
+                        
+                    if selected_rate_id is not None:
+                        row_info = df_rates_ui[df_rates_ui['id'] == selected_rate_id].iloc[0]
+                        
+                        with st.form(f"form_edit_single_rate_{selected_rate_id}", clear_on_submit=False):
+                            c1, c2, c3,c4 = st.columns(4)
+                            e_ten_bg = c1.text_input("Tên bảng giá", value=str(row_info.get('ten_bang_gia', '')))
+                            e_diem_di = c2.text_input("Điểm đi", value=str(row_info.get('diem_di', '')))
+                            e_diem_den = c3.text_input("Điểm đến", value=str(row_info.get('diem_den', '')))
+                            
+                            kc_raw = row_info.get('khoang_cach')
+                            kc_safe = float(kc_raw) if pd.notna(kc_raw) and str(kc_raw).strip() != "" else 0.0
+                            e_khoang_cach = c4.number_input("Khoảng cách km", value=kc_safe, step=1.0)
+                            
+                            c5, c6, c7 = st.columns(3)
+                            phan_loai_opts = ['Container', 'Xe_Tai', 'Hang_Le', 'Hang_Air', 'Xe_May']
+                            default_pl = phan_loai_opts.index(row_info['phan_loai_phuong_tien']) if row_info['phan_loai_phuong_tien'] in phan_loai_opts else 1
+                            e_phan_loai = c5.selectbox("Phân loại", phan_loai_opts, index=default_pl)
+                            e_quy_cach = c6.text_input("Loại xe quy cách", value=str(row_info['loai_xe_quy_cach'] or ''))
+                            e_is_ve = c7.selectbox("Chiều hàng", options=[0, 1], index=int(row_info['is_hang_tra_ve']), format_func=lambda x: "Chiều Đi (0)" if x==0 else "Chiều Về (1)")
+
+                            c8, c9, c10 = st.columns(3)
+                            e_gh_kg = c8.number_input("Giới hạn KG (LCL)", value=float(row_info.get('gioi_han_kg',  0)))
+                            e_gh_cbm = c9.number_input("Giới hạn CBM (LCL)", value=float(row_info.get('gioi_han_cbm', 0)))
+                            val_tiep_noi = float(row_info['gia_chuyen_tiep_noi'] or 0)
+                            e_gia_tp = c10.text_input("Giá chuyến tiếp nối", value=f"{val_tiep_noi:,.0f}")
+
+                            c11, c12 = st.columns(2)
+                            val_don_gia = float(row_info['don_gia_cuoc'] or 0)
+                            e_don_gia = c11.text_input("Đơn giá cước (VNĐ)*", value=f"{val_don_gia:,.0f}")
+                            e_ghi_chu = c12.text_input("Ghi chú", value=str(row_info['ghi_chu'] or ''))
+
+                            if st.form_submit_button("💾 Lưu Thay Đổi Mức Giá", type="primary"):
+                                data_edit = {
+                                    "ten_bang_gia": e_ten_bg, "diem_di": e_diem_di, "diem_den": e_diem_den, "khoang_cach": e_khoang_cach,
+                                    "phan_loai_phuong_tien": e_phan_loai, "loai_xe_quy_cach": e_quy_cach,
+                                    "gioi_han_kg": e_gh_kg, "gioi_han_cbm": e_gh_cbm, "is_hang_tra_ve": e_is_ve,
+                                    "don_gia_cuoc": parse_money_input(e_don_gia), 
+                                    "gia_chuyen_tiep_noi": parse_money_input(e_gia_tp), 
+                                    "ghi_chu": e_ghi_chu
+                                }
+                                success, message = update_single_rate_card_transaction(db.pool, selected_rate_id, data_edit, current_user)
+                                if success:
+                                    st.success(message)
+                                    time.sleep(1)
+                                    # 🚀 TỐI ƯU: Chuyển hướng về tab xem danh sách
+                                    st.session_state['mode_rate_t1'] = "👀 Xem danh sách & Xuất Excel"
+                                    st.rerun()
+                                else:
+                                    st.error(message)
+
+                # --- CHỨC NĂNG 4: XÓA ---
+                elif mode_thao_tac == "🗑️ Xóa tuyến đường":
+                    rate_opts_del = {None: "-- Vui lòng chọn tuyến đường cần xóa --"}
+                    for _, r in df_rates_ui.iterrows():
+                        rate_opts_del[r['id']] = f"ID: {r['id']} | [{r['ten_khach_hang']}] {r['diem_di']} ➡️ {r['diem_den']} | Giá: {float(r['don_gia_cuoc']):,}"
+                        
+                    selected_rate_id = st.selectbox("🗑️ Chọn dòng giá cần xóa:", options=list(rate_opts_del.keys()), format_func=lambda x: rate_opts_del[x], index=0)
+                    
+                    if selected_rate_id is not None:
+                        st.warning(f"⚠️ Bạn có chắc chắn muốn xóa vĩnh viễn dòng báo giá mã **ID {selected_rate_id}** này không?")
+                        if st.button("🗑️ Xác Nhận Xóa Vĩnh Viễn", type="primary"):
+                            success, message = delete_single_rate_card_transaction(db.pool, selected_rate_id, current_user)
+                            if success:
+                                st.success(message)
+                                time.sleep(1)
+                                # 🚀 TỐI ƯU: Chuyển hướng về tab xem danh sách
+                                st.session_state['mode_rate_t1'] = "👀 Xem danh sách & Xuất Excel"
+                                st.rerun()
+                            else:
+                                st.error(message)
+            else:
+                st.info("📭 Chưa có dữ liệu bảng giá nào trong hệ thống khớp với bộ lọc. Hãy chọn 'Thêm mới tuyến đường' để tạo báo giá đầu tiên.")
 
 
 # =========================================================================
@@ -337,219 +341,237 @@ with tab3:
         for _, row in df_kh_pp.iterrows():
             kh_pp_opts[int(row['id'])] = row['ten_khach_hang']
             
-    chon_kh_pp_id = st.selectbox("🔍 Lọc theo công ty:", options=list(kh_pp_opts.keys()), format_func=lambda x: kh_pp_opts[x], key="filter_pp_t3")
+    chon_kh_pp_id = st.selectbox(
+        "🔍 Lọc theo công ty:", 
+        options=list(kh_pp_opts.keys()), 
+        format_func=lambda x: kh_pp_opts[x], 
+        key="filter_pp_t3",
+        index=None,
+        placeholder="-- Vui lòng chọn Khách hàng để tải dữ liệu phụ phí --"
+    )
     st.divider()
 
-    sql_pp_base = """
-        SELECT p.id, kh.ten_khach_hang, p.ten_phu_phi, p.don_gia_phu_phi, 
-               p.dieu_kien_kich_hoat, p.loai_ap_dung, p.ghi_chu
-        FROM phu_phi_khach_hang p
-        JOIN khach_hang kh ON p.khach_hang_id = kh.id
-    """
-    
-    if chon_kh_pp_id == "ALL":
-        df_pp = db.execute_query(sql_pp_base + " ORDER BY p.id DESC")
-        file_pp_name = f"Phu_Phi_TatCa_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
+    if chon_kh_pp_id is None:
+        st.info("💡 Mẹo: Hãy chọn một Khách hàng cụ thể từ danh sách trên để xem phụ phí. Hệ thống sẽ tải dữ liệu cực nhanh!")
     else:
-        df_pp = db.execute_query(sql_pp_base + " WHERE p.khach_hang_id = %s ORDER BY p.id DESC", (chon_kh_pp_id,))
-        clean_name = "".join([c if c.isalnum() else "_" for c in kh_pp_opts[chon_kh_pp_id]])
-        file_pp_name = f"Phu_Phi_{clean_name}_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
+        sql_pp_base = """
+            SELECT p.id, kh.ten_khach_hang, p.ten_phu_phi, p.don_gia_phu_phi, 
+                   p.dieu_kien_kich_hoat, p.loai_ap_dung, p.ghi_chu
+            FROM phu_phi_khach_hang p
+            JOIN khach_hang kh ON p.khach_hang_id = kh.id
+        """
+        
+        if chon_kh_pp_id == "ALL":
+            st.warning("⚠️ Chế độ xem toàn bộ: Giao diện web chỉ hiển thị 500 dòng mới nhất để chống giật lag. Hãy dùng nút 'Xuất Excel' để lấy toàn bộ dữ liệu.")
+            df_pp_ui = db.execute_query(sql_pp_base + " ORDER BY p.id DESC LIMIT 500")
+            df_pp_export = db.execute_query(sql_pp_base + " ORDER BY p.id DESC")
+            file_pp_name = f"Phu_Phi_TatCa_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
+        else:
+            df_pp_ui = db.execute_query(sql_pp_base + " WHERE p.khach_hang_id = %s ORDER BY p.id DESC", (chon_kh_pp_id,))
+            df_pp_export = df_pp_ui
+            clean_name = "".join([c if c.isalnum() else "_" for c in kh_pp_opts[chon_kh_pp_id]])
+            file_pp_name = f"Phu_Phi_{clean_name}_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
 
-    # ĐƯA MENU RA NGOÀI ĐỂ LUÔN THẤY NÚT THÊM MỚI NGAY CẢ KHI CHƯA CÓ DỮ LIỆU
-    mode_pp_act = st.radio(
-        "📌 Chọn hành động:", 
-        ["👀 Xem danh sách & Xuất Excel", "➕ Thêm mới phụ phí", "✏️ Sửa trực tiếp phụ phí", "🗑️ Xóa phụ phí"], 
-        horizontal=True, 
-        key="mode_pp_t3"
-    )
-    st.markdown("<br>", unsafe_allow_html=True)
+        mode_pp_act = st.radio(
+            "📌 Chọn hành động:", 
+            ["👀 Xem danh sách & Xuất Excel", "➕ Thêm mới phụ phí", "✏️ Sửa trực tiếp phụ phí", "🗑️ Xóa phụ phí"], 
+            horizontal=True, 
+            key="mode_pp_t3"
+        )
+        st.markdown("<br>", unsafe_allow_html=True)
 
-    # ===============================================
-    # CHỨC NĂNG 1: THÊM MỚI PHỤ PHÍ
-    # ===============================================
-    if mode_pp_act == "➕ Thêm mới phụ phí":
-        st.markdown("#### ➕ Thêm mới Phụ phí Khách hàng")
-        with st.form("form_add_single_pp", clear_on_submit=True):
-            kh_list = {k: v for k, v in kh_pp_opts.items() if k != "ALL"}
-            default_kh_index = 0
-            if chon_kh_pp_id != "ALL" and chon_kh_pp_id in kh_list:
-                default_kh_index = list(kh_list.keys()).index(chon_kh_pp_id)
+        # ===============================================
+        # CHỨC NĂNG 1: THÊM MỚI PHỤ PHÍ
+        # ===============================================
+        if mode_pp_act == "➕ Thêm mới phụ phí":
+            st.markdown("#### ➕ Thêm mới Phụ phí Khách hàng")
+            with st.form("form_add_single_pp", clear_on_submit=True):
+                kh_list = {k: v for k, v in kh_pp_opts.items() if k != "ALL"}
+                default_kh_index = 0
+                if chon_kh_pp_id != "ALL" and chon_kh_pp_id in kh_list:
+                    default_kh_index = list(kh_list.keys()).index(chon_kh_pp_id)
 
-            selected_kh_create = st.selectbox("🏢 Chọn Khách Hàng*", options=list(kh_list.keys()), format_func=lambda x: kh_list[x], index=default_kh_index)
-            
-            c1, c2 = st.columns(2)
-            e_ten_pp = c1.text_input("Tên phụ phí*")
-            e_don_gia_pp = c2.text_input("Đơn giá phụ phí (VNĐ)*", value="0")
+                selected_kh_create = st.selectbox("🏢 Chọn Khách Hàng*", options=list(kh_list.keys()), format_func=lambda x: kh_list[x], index=default_kh_index)
+                
+                c1, c2 = st.columns(2)
+                e_ten_pp = c1.text_input("Tên phụ phí*")
+                e_don_gia_pp = c2.text_input("Đơn giá phụ phí (VNĐ)*", value="0")
 
-            c3, c4 = st.columns(2)
-            e_dk_kich_hoat = c3.text_input("Điều kiện kích hoạt", placeholder='VD: {"loai": "boc_xep"}')
-            e_loai_ap_dung = c4.text_input("Loại áp dụng", value="Co_Dinh")
+                c3, c4 = st.columns(2)
+                e_dk_kich_hoat = c3.text_input("Điều kiện kích hoạt", placeholder='VD: {"loai": "boc_xep"}')
+                e_loai_ap_dung = c4.text_input("Loại áp dụng", value="Co_Dinh")
 
-            e_ghi_chu_pp = st.text_input("Ghi chú")
+                e_ghi_chu_pp = st.text_input("Ghi chú")
 
-            if st.form_submit_button("💾 Xác Nhận Thêm Mới", type="primary"):
-                if not selected_kh_create or not e_ten_pp.strip():
-                    st.error("⚠️ Vui lòng điền đầy đủ thông tin Khách hàng và Tên phụ phí.")
-                else:
-                    data_add_pp = {
-                        "khach_hang_id": selected_kh_create,
-                        "ten_phu_phi": e_ten_pp.strip(),
-                        "don_gia_phu_phi": parse_money_input(e_don_gia_pp),
-                        "dieu_kien_kich_hoat": e_dk_kich_hoat.strip(),
-                        "loai_ap_dung": e_loai_ap_dung.strip(),
-                        "ghi_chu": e_ghi_chu_pp.strip()
-                    }
-                    
-                    # Ưu tiên gọi hàm từ utils_core, nếu chưa có thì chạy fallback tự động xử lý an toàn
-                    try:
-                        from utils_core import create_single_phu_phi_transaction
-                        success, message = create_single_phu_phi_transaction(db.pool, data_add_pp, current_user)
-                    except ImportError:
-                        try:
-                            import json
-                            from audit_logger import ghi_log_he_thong
-                            conn = db.pool.get_connection()
-                            conn.autocommit = False
-                            cursor = conn.cursor()
-                            sql_insert = """
-                                INSERT INTO phu_phi_khach_hang (khach_hang_id, ten_phu_phi, don_gia_phu_phi, dieu_kien_kich_hoat, loai_ap_dung, ghi_chu)
-                                VALUES (%s, %s, %s, %s, %s, %s)
-                            """
-                            cursor.execute(sql_insert, (
-                                data_add_pp['khach_hang_id'], data_add_pp['ten_phu_phi'], data_add_pp['don_gia_phu_phi'],
-                                data_add_pp['dieu_kien_kich_hoat'], data_add_pp['loai_ap_dung'], data_add_pp['ghi_chu']
-                            ))
-                            new_id = cursor.lastrowid
-                            ghi_log_he_thong(cursor, "QUAN_LY_PHU_PHI", new_id, current_user, "TAO_MOI", json.dumps(data_add_pp, ensure_ascii=False))
-                            conn.commit()
-                            success, message = True, "✅ Đã thêm mới phụ phí thành công!"
-                        except Exception as ex:
-                            if 'conn' in locals(): conn.rollback()
-                            success, message = False, f"Lỗi DB: {str(ex)}"
-                        finally:
-                            if 'cursor' in locals(): cursor.close()
-                            if 'conn' in locals(): conn.close()
-
-                    if success:
-                        st.success(message)
-                        time.sleep(1)
-                        st.rerun()
+                if st.form_submit_button("💾 Xác Nhận Thêm Mới", type="primary"):
+                    if not selected_kh_create or not e_ten_pp.strip():
+                        st.error("⚠️ Vui lòng điền đầy đủ thông tin Khách hàng và Tên phụ phí.")
                     else:
-                        st.error(message)
-
-    # ===============================================
-    # CHỨC NĂNG: XEM, SỬA, XÓA KHI CÓ DỮ LIỆU
-    # ===============================================
-    else:
-        if isinstance(df_pp, pd.DataFrame) and not df_pp.empty:
-            # --- CHỨC NĂNG 2: XEM & XUẤT EXCEL ---
-            if mode_pp_act == "👀 Xem danh sách & Xuất Excel":
-                st.caption(f"Tìm thấy **{len(df_pp)}** loại phụ phí.")
-                df_display_pp = df_pp.copy()
-                
-                if 'don_gia_phu_phi' in df_display_pp.columns:
-                    df_display_pp['don_gia_phu_phi'] = pd.to_numeric(df_display_pp['don_gia_phu_phi'], errors='coerce').fillna(0).apply(lambda x: f"{x:,.0f}")
-                
-                df_display_pp = df_display_pp.rename(columns={
-                    'id': 'ID',
-                    'ten_khach_hang': 'Tên khách hàng',
-                    'ten_phu_phi': 'Tên phụ phí',
-                    'don_gia_phu_phi': 'Đơn giá',
-                    'dieu_kien_kich_hoat': 'Điều kiện kích hoạt',
-                    'loai_ap_dung': 'Loại áp dụng',
-                    'ghi_chu': 'Ghi chú'
-                })
-                
-                st.dataframe(df_display_pp, use_container_width=True, hide_index=True)
-                
-                st.markdown("<br>", unsafe_allow_html=True)
-                buffer_pp = io.BytesIO()
-                with pd.ExcelWriter(buffer_pp, engine='xlsxwriter') as writer:
-                    df_pp.to_excel(writer, index=False, sheet_name='PhuPhiKhachHang')
-                    worksheet = writer.sheets['PhuPhiKhachHang']
-                    for i, col in enumerate(df_pp.columns):
-                        max_len = df_pp[col].fillna('').astype(str).str.len().max() if not df_pp.empty else 0
-                        if pd.isna(max_len): max_len = 0
-                        col_width = int(max(max_len, len(str(col)))) + 2
-                        worksheet.set_column(i, i, col_width)
-
-                st.download_button(
-                    label="⬇️ XUẤT RA EXCEL PHỤ PHÍ",
-                    data=buffer_pp.getvalue(),
-                    file_name=file_pp_name,
-                    mime="application/vnd.ms-excel",
-                    type="primary"
-                )
-
-            # --- CHỨC NĂNG 3: SỬA TRỰC TIẾP ---
-            elif mode_pp_act == "✏️ Sửa trực tiếp phụ phí":
-                pp_opts = {None: "-- Vui lòng chọn phụ phí cần sửa --"}
-                for _, r in df_pp.iterrows():
-                    pp_opts[r['id']] = f"ID: {r['id']} | [{r['ten_khach_hang']}] {r['ten_phu_phi']} | Giá: {float(r['don_gia_phu_phi']):,}"
-                    
-                selected_pp_id = st.selectbox(
-                    "🔍 Chọn phụ phí cần sửa:", 
-                    options=list(pp_opts.keys()), 
-                    format_func=lambda x: pp_opts[x],
-                    index=0
-                )
-                
-                if selected_pp_id is not None:
-                    row_pp = df_pp[df_pp['id'] == selected_pp_id].iloc[0]
-                    with st.form(f"form_edit_single_pp_{selected_pp_id}", clear_on_submit=False):
-                        c1, c2 = st.columns(2)
-                        e_ten_pp = c1.text_input("Tên phụ phí*", value=str(row_pp['ten_phu_phi'] or ''))
+                        data_add_pp = {
+                            "khach_hang_id": selected_kh_create,
+                            "ten_phu_phi": e_ten_pp.strip(),
+                            "don_gia_phu_phi": parse_money_input(e_don_gia_pp),
+                            "dieu_kien_kich_hoat": e_dk_kich_hoat.strip(),
+                            "loai_ap_dung": e_loai_ap_dung.strip(),
+                            "ghi_chu": e_ghi_chu_pp.strip()
+                        }
                         
-                        val_don_gia_pp = float(row_pp['don_gia_phu_phi'] or 0)
-                        e_don_gia_pp = c2.text_input("Đơn giá phụ phí (VNĐ)*", value=f"{val_don_gia_pp:,.0f}")
+                        try:
+                            from utils_core import create_single_phu_phi_transaction
+                            success, message = create_single_phu_phi_transaction(db.pool, data_add_pp, current_user)
+                        except ImportError:
+                            try:
+                                import json
+                                from audit_logger import ghi_log_he_thong
+                                conn = db.pool.get_connection()
+                                conn.autocommit = False
+                                cursor = conn.cursor()
+                                sql_insert = """
+                                    INSERT INTO phu_phi_khach_hang (khach_hang_id, ten_phu_phi, don_gia_phu_phi, dieu_kien_kich_hoat, loai_ap_dung, ghi_chu)
+                                    VALUES (%s, %s, %s, %s, %s, %s)
+                                """
+                                cursor.execute(sql_insert, (
+                                    data_add_pp['khach_hang_id'], data_add_pp['ten_phu_phi'], data_add_pp['don_gia_phu_phi'],
+                                    data_add_pp['dieu_kien_kich_hoat'], data_add_pp['loai_ap_dung'], data_add_pp['ghi_chu']
+                                ))
+                                new_id = cursor.lastrowid
+                                ghi_log_he_thong(cursor, "QUAN_LY_PHU_PHI", new_id, current_user, "TAO_MOI", json.dumps(data_add_pp, ensure_ascii=False))
+                                conn.commit()
+                                success, message = True, "✅ Đã thêm mới phụ phí thành công!"
+                            except Exception as ex:
+                                if 'conn' in locals(): conn.rollback()
+                                success, message = False, f"Lỗi DB: {str(ex)}"
+                            finally:
+                                if 'cursor' in locals(): cursor.close()
+                                if 'conn' in locals(): conn.close()
 
-                        c3, c4 = st.columns(2)
-                        e_dk_kich_hoat = c3.text_input("Điều kiện kích hoạt", value=str(row_pp['dieu_kien_kich_hoat'] or ''))
-                        e_loai_ap_dung = c4.text_input("Loại áp dụng", value=str(row_pp['loai_ap_dung'] or 'Tu_Dong'))
-
-                        e_ghi_chu_pp = st.text_input("Ghi chú", value=str(row_pp['ghi_chu'] or ''))
-
-                        if st.form_submit_button("💾 Lưu Thay Đổi Phụ Phí", type="primary"):
-                            data_edit_pp = {
-                                "ten_phu_phi": e_ten_pp,
-                                "don_gia_phu_phi": parse_money_input(e_don_gia_pp),
-                                "dieu_kien_kich_hoat": e_dk_kich_hoat,
-                                "loai_ap_dung": e_loai_ap_dung,
-                                "ghi_chu": e_ghi_chu_pp
-                            }
-                            success, message = update_single_phu_phi_transaction(db.pool, selected_pp_id, data_edit_pp, current_user)
-                            if success:
-                                st.success(message)
-                                time.sleep(1)
-                                st.rerun()
-                            else:
-                                st.error(message)
-
-            # --- CHỨC NĂNG 4: XÓA ---
-            elif mode_pp_act == "🗑️ Xóa phụ phí":
-                pp_opts_del = {None: "-- Vui lòng chọn phụ phí cần xóa --"}
-                for _, r in df_pp.iterrows():
-                    pp_opts_del[r['id']] = f"ID: {r['id']} | [{r['ten_khach_hang']}] {r['ten_phu_phi']} | Giá: {float(r['don_gia_phu_phi']):,}"
-                    
-                selected_pp_id = st.selectbox(
-                    "🗑️ Chọn phụ phí cần xóa:", 
-                    options=list(pp_opts_del.keys()), 
-                    format_func=lambda x: pp_opts_del[x],
-                    index=0
-                )
-                
-                if selected_pp_id is not None:
-                    st.warning(f"⚠️ Bạn có chắc chắn muốn xóa vĩnh viễn loại phụ phí mã **ID {selected_pp_id}** này không?")
-                    if st.button("🗑️ Xác Nhận Xóa Vĩnh Viễn Phụ Phí", type="primary"):
-                        success, message = delete_single_phu_phi_transaction(db.pool, selected_pp_id, current_user)
                         if success:
                             st.success(message)
                             time.sleep(1)
+                            # 🚀 TỐI ƯU: Chuyển hướng về tab xem danh sách
+                            st.session_state['mode_pp_t3'] = "👀 Xem danh sách & Xuất Excel"
                             st.rerun()
                         else:
                             st.error(message)
+
+        # ===============================================
+        # CHỨC NĂNG: XEM, SỬA, XÓA KHI CÓ DỮ LIỆU
+        # ===============================================
         else:
-            st.info("📭 Hiện chưa có phụ phí nào được thiết lập. Hãy chọn 'Thêm mới phụ phí' để tạo phụ phí đầu tiên.")
+            if isinstance(df_pp_ui, pd.DataFrame) and not df_pp_ui.empty:
+                # --- CHỨC NĂNG 2: XEM & XUẤT EXCEL ---
+                if mode_pp_act == "👀 Xem danh sách & Xuất Excel":
+                    st.caption(f"Đang hiển thị **{len(df_pp_ui)}** loại phụ phí trên giao diện.")
+                    df_display_pp = df_pp_ui.copy()
+                    
+                    if 'don_gia_phu_phi' in df_display_pp.columns:
+                        df_display_pp['don_gia_phu_phi'] = pd.to_numeric(df_display_pp['don_gia_phu_phi'], errors='coerce').fillna(0).apply(lambda x: f"{x:,.0f}")
+                    
+                    df_display_pp = df_display_pp.rename(columns={
+                        'id': 'ID',
+                        'ten_khach_hang': 'Tên khách hàng',
+                        'ten_phu_phi': 'Tên phụ phí',
+                        'don_gia_phu_phi': 'Đơn giá',
+                        'dieu_kien_kich_hoat': 'Điều kiện kích hoạt',
+                        'loai_ap_dung': 'Loại áp dụng',
+                        'ghi_chu': 'Ghi chú'
+                    })
+                    
+                    st.dataframe(df_display_pp, use_container_width=True, hide_index=True)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    buffer_pp = io.BytesIO()
+                    with pd.ExcelWriter(buffer_pp, engine='xlsxwriter') as writer:
+                        df_pp_export.to_excel(writer, index=False, sheet_name='PhuPhiKhachHang')
+                        worksheet = writer.sheets['PhuPhiKhachHang']
+                        for i, col in enumerate(df_pp_export.columns):
+                            max_len = df_pp_export[col].fillna('').astype(str).str.len().max() if not df_pp_export.empty else 0
+                            if pd.isna(max_len): max_len = 0
+                            col_width = int(max(max_len, len(str(col)))) + 2
+                            worksheet.set_column(i, i, col_width)
+
+                    st.download_button(
+                        label="⬇️ XUẤT RA EXCEL PHỤ PHÍ (TẢI TOÀN BỘ)",
+                        data=buffer_pp.getvalue(),
+                        file_name=file_pp_name,
+                        mime="application/vnd.ms-excel",
+                        type="primary"
+                    )
+
+                # --- CHỨC NĂNG 3: SỬA TRỰC TIẾP ---
+                elif mode_pp_act == "✏️ Sửa trực tiếp phụ phí":
+                    pp_opts = {None: "-- Vui lòng chọn phụ phí cần sửa --"}
+                    for _, r in df_pp_ui.iterrows(): 
+                        pp_opts[r['id']] = f"ID: {r['id']} | [{r['ten_khach_hang']}] {r['ten_phu_phi']} | Giá: {float(r['don_gia_phu_phi']):,}"
+                        
+                    selected_pp_id = st.selectbox(
+                        "🔍 Chọn phụ phí cần sửa:", 
+                        options=list(pp_opts.keys()), 
+                        format_func=lambda x: pp_opts[x],
+                        index=0
+                    )
+                    
+                    if selected_pp_id is not None:
+                        row_pp = df_pp_ui[df_pp_ui['id'] == selected_pp_id].iloc[0]
+                        with st.form(f"form_edit_single_pp_{selected_pp_id}", clear_on_submit=False):
+                            c1, c2 = st.columns(2)
+                            e_ten_pp = c1.text_input("Tên phụ phí*", value=str(row_pp['ten_phu_phi'] or ''))
+                            
+                            val_don_gia_pp = float(row_pp['don_gia_phu_phi'] or 0)
+                            e_don_gia_pp = c2.text_input("Đơn giá phụ phí (VNĐ)*", value=f"{val_don_gia_pp:,.0f}")
+
+                            c3, c4 = st.columns(2)
+                            e_dk_kich_hoat = c3.text_input("Điều kiện kích hoạt", value=str(row_pp['dieu_kien_kich_hoat'] or ''))
+                            e_loai_ap_dung = c4.text_input("Loại áp dụng", value=str(row_pp['loai_ap_dung'] or 'Tu_Dong'))
+
+                            e_ghi_chu_pp = st.text_input("Ghi chú", value=str(row_pp['ghi_chu'] or ''))
+
+                            if st.form_submit_button("💾 Lưu Thay Đổi Phụ Phí", type="primary"):
+                                data_edit_pp = {
+                                    "ten_phu_phi": e_ten_pp,
+                                    "don_gia_phu_phi": parse_money_input(e_don_gia_pp),
+                                    "dieu_kien_kich_hoat": e_dk_kich_hoat,
+                                    "loai_ap_dung": e_loai_ap_dung,
+                                    "ghi_chu": e_ghi_chu_pp
+                                }
+                                success, message = update_single_phu_phi_transaction(db.pool, selected_pp_id, data_edit_pp, current_user)
+                                if success:
+                                    st.success(message)
+                                    time.sleep(1)
+                                    # 🚀 TỐI ƯU: Chuyển hướng về tab xem danh sách
+                                    st.session_state['mode_pp_t3'] = "👀 Xem danh sách & Xuất Excel"
+                                    st.rerun()
+                                else:
+                                    st.error(message)
+
+                # --- CHỨC NĂNG 4: XÓA ---
+                elif mode_pp_act == "🗑️ Xóa phụ phí":
+                    pp_opts_del = {None: "-- Vui lòng chọn phụ phí cần xóa --"}
+                    for _, r in df_pp_ui.iterrows():
+                        pp_opts_del[r['id']] = f"ID: {r['id']} | [{r['ten_khach_hang']}] {r['ten_phu_phi']} | Giá: {float(r['don_gia_phu_phi']):,}"
+                        
+                    selected_pp_id = st.selectbox(
+                        "🗑️ Chọn phụ phí cần xóa:", 
+                        options=list(pp_opts_del.keys()), 
+                        format_func=lambda x: pp_opts_del[x],
+                        index=0
+                    )
+                    
+                    if selected_pp_id is not None:
+                        st.warning(f"⚠️ Bạn có chắc chắn muốn xóa vĩnh viễn loại phụ phí mã **ID {selected_pp_id}** này không?")
+                        if st.button("🗑️ Xác Nhận Xóa Vĩnh Viễn Phụ Phí", type="primary"):
+                            success, message = delete_single_phu_phi_transaction(db.pool, selected_pp_id, current_user)
+                            if success:
+                                st.success(message)
+                                time.sleep(1)
+                                # 🚀 TỐI ƯU: Chuyển hướng về tab xem danh sách
+                                st.session_state['mode_pp_t3'] = "👀 Xem danh sách & Xuất Excel"
+                                st.rerun()
+                            else:
+                                st.error(message)
+            else:
+                st.info("📭 Hiện chưa có phụ phí nào được thiết lập cho bộ lọc này. Hãy chọn 'Thêm mới phụ phí' để tạo.")
 
 
 # =========================================================================

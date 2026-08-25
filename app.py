@@ -7,7 +7,7 @@ import bcrypt
 # BƯỚC 1: KHỞI TẠO PAGE CONFIG (BẮT BUỘC ĐỂ ĐẦU TIÊN)
 # =====================================================================
 st.set_page_config(
-    page_title="HỆ THỐNG QUẢN LÝ LOGISTICS BẢO TÍN", 
+    page_title="HỆ THỐNG QUẢN LÝ LOGISTICS BẢO TÍN",
     page_icon="🚚", 
     layout="wide",
     initial_sidebar_state="expanded"
@@ -114,17 +114,18 @@ st.markdown("""
 # =====================================================================
 st.markdown("""
     <div style='margin-top: -30px; margin-bottom: 20px;'>
-        <h1 style='text-align: center; color: #0b5394; font-family: "Segoe UI", Arial, sans-serif; font-weight: 800; font-size: 34px; letter-spacing: 1px;'>
-            🚚 HỆ THỐNG QUẢN LÝ LOGISTICS BẢO TÍN
-        </h1>
-        <p style='text-align: center; color: #64748b; font-size: 15px; font-weight: 500; margin-top: 5px; margin-bottom: 15px;'>
-            Trung tâm điều hành vận tải đường bộ • Dữ liệu số hóa thời gian thực
-        </p>
-        <hr style='border: 0; height: 2px; background-image: linear-gradient(to right, rgba(11, 83, 148, 0), rgba(11, 83, 148, 0.75), rgba(11, 83, 148, 0));'>
+        
+        
+        
     </div>
 """, unsafe_allow_html=True)
-
-
+   #<h1 style='text-align: center; color: #0b5394; font-family: "Segoe UI", Arial, sans-serif; font-weight: 800; font-size: 34px; letter-spacing: 1px;'>
+   #            🚚 HỆ THỐNG QUẢN LÝ LOGISTICS BẢO TÍN
+   #</h1> 
+   # <p style='text-align: center; color: #64748b; font-size: 15px; font-weight: 500; margin-top: 5px; margin-bottom: 15px;'>
+   #             Trung tâm điều hành vận tải đường bộ • Dữ liệu số hóa thời gian thực
+   #<hr style='border: 0; height: 2px; background-image: linear-gradient(to right, rgba(11, 83, 148, 0), rgba(11, 83, 148, 0.75), rgba(11, 83, 148, 0));'>
+   # </p>
 
 if 'db_config' in sys.modules:
     del sys.modules['db_config']
@@ -236,6 +237,7 @@ else:
 
     # Khai báo đường dẫn đến các trang chức năng
     page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", default=True)
+    page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝")
     page_bao_cao   = st.Page("views/bao_cao.py", title="Báo cáo & Thống kê", icon="📊")
     page_nhan_vien = st.Page("views/nhan_vien.py", title="Quản lý Nhân viên", icon="🧑‍✈️")
     page_khach_hang = st.Page("views/khach_hang.py", title="Quản lý Khách hàng", icon="🧑")
@@ -259,7 +261,8 @@ else:
     
     if role == 'Admin':
         pages_structure = {
-            "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di, page_bao_cao,page_to_khai_hq,page_quan_ly_co,page_tool_fuel_manager],
+            "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di,page_to_khai_hq,page_quan_ly_co,page_tool_fuel_manager],
+            "📦 NGHIỆP VỤ KẾ TOÁN": [page_quyet_toan, page_bao_cao],
             "📦 TOOL TIỆN ÍCH": [page_tool_import_pricing,page_tool_import_phu_cap,page_tool_import_pricing_first,page_tool_import_pricing_haiquan,page_tool_backup_database, page_tool_zalo],
             "⚙️ DANH MỤC QUẢN TRỊ": [page_nhan_vien, page_doi_xe,page_khach_hang, page_tai_khoan, page_config_phu_cap, page_kinh_doanh_result]
         }
@@ -269,7 +272,7 @@ else:
         }
     else:
         pages_structure = {
-            "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di, page_bao_cao,page_to_khai_hq,page_quan_ly_co,page_tool_fuel_manager],
+            "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di,page_to_khai_hq,page_quan_ly_co,page_tool_fuel_manager],
             "📦 TOOL TIỆN ÍCH": [page_tool_import_pricing,page_tool_import_phu_cap,page_tool_import_pricing_first,page_tool_import_pricing_haiquan,page_tool_backup_database, page_tool_zalo]
         }
         

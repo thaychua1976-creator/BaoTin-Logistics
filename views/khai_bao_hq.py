@@ -6,7 +6,7 @@ import uuid
 import traceback
 from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 # --- IMPORT THÊM HÀM get_phu_phi_theo_khach_hang TỪ BACKEND ---
-from declare_hq_manager import save_to_khai_transaction, delete_to_khai_transaction, xuat_excel_hai_quan_bao_tin, xuat_excel_hai_quan_continental, get_don_gia_hq_tu_dong, get_phu_phi_theo_khach_hang
+from declare_hq_manager import save_to_khai_transaction, delete_to_khai_transaction, get_don_gia_hq_tu_dong, get_phu_phi_theo_khach_hang
 from audit_logger import ghi_log_he_thong
 
 db = st.session_state.get('db')
@@ -24,11 +24,11 @@ def get_idx(lst, val, default=0):
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>🏢 PHÂN HỆ QUẢN LÝ TỜ KHAI HẢI QUAN & CONTAINER</h3>", unsafe_allow_html=True)
 st.divider()
 
-tab_khai_hq, tab_danh_sach, tab_container, tab_out_cong_no_hq = st.tabs([
+tab_khai_hq, tab_danh_sach, tab_container = st.tabs([
     "📋 KHAI BÁO TỜ KHAI MỚI", 
     "🔍 DANH SÁCH & QUẢN LÝ TỜ KHAI", 
-    "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)", 
-    "✍️ XUẤT CÔNG NỢ"
+    "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)"
+    
 ])
 
 # ==========================================
@@ -872,86 +872,3 @@ with tab_container:
     vung_thao_tac_quan_ly_container()
 ################################################
 
-with tab_out_cong_no_hq:
-    tao_tieu_de_kem_nut_refresh("📋 Thống kê công nợ hải quan", "ref_tab_out_cong_no_hq")  
-    @st.fragment
-    def vung_thao_tac_quan_ly_cong_no_hq():
-        st.markdown("#### 📤 Xem Trước & Xuất File Báo Cáo Công Nợ")
-        st.info("Hệ thống sẽ tổng hợp tờ khai, gộp nhóm danh sách container, tính tổng Phí DVHQ và phí nâng hạ theo chuẩn form ICHIHIRO,ZHENGXING.")
-        
-        col_d1, col_d2 = st.columns(2)
-        e_tu_ngay = col_d1.date_input("Từ ngày", value=datetime.date.today().replace(day=1), key="exp_tu_ngay")
-        e_den_ngay = col_d2.date_input("Đến ngày", value=datetime.date.today(), key="exp_den_ngay")
-        
-        if "loai_bao_cao_selected" not in st.session_state:
-            st.session_state["loai_bao_cao_selected"] = "Mẫu Chuẩn (ICHIHIRO,ZHENGXING)"
-
-        loai_bao_cao = st.radio(
-            "📑 Chọn Mẫu Xuất Báo Cáo:", 
-            ["Mẫu Chuẩn (ICHIHIRO,ZHENGXING)", "Mẫu CONTINENTAL (Tách Sheet theo HBL)"], 
-            horizontal=True,
-            key="loai_bao_cao_selected"
-        )
-
-        st.markdown("---")
-
-        sql_preview = """
-            SELECT 
-                tk.so_to_khai AS 'Số Tờ Khai', tk.loai_to_khai AS 'Loại', tk.ngay_khai AS 'Ngày Khai', 
-                kh.ten_khach_hang AS 'Khách Hàng', tk.ten_doi_tac AS 'Đối Tác', cd.loai_hinh_xe AS 'Loại Xe',
-                c.so_cont  AS 'Số Container', (IFNULL(c.phi_to_khai, 0) + IFNULL(tk.phi_dich_vu_hq, 0)) AS 'Phí DVHQ Tờ khai',
-                c.phi_nang_ha_on AS 'Phí Nâng ON', c.phi_nang_ha_off AS 'Phí Hạ OFF',
-                co.form_co  AS 'Form C/O', co.so_co  AS 'Số C/O', co.phi_co AS 'Phí C/O', co.phi_dvhq AS 'Phí DVHQ C/O',
-                cd.dia_diem_giao_nhan AS 'Lộ Trình', tk.tong_trong_luong_hang AS 'Trọng Lượng (KG)',
-                cd.doanh_thu AS 'Cước Vận Chuyển', tk.phi_khac AS 'Phụ Phí Khác', tk.ghi_chu AS 'Ghi Chú'
-            FROM to_khai_hai_quan tk
-            JOIN khach_hang kh ON tk.khach_hang_id = kh.id
-            LEFT JOIN chuyen_di cd ON tk.chuyen_di_id = cd.id
-            LEFT JOIN to_khai_co co ON tk.id = co.to_khai_id
-            LEFT JOIN container_quan_ly c ON tk.id = c.to_khai_id
-            WHERE tk.ngay_khai BETWEEN %s AND %s
-            ORDER BY tk.ngay_khai ASC
-        """
-        
-        df_preview = db.execute_query(sql_preview, (e_tu_ngay.strftime('%Y-%m-%d'), e_den_ngay.strftime('%Y-%m-%d')))
-        
-        if isinstance(df_preview, pd.DataFrame) and not df_preview.empty:
-            money_cols = ['Cước Vận Chuyển', 'Tổng Phí DVHQ', 'Phí C/O', 'Tổng Phí Nâng ON', 'Tổng Phí Hạ OFF']
-            df_display = df_preview.copy()
-            df_display['Ngày Khai'] = pd.to_datetime(df_display['Ngày Khai']).dt.strftime('%d/%m/%Y')
-            
-            for col in money_cols:
-                if col in df_display.columns:
-                    df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
-                    
-            st.markdown(f"**✅ Đã tìm thấy {len(df_display)} bản ghi hợp lệ:**")
-            st.dataframe(df_display, use_container_width=True, hide_index=True)
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            if "CONTINENTAL" in loai_bao_cao:
-                st.info("📌 Đang áp dụng: **Mẫu xuất file riêng cho khách hàng Continental** (Kèm bảng tổng và tách sheet theo HBL).")
-            else:
-                st.info("📌 Đang áp dụng: **Mẫu xuất file chuẩn ICHIHIRO** truyền thống.")
-
-            if st.button("🚀 Xuất File Excel Tổng Hợp", type="primary", use_container_width=True):
-                if "CONTINENTAL" in loai_bao_cao:
-                    file_data = xuat_excel_hai_quan_continental(db, e_tu_ngay.strftime('%Y-%m-%d'), e_den_ngay.strftime('%Y-%m-%d'))
-                    file_name = f"Bao_Cao_Continental_{e_tu_ngay.strftime('%m%Y')}.xlsx"
-                else:
-                    file_data = xuat_excel_hai_quan_bao_tin(db, e_tu_ngay.strftime('%Y-%m-%d'), e_den_ngay.strftime('%Y-%m-%d'))
-                    file_name = f"Bao_Cao_Hai_Quan_Bao_Tin_{e_tu_ngay.strftime('%m%Y')}.xlsx"
-                
-                if file_data:
-                    st.success("Tạo file thành công! Vui lòng tải xuống bên dưới.")
-                    st.download_button(
-                        label="⬇️ Tải Xuống File Báo Cáo Excel",
-                        data=file_data,
-                        file_name=file_name,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
-                else:
-                    st.error("Lỗi trong quá trình kết xuất dữ liệu Excel hoặc không có dữ liệu.")
-        else:
-            st.warning("⚠️ Không tìm thấy dữ liệu tờ khai trong khoảng thời gian này.")
-    vung_thao_tac_quan_ly_cong_no_hq()
