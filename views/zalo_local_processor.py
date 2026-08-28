@@ -61,37 +61,28 @@ def process_offline_zalo_files():
     prompt = f"""
     Bạn là chuyên gia phân tích dữ liệu Logistics. Nhiệm vụ: Chuyển đổi văn bản hoặc hình ảnh thành mảng JSON chứa các chuyến đi độc lập.
 
-    **QUY TẮC 1: BÓC TÁCH CHUỖI TEXT TỔNG HỢP (NHIỀU XE / NHIỀU ĐIỂM)**
-    - Nếu khách đặt nhiều xe trong 1 tin nhắn (VD: "2XE 8TAN", "- 1XE 1TAN", "- 1XE 6TAN"), BẮT BUỘC tách thành các object riêng biệt cho từng loại xe.
+    **QUY TẮC 1: BÓC TÁCH DỮ LIỆU DẠNG BẢNG**
+    - Nếu ảnh là dạng bảng (VD: "GOLDEN VICTORY OIA | 28,000 | PHUONG DONG | 14H"), BẮT BUỘC mỗi dòng ngang tương ứng với 1 chuyến xe. 
+    - Cấu trúc ngầm định: [Điểm đi] | [Khối lượng] | [Điểm đến] | [Giờ giấc / Ghi chú].
+
+    **QUY TẮC 2: BÓC TÁCH CHUỖI TEXT TỔNG HỢP (NHIỀU XE / NHIỀU ĐIỂM)**
+    - Nếu khách đặt nhiều xe trong 1 tin nhắn (VD: "2XE 8TAN", "- 1XE 1TAN", "- 1XE 6TAN" hoặc viết dính liền "GOLDEN VICTORY 35,000..."), BẮT BUỘC tách thành các object riêng biệt cho từng loại xe/chuyến.
     - Cấu trúc ẩn thường là: [Số lượng xe] [Loại xe/Trọng tải] [Điểm đi -> Điểm đến] [Ghi chú].
 
-    **QUY TẮC 2: CHUẨN HÓA KHỐI LƯỢNG (khoi_luong_kg)**
-    - Nếu gặp các từ "T", "TAN", "TẤN" (VD: 1TAN, 6T, 6 TẤN, 8TAN), BẮT BUỘC nhân số đó với 1000 để ra số KG (VD: 1TAN = 1000, 6T = 6000, 8TAN = 8000).
-    - Nếu đơn vị đã là "KG" thì giữ nguyên.
-    - Kết quả phải là kiểu số thực (Float). Nếu không có thông tin, trả về 0.
-
-    **QUY TẮC 3: CHUẨN HÓA THỂ TÍCH (the_tich_cbm)**
-    - Nhận diện các từ "CBM", "KHỐI", "khoi" dù viết hoa, viết thường, có dấu hay không dấu (VD: 4CBM, 85CBM, 4 KHỐI, 4 khoi).
-    - Lấy chính xác phần số (VD: 4CBM -> 4, 85CBM -> 85).
+    **QUY TẮC 3: CHUẨN HÓA KHỐI LƯỢNG (khoi_luong_kg)**
+    - ĐẶC BIỆT LƯU Ý: Các con số lớn đứng độc lập trong bảng (VD: 35,000; 28,000; 7,643; 2,000) CHÍNH LÀ khối lượng tính bằng KG. 
+    - BẮT BUỘC loại bỏ dấu phẩy (",") (VD: 35,000 -> 35000, 7,643 -> 7643).
+    - Nếu gặp "T", "TAN", "TẤN" (VD: 1TAN, 6T), nhân số đó với 1000. Đơn vị "KG" thì giữ nguyên.
     - Kết quả phải là kiểu số thực (Float). Nếu không có, trả về 0.
 
-    **QUY TẮC 4: LÀM SẠCH FORM "YÊU CẦU ĐIỀU XE" (F.T)**
-    - KHÔNG tạo nhiều dòng. Chỉ tạo duy nhất 1 object cho form này.
-    - Ngày đi: Lấy ở "Thời gian yêu cầu xuất phát".
-    - Điểm đi - Điểm đến: Gom từ "Địa điểm xuất phát" và "Điểm đến".
-    - Khối lượng & Thể tích: Lọc riêng con số từ ô "Lý do sử dụng xe" và áp dụng QUY TẮC 2 & 3.
-    - Ghi chú: Toàn bộ chữ dư thừa gom vào "ghi_chu", tuyệt đối không lấy thông tin rác vào cột chính.
-   
-    **QUY TẮC 5: BÓC TÁCH CHUỖI TEXT LIÊN TỤC (ĐIỀU PHỐI TỔNG HỢP)**
-    - Người điều phối thường viết nhiều chuyến xe dính liền nhau. BẮT BUỘC nhận diện và tách thành NHIỀU object riêng biệt.
-    - VÍ DỤ 1: "GOLDEN VICTORY 35,000 PHUONG DONG HỜ 15H OUT SIDE TRUCK 5T"
-      + dia_diem_giao_nhan: "GOLDEN VICTORY -> PHUONG DONG HỜ"
-      + khoi_luong_kg: 35000 
-      + ghi_chu: "15H OUT SIDE TRUCK 5T"
-    - VÍ DỤ 2: "SHOE TOWN (XB) OIA 2,000 CAT LAI 4H"
-      + dia_diem_giao_nhan: "SHOE TOWN (XB) OIA -> CAT LAI"
-      + khoi_luong_kg: 2000
-      + ghi_chu: "4H"
+    **QUY TẮC 4: CHUẨN HÓA THỂ TÍCH (the_tich_cbm)**
+    - Nhận diện các từ "CBM", "KHỐI", "khoi" (VD: 4CBM, 85CBM, 4 KHỐI). Lấy chính xác phần số. Nếu không có, trả về 0.
+
+    **QUY TẮC 5: LÀM SẠCH FORM "YÊU CẦU ĐIỀU XE" (F.T)**
+    - Chỉ tạo 1 object duy nhất. Ngày đi: Lấy ở "Thời gian yêu cầu xuất phát".
+    - Điểm đi -> Điểm đến: Gom từ "Địa điểm xuất phát" -> "Điểm đến".
+    - Khối lượng & Thể tích: Lọc số liệu từ ô "Lý do sử dụng xe" và áp dụng QUY TẮC 3 & 4. 
+    - Ghi chú: Chữ rác dư thừa gom vào "ghi_chu".
 
     **QUY TẮC 6: XỬ LÝ NGÀY THÁNG**
     - "Sáng mai", "mai" -> {tomorrow_str}. "Hôm nay", "tối nay" -> {today_str}.
@@ -103,9 +94,9 @@ def process_offline_zalo_files():
             {{
                 "ngay_chuyen_di": "YYYY-MM-DD",
                 "dia_diem_giao_nhan": "Điểm đi -> Điểm đến",
-                "khoi_luong_kg": Số thực (Quy đổi theo quy tắc),
-                "the_tich_cbm": Số thực (Quy đổi theo quy tắc),
-                "ghi_chu": "Chi tiết giờ giấc, số lượng xe..."
+                "khoi_luong_kg": Số thực (Đã bỏ dấu phẩy hoặc quy đổi),
+                "the_tich_cbm": Số thực,
+                "ghi_chu": "Chi tiết giờ giấc, tên xưởng, số kiện..."
             }}
         ]
     }}
