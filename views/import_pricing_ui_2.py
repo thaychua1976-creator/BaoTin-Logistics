@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
-import io, datetime, time
+import io, datetime, time, json
+
+# Import các hàm Backend chuẩn của dự án
 from utils_core import (
     import_and_update_bang_gia_transaction,
     import_and_update_phu_phi_transaction,
@@ -8,50 +10,21 @@ from utils_core import (
     delete_single_rate_card_transaction,
     update_single_phu_phi_transaction,
     create_single_rate_card_transaction,
-    delete_single_phu_phi_transaction
+    delete_single_phu_phi_transaction,
+    parse_money_input
 )
 
 db = st.session_state.get('db')
 
-# Lấy chính xác username từ phiên đăng nhập thực tế của người dùng, nếu không có mặc định là 'Admin'[cite: 3]
+# Lấy chính xác username từ phiên đăng nhập thực tế của người dùng[cite: 3]
 current_user = st.session_state.get('username') or st.session_state.get('user') or st.session_state.get('logged_in_user', 'Admin')
 
 if not db:
     st.error("⚠️ Lỗi kết nối Cơ sở dữ liệu.")
     st.stop()
 
-
-st.markdown("<h3 style='text-align: center; color: #0b5394;'>💸 QUẢN LÝ BẢNG GIÁ VẬN TẢI & PHỤ PHÍ KHÁCH HÀNG</h3>", unsafe_allow_html=True)
-st.divider()
-# Giải nén tuple chính xác theo đúng cấu trúc Streamlit
-# Khai báo giải nén đúng 4 Tabs
-tab1, tab2, tab3, tab4 = st.tabs([
-    "📝 1. Xem & Xuất Bảng Giá", 
-    "📥 2. Nhập & Cập Nhật Bảng Giá",
-    "🏷️ 3. Xem & Xuất Phụ Phí",
-    "📥 4. Nhập & Cập Nhật Phụ Phí"
-])
-
-import streamlit as st
-import pandas as pd
-import io
-import datetime
-
-# Import các hàm Backend chuẩn của dự án (Không viết lại hàm trùng lặp)
-from utils_core import (
-    import_and_update_bang_gia_transaction,
-    import_and_update_phu_phi_transaction,
-    update_single_rate_card_transaction,
-    delete_single_rate_card_transaction,
-    update_single_phu_phi_transaction,
-    delete_single_phu_phi_transaction
-)
-from utils_core import parse_money_input
-
-# Lấy kết nối database từ session state
-db = st.session_state['db']
-
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>💸 QUẢN LÝ BIỂU CƯỚC & PHỤ PHÍ KHÁCH HÀNG (RATE CARDS & SURCHARGES)</h3>", unsafe_allow_html=True)
+st.divider()
 
 # Khai báo giải nén chính xác 4 Tabs giao diện
 tab1, tab2, tab3, tab4 = st.tabs([
@@ -107,12 +80,21 @@ with tab1:
             clean_name = "".join([c if c.isalnum() else "_" for c in kh_opts[chon_kh_id]])
             file_export_name = f"Bang_Gia_{clean_name}_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
 
+        # 🔧 FIX LỖI STREAMLIT API EXCEPTION TẠI ĐÂY
+        if "mode_rate_t1_val" not in st.session_state:
+            st.session_state["mode_rate_t1_val"] = "👀 Xem danh sách & Xuất Excel"
+            
+        opt_t1 = ["👀 Xem danh sách & Xuất Excel", "➕ Thêm mới tuyến đường", "✏️ Sửa trực tiếp tuyến đường", "🗑️ Xóa tuyến đường"]
+        idx_t1 = opt_t1.index(st.session_state["mode_rate_t1_val"]) if st.session_state["mode_rate_t1_val"] in opt_t1 else 0
+        
         mode_thao_tac = st.radio(
             "📌 Chọn hành động:", 
-            ["👀 Xem danh sách & Xuất Excel", "➕ Thêm mới tuyến đường", "✏️ Sửa trực tiếp tuyến đường", "🗑️ Xóa tuyến đường"], 
+            opt_t1, 
             horizontal=True, 
-            key="mode_rate_t1"
+            index=idx_t1
         )
+        st.session_state["mode_rate_t1_val"] = mode_thao_tac
+        
         st.markdown("<br>", unsafe_allow_html=True)
 
         # ===============================================
@@ -165,8 +147,8 @@ with tab1:
                         if success:
                             st.success(message)
                             time.sleep(1)
-                            # 🚀 TỐI ƯU: Chuyển hướng về tab xem danh sách, xóa trắng Form
-                            st.session_state['mode_rate_t1'] = "👀 Xem danh sách & Xuất Excel"
+                            # Trả về trạng thái mặc định bằng biến val thay vì gọi trực tiếp key của widget
+                            st.session_state['mode_rate_t1_val'] = "👀 Xem danh sách & Xuất Excel"
                             st.rerun()
                         else:
                             st.error(message)
@@ -251,8 +233,7 @@ with tab1:
                                 if success:
                                     st.success(message)
                                     time.sleep(1)
-                                    # 🚀 TỐI ƯU: Chuyển hướng về tab xem danh sách
-                                    st.session_state['mode_rate_t1'] = "👀 Xem danh sách & Xuất Excel"
+                                    st.session_state['mode_rate_t1_val'] = "👀 Xem danh sách & Xuất Excel"
                                     st.rerun()
                                 else:
                                     st.error(message)
@@ -272,8 +253,7 @@ with tab1:
                             if success:
                                 st.success(message)
                                 time.sleep(1)
-                                # 🚀 TỐI ƯU: Chuyển hướng về tab xem danh sách
-                                st.session_state['mode_rate_t1'] = "👀 Xem danh sách & Xuất Excel"
+                                st.session_state['mode_rate_t1_val'] = "👀 Xem danh sách & Xuất Excel"
                                 st.rerun()
                             else:
                                 st.error(message)
@@ -297,12 +277,10 @@ with tab2:
                 try:
                     xls = pd.ExcelFile(file_rate_up)
                     
-                    # 1. Đọc sheet Bảng giá
                     sheet_rate = "BIEU_CUOC" if "BIEU_CUOC" in xls.sheet_names else ("RateCards" if "RateCards" in xls.sheet_names else 0)
                     df_up_rate = pd.read_excel(xls, sheet_name=sheet_rate)
                     df_up_rate.columns = [str(c).strip().upper() for c in df_up_rate.columns]
                     
-                    # 2. Đọc sheet Phụ phí (nếu có)
                     df_up_pp = None
                     if "PHU_PHI" in xls.sheet_names:
                         df_up_pp = pd.read_excel(xls, sheet_name="PHU_PHI")
@@ -311,7 +289,6 @@ with tab2:
                         df_up_pp = pd.read_excel(xls, sheet_name="PhuPhiKhachHang")
                         df_up_pp.columns = [str(c).strip().upper() for c in df_up_pp.columns]
 
-                    # 3. GỌI HÀM CẬP NHẬT CHUNG 1 LẦN DUY NHẤT (Truyền 4 tham số)
                     is_ok, msg = import_and_update_bang_gia_transaction(db.pool, df_up_rate, df_up_pp, current_user)
                     
                     if is_ok:
@@ -372,12 +349,21 @@ with tab3:
             clean_name = "".join([c if c.isalnum() else "_" for c in kh_pp_opts[chon_kh_pp_id]])
             file_pp_name = f"Phu_Phi_{clean_name}_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
 
+        # 🔧 FIX LỖI STREAMLIT API EXCEPTION TẠI ĐÂY
+        if "mode_pp_t3_val" not in st.session_state:
+            st.session_state["mode_pp_t3_val"] = "👀 Xem danh sách & Xuất Excel"
+            
+        opt_t3 = ["👀 Xem danh sách & Xuất Excel", "➕ Thêm mới phụ phí", "✏️ Sửa trực tiếp phụ phí", "🗑️ Xóa phụ phí"]
+        idx_t3 = opt_t3.index(st.session_state["mode_pp_t3_val"]) if st.session_state["mode_pp_t3_val"] in opt_t3 else 0
+        
         mode_pp_act = st.radio(
             "📌 Chọn hành động:", 
-            ["👀 Xem danh sách & Xuất Excel", "➕ Thêm mới phụ phí", "✏️ Sửa trực tiếp phụ phí", "🗑️ Xóa phụ phí"], 
+            opt_t3, 
             horizontal=True, 
-            key="mode_pp_t3"
+            index=idx_t3
         )
+        st.session_state["mode_pp_t3_val"] = mode_pp_act
+        
         st.markdown("<br>", unsafe_allow_html=True)
 
         # ===============================================
@@ -421,7 +407,6 @@ with tab3:
                             success, message = create_single_phu_phi_transaction(db.pool, data_add_pp, current_user)
                         except ImportError:
                             try:
-                                import json
                                 from audit_logger import ghi_log_he_thong
                                 conn = db.pool.get_connection()
                                 conn.autocommit = False
@@ -448,8 +433,7 @@ with tab3:
                         if success:
                             st.success(message)
                             time.sleep(1)
-                            # 🚀 TỐI ƯU: Chuyển hướng về tab xem danh sách
-                            st.session_state['mode_pp_t3'] = "👀 Xem danh sách & Xuất Excel"
+                            st.session_state['mode_pp_t3_val'] = "👀 Xem danh sách & Xuất Excel"
                             st.rerun()
                         else:
                             st.error(message)
@@ -539,8 +523,7 @@ with tab3:
                                 if success:
                                     st.success(message)
                                     time.sleep(1)
-                                    # 🚀 TỐI ƯU: Chuyển hướng về tab xem danh sách
-                                    st.session_state['mode_pp_t3'] = "👀 Xem danh sách & Xuất Excel"
+                                    st.session_state['mode_pp_t3_val'] = "👀 Xem danh sách & Xuất Excel"
                                     st.rerun()
                                 else:
                                     st.error(message)
@@ -565,8 +548,7 @@ with tab3:
                             if success:
                                 st.success(message)
                                 time.sleep(1)
-                                # 🚀 TỐI ƯU: Chuyển hướng về tab xem danh sách
-                                st.session_state['mode_pp_t3'] = "👀 Xem danh sách & Xuất Excel"
+                                st.session_state['mode_pp_t3_val'] = "👀 Xem danh sách & Xuất Excel"
                                 st.rerun()
                             else:
                                 st.error(message)
@@ -598,7 +580,7 @@ with tab4:
                     if is_ok:
                         st.success(f"✅ KẾT QUẢ: {msg}")
                         st.info("🔄 Giao diện sẽ làm mới sau 3 giây...")
-                        time.sleep(3) # Dừng 3 giây trước khi rerun
+                        time.sleep(3) 
                         st.rerun()
                     else:
                         st.error(msg)
