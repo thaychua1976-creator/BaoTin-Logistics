@@ -202,10 +202,22 @@ def process_offline_zalo_files():
             "unprocessed": unprocessed_files}
 
 def main_app():
-    st.title("🤖 RPA - Lấy thông tin điều xe từ file Zalo")
+    st.title("🤖 RPA - Lấy thông tin điều xe từ file Zalo (Cloud Web)")
+    st.markdown("---")
     
-    st.subheader("📤 Tải lên dữ liệu Zalo")
-    group_name_input = st.text_input("Nhập tên nhóm Zalo nguồn (Ví dụ: FIRST_TEAM, MAY_XANH):", value="Nhom_Mac_Dinh")
+    st.subheader("📤 Tải lên dữ liệu Zalo (Hình ảnh / File Text)")
+    
+    # 1. Tự động quét các thư mục nhóm đã tạo trước đó
+    existing_groups = [d for d in os.listdir(DOWNLOAD_DIR) if os.path.isdir(os.path.join(DOWNLOAD_DIR, d))]
+    options = ["+ Tạo nhóm mới"] + existing_groups
+    
+    # 2. Hiển thị Selectbox để trỏ vào nhóm cũ hoặc tạo mới
+    selected_option = st.selectbox("📂 Chọn nhóm Zalo đích (hoặc tạo mới):", options)
+    
+    if selected_option == "+ Tạo nhóm mới":
+        group_name_input = st.text_input("Nhập tên nhóm Zalo mới (Ví dụ: FIRST_TEAM):").strip()
+    else:
+        group_name_input = selected_option
     
     uploaded_files = st.file_uploader(
         "Chọn các file ảnh (.jpg, .png) hoặc văn bản (.txt) cần xử lý:", 
@@ -213,10 +225,12 @@ def main_app():
         accept_multiple_files=True
     )
     
-    if uploaded_files:
+    if uploaded_files and group_name_input:
         if st.button("📥 Lưu file lên hệ thống Cloud"):
-            target_group_dir = os.path.join(DOWNLOAD_DIR, group_name_input.strip())
-            os.makedirs(target_group_dir, exist_ok=True)
+            target_group_dir = os.path.join(DOWNLOAD_DIR, group_name_input)
+            
+            # Lệnh này đảm bảo ổ cứng chỉ tạo thư mục 1 lần duy nhất, nếu có rồi sẽ tự động bỏ qua
+            os.makedirs(target_group_dir, exist_ok=True) 
             
             saved_count = 0
             for uploaded_file in uploaded_files:
@@ -230,6 +244,7 @@ def main_app():
     st.markdown("---")
     st.subheader("⚙️ Xử lý dữ liệu")
     
+       
     if st.button("🚀 Bắt đầu phân tích AI", type="primary"):
         with st.spinner("Đang kết nối Gemini AI để phân tích..."):
             result = process_offline_zalo_files()
