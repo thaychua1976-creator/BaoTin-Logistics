@@ -148,6 +148,9 @@ def process_offline_zalo_files():
                     success = True
                     logs.append(f"✅ Hoàn tất: {filename}")
                     ui_logs.text("\n".join(logs[-4:]))
+                    # 1. XÓA FILE: Hủy file gốc ngay sau khi AI phân tích thành công
+                    if os.path.exists(filepath): 
+                        os.remove(filepath)
                     
                     if os.path.exists(filepath): os.remove(filepath)
                     ui_progress.progress(idx / total_files_in_group)
