@@ -128,7 +128,8 @@ def process_offline_zalo_files():
                     
                     clean_text = re.sub(r"^```json\s*", "", response.text.strip(), flags=re.IGNORECASE)
                     clean_text = re.sub(r"\s*```$", "", re.sub(r"^```\s*", "", clean_text, flags=re.IGNORECASE))
-                    
+                    # Đếm số lượng record trước khi phân tích file này
+                    record_count_before = len(valid_records)
                     match = re.search(r'\{.*\}', clean_text, re.DOTALL)
                     if match:
                         parsed = json.loads(match.group(0))
@@ -146,11 +147,16 @@ def process_offline_zalo_files():
                                     pass
                     
                     success = True
-                    logs.append(f"✅ Hoàn tất: {filename}")
+                    # KIỂM TRA LOGIC THỰC TẾ: Nếu số lượng không tăng, tức là file không chứa chuyến đi hợp lệ
+                    if len(valid_records) == record_count_before:
+                        logs.append(f"⚠️ Đã quét nhưng không thấy đơn hàng: {filename}")
+                        unprocessed_files.append(f"{nhom} / {filename} (Không có dữ liệu hợp lệ)")
+                    else:
+                        logs.append(f"✅ Hoàn tất bóc tách: {filename}")
+                        
                     ui_logs.text("\n".join(logs[-4:]))
-                    # 1. XÓA FILE: Hủy file gốc ngay sau khi AI phân tích thành công
-                    if os.path.exists(filepath): 
-                        os.remove(filepath)
+                    
+                                      
                     
                     if os.path.exists(filepath): os.remove(filepath)
                     ui_progress.progress(idx / total_files_in_group)
