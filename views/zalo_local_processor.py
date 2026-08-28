@@ -202,14 +202,10 @@ def process_offline_zalo_files():
             "unprocessed": unprocessed_files}
 
 def main_app():
-    st.title("🤖 RPA - Lấy thông tin điều xe từ file Zalo (Cloud Web)")
-    st.markdown("---")
+    st.title("🤖 RPA - Lấy thông tin điều xe từ file Zalo")
     
-    # 📌 TÍNH NĂNG MỚI: UPLOAD FILE TRỰC TIẾP TRÊN WEB CLOUD
-    st.subheader("📤 Tải lên dữ liệu Zalo (Hình ảnh / File Text)")
-    
-    # Nhập tên nhóm Zalo tương ứng cho các file sắp tải lên
-    group_name_input = st.text_input("Nhập tên nhóm Zalo nguồn (Ví dụ: XẮP XE FORTUNATE-BAOTIN):", value="Nhom_Mac_Dinh")
+    st.subheader("📤 Tải lên dữ liệu Zalo")
+    group_name_input = st.text_input("Nhập tên nhóm Zalo nguồn (Ví dụ: FIRST_TEAM, MAY_XANH):", value="Nhom_Mac_Dinh")
     
     uploaded_files = st.file_uploader(
         "Chọn các file ảnh (.jpg, .png) hoặc văn bản (.txt) cần xử lý:", 
@@ -229,12 +225,12 @@ def main_app():
                     f.write(uploaded_file.getbuffer())
                 saved_count += 1
                 
-            st.success(f"✅ Đã tải lên thành công {saved_count} file vào thư mục nhóm `{group_name_input}` trên Cloud!")
+            st.success(f"✅ Đã tải lên thành công {saved_count} file vào nhóm `{group_name_input}`.")
 
     st.markdown("---")
-    st.subheader("⚙️ Xử lý dữ liệu đã tải lên")
+    st.subheader("⚙️ Xử lý dữ liệu")
     
-    if st.button("🚀 Bắt đầu lấy thông tin từ Folder", type="primary"):
+    if st.button("🚀 Bắt đầu phân tích AI", type="primary"):
         with st.spinner("Đang kết nối Gemini AI để phân tích..."):
             result = process_offline_zalo_files()
             if result:
@@ -245,11 +241,25 @@ def main_app():
                 elif result["status"] == "info": 
                     st.info(result["message"])
                 
-                # Hiển thị danh sách file lỗi/chưa xử lý nếu có[cite: 1]
                 if result.get("unprocessed"):
                     st.error(f"🚨 Có {len(result['unprocessed'])} file hệ thống không thể xử lý:")
                     for f in result["unprocessed"]:
-                        st.markdown(f"- 📄 `{f}`")
+                        st.markdown(f"- `{f}`")
+
+    # 📌 KHU VỰC TẢI FILE EXCEL VỀ MÁY
+    st.markdown("---")
+    st.subheader("📥 Tải kết quả tổng hợp")
+    if os.path.exists(EXCEL_FILE):
+        with open(EXCEL_FILE, "rb") as file:
+            st.download_button(
+                label="⬇️ Tải file Danh_Sach_Book_Xe_Tong_Hop.xlsx",
+                data=file,
+                file_name="Danh_Sach_Book_Xe_Tong_Hop.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary"
+            )
+    else:
+        st.info("Chưa có dữ liệu Excel nào được xuất ra trên hệ thống Cloud.")
 
 if __name__ == "__main__":
     main_app()
