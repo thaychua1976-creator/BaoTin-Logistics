@@ -1,0 +1,15 @@
+2026/08/27-21:02:20.485 3ad4 Reusing MANIFEST D:\PROJECT_COI\Logistics_App\views\zalo_profile_data\Default\Local Storage\leveldb/MANIFEST-000001
+2026/08/27-21:02:20.530 3ad4 Recovering log #255
+2026/08/27-21:02:20.535 3ad4 Reusing old log D:\PROJECT_COI\Logistics_App\views\zalo_profile_data\Default\Local Storage\leveldb/000255.log 
+2026/08/27-21:03:20.550 36cc Level-0 table #259: started
+2026/08/27-21:03:20.567 36cc Level-0 table #259: 67514 bytes OK
+2026/08/27-21:03:20.571 36cc Delete type=0 #255
+2026/08/27-21:03:20.584 36cc Compacting 4@0 + 1@1 files
+2026/08/27-21:03:20.599 36cc Generated table #260@0: 514 keys, 207399 bytes
+2026/08/27-21:03:20.599 36cc Compacted 4@0 + 1@1 files => 207399 bytes
+2026/08/27-21:03:20.600 36cc compacted to: files[ 0 1 0 0 0 0 0 ]
+2026/08/27-21:03:20.602 36cc Delete type=2 #249
+2026/08/27-21:03:20.602 36cc Delete type=2 #251
+2026/08/27-21:03:20.602 36cc Delete type=2 #253
+2026/08/27-21:03:20.602 36cc Delete type=2 #256
+2026/08/27-21:03:20.602 36cc Delete type=2 #259

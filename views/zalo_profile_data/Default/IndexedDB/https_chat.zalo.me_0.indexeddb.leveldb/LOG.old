@@ -1,0 +1,28 @@
+2026/08/27-21:02:24.703 3e48 Reusing MANIFEST D:\PROJECT_COI\Logistics_App\views\zalo_profile_data\Default\IndexedDB\https_chat.zalo.me_0.indexeddb.leveldb/MANIFEST-000001
+2026/08/27-21:02:24.703 3e48 Recovering log #229
+2026/08/27-21:02:24.877 3e48 Reusing old log D:\PROJECT_COI\Logistics_App\views\zalo_profile_data\Default\IndexedDB\https_chat.zalo.me_0.indexeddb.leveldb/000229.log 
+2026/08/27-21:02:35.763 192c Level-0 table #243: started
+2026/08/27-21:02:35.836 192c Level-0 table #243: 1309327 bytes OK
+2026/08/27-21:02:35.838 192c Delete type=0 #229
+2026/08/27-21:02:57.311 192c Compacting 1@1 + 9@2 files
+2026/08/27-21:02:57.384 192c Generated table #244@1: 6926 keys, 2134685 bytes
+2026/08/27-21:02:57.439 192c Generated table #245@1: 2257 keys, 2124586 bytes
+2026/08/27-21:02:57.491 192c Generated table #246@1: 2375 keys, 2125888 bytes
+2026/08/27-21:02:57.574 192c Generated table #247@1: 17546 keys, 2151761 bytes
+2026/08/27-21:02:57.722 192c Generated table #248@1: 40482 keys, 2202416 bytes
+2026/08/27-21:02:57.801 192c Generated table #249@1: 4584 keys, 2140072 bytes
+2026/08/27-21:02:57.940 192c Generated table #250@1: 62740 keys, 2208135 bytes
+2026/08/27-21:02:57.966 192c Generated table #251@1: 1705 keys, 2130731 bytes
+2026/08/27-21:02:58.015 192c Generated table #252@1: 13594 keys, 1962209 bytes
+2026/08/27-21:02:58.015 192c Compacted 1@1 + 9@2 files => 19180483 bytes
+2026/08/27-21:02:58.016 192c compacted to: files[ 0 0 9 0 0 0 0 ]
+2026/08/27-21:02:58.016 192c Delete type=2 #232
+2026/08/27-21:02:58.016 192c Delete type=2 #233
+2026/08/27-21:02:58.016 192c Delete type=2 #234
+2026/08/27-21:02:58.016 192c Delete type=2 #235
+2026/08/27-21:02:58.017 192c Delete type=2 #236
+2026/08/27-21:02:58.017 192c Delete type=2 #237
+2026/08/27-21:02:58.017 192c Delete type=2 #238
+2026/08/27-21:02:58.017 192c Delete type=2 #239
+2026/08/27-21:02:58.017 192c Delete type=2 #240
+2026/08/27-21:02:58.017 192c Delete type=2 #243

@@ -1374,6 +1374,9 @@ with tab6:
                     styled_df = df_canh_bao.style.map(highlight_tre, subset=['Số Ngày Trễ'])
                 except AttributeError:
                     styled_df = df_canh_bao.style.applymap(highlight_tre, subset=['Số Ngày Trễ'])
+                # Thay 'ten_cot_tai_trong' bằng tên cột thực tế của bạn (VD: 'tai_trong_thiet_ke', 'khoi_luong_kg')
+                if 'khoi_luong_kg' in styled_df.columns:
+                    styled_df['khoi_luong_kg'] = pd.to_numeric(styled_df['khoi_luong_kg'], errors='coerce').fillna(0).apply(lambda x: f"{x:,.0f}")
                     
                 st.dataframe(styled_df, use_container_width=True, hide_index=True)
                 

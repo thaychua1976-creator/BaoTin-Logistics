@@ -248,7 +248,7 @@ else:
     page_config_phu_cap= st.Page("views/config_phu_cap.py", title="Cấu hình phụ cấp", icon="💰")
     page_kinh_doanh_result= st.Page("views/kinh_doanh_result.py", title="Kết quả Kinh doanh", icon="📈")
     page_app_tai_xe = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", default=True)
-    page_tool_zalo= st.Page("views/tool_send_zalo.py", title="Gửi Group Zalo", icon="🚛")
+    page_tool_zalo= st.Page("views/zalo_local_processor.py", title=" Lấy thông tin book từ Zalo", icon="🚛")
     page_tool_import_pricing= st.Page("views/import_pricing_ui_2.py", title=" Tool Import Pricing ", icon="📈")
     page_tool_import_phu_cap= st.Page("views/tool_import_phu_cap_excel.py", title=" Tool Import Phụ cấp  ", icon="📈")
     page_tool_import_pricing_first= st.Page("views/import_pricing_ui_first.py", title=" Tool Import Pricing First", icon="📈")
