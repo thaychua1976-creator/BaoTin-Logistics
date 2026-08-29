@@ -25,7 +25,6 @@ else:
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# Bộ nhớ đệm giúp load mô hình 1 lần duy nhất cho toàn bộ hệ thống
 @st.cache_resource
 def load_ocr_model():
     return easyocr.Reader(['vi', 'en'], gpu=False)
@@ -42,6 +41,29 @@ def get_grouped_files():
             grouped_files[group_name] = [os.path.join(root, f) for f in valid_files]
     return grouped_files
 
+# Hàm dọn dẹp thư mục rác
+def clear_pending_files():
+    deleted_count = 0
+    for root, dirs, files in os.walk(DOWNLOAD_DIR):
+        for file in files:
+            file_path = os.path.join(root, file)
+            try:
+                os.remove(file_path)
+                deleted_count += 1
+            except Exception:
+                pass
+    
+    # Xóa luôn các thư mục rỗng
+    for root, dirs, files in os.walk(DOWNLOAD_DIR, topdown=False):
+        for name in dirs:
+            dir_path = os.path.join(root, name)
+            if not os.listdir(dir_path):
+                try:
+                    os.rmdir(dir_path)
+                except:
+                    pass
+    return deleted_count
+
 def process_offline_zalo_files():
     today_str = datetime.today().strftime('%Y-%m-%d')
     tomorrow_str = (datetime.today() + timedelta(days=1)).strftime('%Y-%m-%d')
@@ -53,7 +75,6 @@ def process_offline_zalo_files():
     if total_groups == 0:
         return {"status": "info", "message": "Thư mục trống. Không có dữ liệu để xử lý."}
 
-    # Khởi tạo mô hình OCR cục bộ
     reader = load_ocr_model()
 
     ui_group_status = st.empty()
@@ -73,23 +94,19 @@ def process_offline_zalo_files():
     - Cấu trúc ngầm định: [Điểm đi] | [Khối lượng] | [Điểm đến] | [Giờ giấc / Ghi chú].
 
     **QUY TẮC 2: BÓC TÁCH CHUỖI TEXT TỔNG HỢP (NHIỀU XE / NHIỀU ĐIỂM)**
-    - Nếu khách đặt nhiều xe trong 1 tin nhắn (VD: "2XE 8TAN", "- 1XE 1TAN", "- 1XE 6TAN" hoặc viết dính liền "GOLDEN VICTORY 35,000..."), BẮT BUỘC tách thành các object riêng biệt cho từng loại xe/chuyến.
-    - Cấu trúc ẩn thường là: [Số lượng xe] [Loại xe/Trọng tải] [Điểm đi -> Điểm đến] [Ghi chú].
+    - Nếu khách đặt nhiều xe trong 1 tin nhắn, BẮT BUỘC tách thành các object riêng biệt cho từng chuyến.
 
     **QUY TẮC 3: CHUẨN HÓA KHỐI LƯỢNG (khoi_luong_kg)**
-    - ĐẶC BIỆT LƯU Ý: Các con số lớn đứng độc lập trong bảng (VD: 35,000; 28,000; 7,643; 2,000) CHÍNH LÀ khối lượng tính bằng KG. 
-    - BẮT BUỘC loại bỏ dấu phẩy (",") (VD: 35,000 -> 35000, 7,643 -> 7643).
+    - Các con số lớn đứng độc lập (VD: 35,000; 28,000) CHÍNH LÀ khối lượng tính bằng KG. 
+    - BẮT BUỘC loại bỏ dấu phẩy (",") (VD: 35,000 -> 35000).
     - Nếu gặp "T", "TAN", "TẤN" (VD: 1TAN, 6T), nhân số đó với 1000. Đơn vị "KG" thì giữ nguyên.
-    - Kết quả phải là kiểu số thực (Float). Nếu không có, trả về 0.
 
     **QUY TẮC 4: CHUẨN HÓA THỂ TÍCH (the_tich_cbm)**
-    - Nhận diện các từ "CBM", "KHỐI", "khoi" (VD: 4CBM, 85CBM, 4 KHỐI). Lấy chính xác phần số. Nếu không có, trả về 0.
+    - Nhận diện các từ "CBM", "KHỐI", "khoi". Lấy chính xác phần số.
 
     **QUY TẮC 5: LÀM SẠCH FORM "YÊU CẦU ĐIỀU XE" (F.T)**
-    - Chỉ tạo 1 object duy nhất. Ngày đi: Lấy ở "Thời gian yêu cầu xuất phát".
+    - Chỉ tạo 1 object. Ngày đi: "Thời gian yêu cầu xuất phát".
     - Điểm đi -> Điểm đến: Gom từ "Địa điểm xuất phát" -> "Điểm đến".
-    - Khối lượng & Thể tích: Lọc số liệu từ ô "Lý do sử dụng xe" và áp dụng QUY TẮC 3 & 4. 
-    - Ghi chú: Chữ rác dư thừa gom vào "ghi_chu".
 
     **QUY TẮC 6: XỬ LÝ NGÀY THÁNG**
     - "Sáng mai", "mai" -> {tomorrow_str}. "Hôm nay", "tối nay" -> {today_str}.
@@ -101,9 +118,9 @@ def process_offline_zalo_files():
             {{
                 "ngay_chuyen_di": "YYYY-MM-DD",
                 "dia_diem_giao_nhan": "Điểm đi -> Điểm đến",
-                "khoi_luong_kg": Số thực (Đã bỏ dấu phẩy hoặc quy đổi),
+                "khoi_luong_kg": Số thực,
                 "the_tich_cbm": Số thực,
-                "ghi_chu": "Chi tiết giờ giấc, tên xưởng, số kiện..."
+                "ghi_chu": "Chi tiết giờ giấc, tên xưởng..."
             }}
         ]
     }}
@@ -124,7 +141,6 @@ def process_offline_zalo_files():
                     ui_file_status.write(f"👉 Phân tích file {idx}/{total_files_in_group}: `{filename}`...")
                     raw_text = ""
                     
-                    # Quét chữ bằng tài nguyên máy tính thay vì gửi ảnh lên AI
                     if is_image:
                         ocr_result = reader.readtext(filepath, detail=0, paragraph=True)
                         raw_text = " \n".join(ocr_result)
@@ -132,7 +148,6 @@ def process_offline_zalo_files():
                         with open(filepath, 'r', encoding='utf-8') as f:
                             raw_text = f.read()
                     
-                    # Gửi lượng dữ liệu text cực nhỏ lên Gemini
                     response = model.generate_content(prompt + f'\nNội dung cần phân tích: "{raw_text}"')
                     
                     clean_text = re.sub(r"^```json\s*", "", response.text.strip(), flags=re.IGNORECASE)
@@ -159,10 +174,10 @@ def process_offline_zalo_files():
                     success = True
                     
                     if len(valid_records) == record_count_before:
-                        logs.append(f"⚠️ Đã quét nhưng không thấy đơn hàng: {filename}")
-                        unprocessed_files.append(f"{nhom} / {filename} (Không có dữ liệu hợp lệ)")
+                        logs.append(f"⚠️ Không có đơn hàng: {filename}")
+                        unprocessed_files.append(f"{nhom} / {filename} (Trống)")
                     else:
-                        logs.append(f"✅ Hoàn tất bóc tách: {filename}")
+                        logs.append(f"✅ Bóc tách xong: {filename}")
                         
                     ui_logs.text("\n".join(logs[-4:]))
                     
@@ -171,23 +186,26 @@ def process_offline_zalo_files():
                         
                     ui_progress.progress(idx / total_files_in_group)
                     
-                    # Rút ngắn thời gian nghỉ vì không còn lo chạm ngưỡng API ảnh
                     if idx < total_files_in_group:
-                        ui_file_status.warning("⏳ Chuyển file tiếp theo...")
-                        time.sleep(2)
+                        ui_file_status.warning("⏳ Nghỉ 4s tránh nghẽn API...")
+                        time.sleep(4)
                         
                 except Exception as e:
                     if "429" in str(e).lower() or "quota" in str(e).lower():
                         ui_file_status.error("⚠️ Quá tải API! Nghỉ 30s...")
                         time.sleep(30)
                     else:
-                        logs.append(f"❌ Lỗi file {filename}: {e}")
+                        logs.append(f"❌ Lỗi: {filename}")
                         ui_logs.text("\n".join(logs[-4:]))
                         success = True 
             
             if not success:
                 unprocessed_files.append(f"{nhom} / {filename}")
         
+        group_path = os.path.join(DOWNLOAD_DIR, nhom)
+        if os.path.exists(group_path) and not os.listdir(group_path):
+            os.rmdir(group_path)
+            
         if group_idx < total_groups:
             ui_group_status.warning(f"🛑 Xong nhóm {nhom}. Nghỉ 5s...")
             time.sleep(5)
@@ -212,7 +230,18 @@ def process_offline_zalo_files():
     return {"status": "warning", "message": "⚠️ Không tìm thấy dữ liệu hợp lệ.", "unprocessed": unprocessed_files}
 
 def main_app():
-    st.title("🤖 RPA - Lấy thông tin điều xe từ file Zalo (Cloud Web)")
+    st.title("🤖 RPA - Lấy thông tin điều xe từ file Zalo")
+    
+    # 📌 KHU VỰC DỌN RÁC
+    st.subheader("🧹 Dọn dẹp dữ liệu tồn đọng")
+    st.markdown("Nếu tiến trình trước đó bị lỗi hoặc dừng đột ngột, hãy dọn rác trước khi tải file mới lên để tránh quá tải AI.")
+    if st.button("🗑️ Dọn sạch toàn bộ file Zalo cũ", type="secondary"):
+        deleted = clear_pending_files()
+        if deleted > 0:
+            st.success(f"✅ Đã xóa thành công {deleted} file rác tồn đọng trong hệ thống!")
+        else:
+            st.info("✨ Thư mục hiện tại đang sạch sẽ, không có file rác.")
+
     st.markdown("---")
     
     st.subheader("📤 Tải lên dữ liệu Zalo (Hình ảnh / File Text)")
@@ -223,7 +252,7 @@ def main_app():
     selected_option = st.selectbox("📂 Chọn nhóm Zalo đích (hoặc tạo mới):", options)
     
     if selected_option == "+ Tạo nhóm mới":
-        group_name_input = st.text_input("Nhập tên nhóm Zalo mới (Ví dụ: FIRST_TEAM):").strip()
+        group_name_input = st.text_input("Nhập tên nhóm Zalo mới:").strip()
     else:
         group_name_input = selected_option
     
@@ -251,7 +280,7 @@ def main_app():
     st.subheader("⚙️ Xử lý dữ liệu")
     
     if st.button("🚀 Bắt đầu phân tích AI", type="primary"):
-        with st.spinner("Đang kết nối thư viện OCR và Gemini AI để phân tích..."):
+        with st.spinner("Đang kết nối thư viện OCR và Gemini AI..."):
             result = process_offline_zalo_files()
             if result:
                 if result["status"] == "success": 
@@ -278,7 +307,7 @@ def main_app():
                 type="primary"
             )
     else:
-        st.info("Chưa có dữ liệu Excel nào được xuất ra trên hệ thống Cloud.")
+        st.info("Chưa có dữ liệu Excel nào được xuất ra trên hệ thống.")
 
 if __name__ == "__main__":
     main_app()
