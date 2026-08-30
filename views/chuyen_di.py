@@ -94,8 +94,9 @@ with tab1:
             st.markdown("💡 **Hướng dẫn:** Bôi đen (chọn) các chuyến đi của **cùng một xe** theo đúng thứ tự lấy hàng. Hệ thống sẽ gom nhóm lại thành 1 Manifest và tự động áp dụng giá tiếp nối/tiện chuyến khi kế toán quyết toán.")
             
             # Truy vấn các chuyến chưa hoàn thành, chưa gộp, và là xe nội bộ
+            # Đã xóa ký tự "cd." bị dư thừa ở dòng SELECT
             sql_ghep = """
-                SELECT cd.id, cd.ngay_chuyen_di, cd.dia_diem_giao_nhan,cd.
+                SELECT cd.id, cd.ngay_chuyen_di, cd.dia_diem_giao_nhan,
                 COALESCE(kh.ten_khach_hang, cd.ten_khach_hang) as ten_khach,
                 x.bien_so_xe, cd.xe_id
                 FROM chuyen_di cd
