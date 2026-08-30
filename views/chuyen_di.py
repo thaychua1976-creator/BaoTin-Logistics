@@ -1090,8 +1090,21 @@ with tab3:
             
             df_zalo_export = pd.DataFrame(danh_sach_zalo)
             buffer_export = io.BytesIO()
+            
+            # Cấu hình xlsxwriter để bật tự động xuống hàng (Wrap text)
             with pd.ExcelWriter(buffer_export, engine='xlsxwriter') as writer:
                 df_zalo_export.to_excel(writer, index=False, sheet_name="Lenh_Dieu_Xe_ZaloThuCong")
+                
+                workbook = writer.book
+                worksheet = writer.sheets["Lenh_Dieu_Xe_ZaloThuCong"]
+                
+                # Tạo định dạng tự động Wrap Text và căn lề trên
+                wrap_format = workbook.add_format({'text_wrap': True, 'valign': 'top'})
+                
+                # Áp dụng độ rộng và Wrap Text cho Cột B và C (Chứa nội dung Zalo)
+                worksheet.set_column('B:C', 60, wrap_format)
+                # Đặt độ rộng vừa phải cho cột Tên Group (Cột A)
+                worksheet.set_column('A:A', 20)
                 
             st.divider()
             
