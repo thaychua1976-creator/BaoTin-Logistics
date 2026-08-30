@@ -286,6 +286,61 @@ else:
     
     with st.sidebar:
         st.write("") 
+        
+        # --- BẮT ĐẦU: CHỨC NĂNG ĐỔI MẬT KHẨU CÁ NHÂN ---
+        with st.expander("🔑 Đổi mật khẩu cá nhân"):
+            with st.form("form_change_password"):
+                old_pw = st.text_input("Mật khẩu hiện tại", type="password")
+                new_pw = st.text_input("Mật khẩu mới", type="password")
+                confirm_pw = st.text_input("Xác nhận mật khẩu mới", type="password")
+                
+                if st.form_submit_button("Cập nhật mật khẩu", type="primary", use_container_width=True):
+                    if not old_pw or not new_pw or not confirm_pw:
+                        st.error("⚠️ Vui lòng điền đủ các trường!")
+                    elif new_pw != confirm_pw:
+                        st.error("⚠️ Mật khẩu xác nhận không khớp!")
+                    else:
+                        conn = db.pool.get_connection()
+                        try:
+                            cursor = conn.cursor(dictionary=True)
+                            
+                            # 1. Truy vấn mật khẩu hiện tại từ DB để đối chiếu
+                            cursor.execute("SELECT id, password FROM users WHERE username = %s", (st.session_state['username'],))
+                            user_db = cursor.fetchone()
+                            
+                            if user_db and bcrypt.checkpw(old_pw.encode('utf-8'), user_db['password'].encode('utf-8')):
+                                # 2. Băm (Hash) mật khẩu mới
+                                new_hashed = bcrypt.hashpw(new_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+                                
+                                # 3. Cập nhật vào DB với Transaction
+                                conn.autocommit = False
+                                cursor.execute("UPDATE users SET password = %s WHERE id = %s", (new_hashed, user_db['id']))
+                                
+                                # 4. Kiểm tra rowcount & Ghi Audit Log
+                                if cursor.rowcount >= 0:
+                                    import json
+                                    try:
+                                        from audit_logger import ghi_log_he_thong
+                                        chi_tiet_log = json.dumps({"ghi_chu": "User tự đổi mật khẩu cá nhân"}, ensure_ascii=False)
+                                        ghi_log_he_thong(cursor, "QUAN_LY_TAI_KHOAN", user_db['id'], st.session_state['username'], "DOI_MAT_KHAU_CA_NHAN", chi_tiet_log)
+                                    except ImportError:
+                                        pass # Bỏ qua nếu module chưa sẵn sàng
+                                        
+                                    conn.commit()
+                                    st.success("✅ Đổi mật khẩu thành công!")
+                                else:
+                                    conn.rollback()
+                                    st.error("❌ Lỗi khi cập nhật cơ sở dữ liệu!")
+                            else:
+                                st.error("❌ Mật khẩu hiện tại không chính xác!")
+                        except Exception as e:
+                            conn.rollback()
+                            st.error(f"❌ Lỗi hệ thống: {e}")
+                        finally:
+                            cursor.close()
+                            conn.close()
+        # --- KẾT THÚC: CHỨC NĂNG ĐỔI MẬT KHẨU CÁ NHÂN ---
+
         if st.button("🚪 Đăng xuất hệ thống", type="secondary", use_container_width=True):
             st.session_state.clear()
             st.rerun()
