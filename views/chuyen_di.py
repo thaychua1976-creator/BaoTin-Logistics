@@ -102,7 +102,7 @@ with tab1:
                 JOIN xe x ON cd.xe_id = x.id
                 LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id
                 WHERE cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') 
-                AND cd.is_gop_chuyen = 1 
+                AND cd.is_gop_chuyen = 0 
                 AND cd.is_thue_ngoai = 0
                 ORDER BY cd.xe_id, cd.id ASC
             """
