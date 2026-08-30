@@ -253,7 +253,7 @@ else:
     page_tool_import_pricing= st.Page("views/import_pricing_ui_2.py", title=" Cập nhật bảng giá và phụ phí ", icon="📈")
     page_tool_import_phu_cap= st.Page("views/tool_import_phu_cap_excel.py", title=" Cập nhật phụ cấp Tài xế  ", icon="📈")
     #page_tool_import_pricing_first= st.Page("views/import_pricing_ui_first.py", title=" Tool Import Pricing First", icon="📈")
-    page_tool_import_pricing_haiquan= st.Page("views/ui_hai_quan.py", title=" Tool Import Pricing Hải quan ", icon="📈")
+    page_tool_import_pricing_haiquan= st.Page("views/ui_hai_quan.py", title=" Cập nhật bảng giá hải quan ", icon="📈")
     page_tool_fuel_manager= st.Page("views/fuel_manager_ui.py", title="Quản lý nhiên liệu/Hiệu suất", icon="🚛")
     page_tool_backup_database= st.Page("views/backup_database.py", title="Backup Database", icon="🚛")
 
@@ -271,6 +271,11 @@ else:
         pages_structure = {
             "📱 ỨNG DỤNG TÀI XẾ": [page_app_tai_xe]
         }
+        
+    elif role == 'Ke_Toan':
+            pages_structure = {
+                "📱 NGHIỆP VỤ KẾ TOÁN": [page_quyet_toan, page_bao_cao]
+            }
     else:
         pages_structure = {
             "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di,page_to_khai_hq,page_quan_ly_co,page_tool_fuel_manager,page_phap_ly_xe],
