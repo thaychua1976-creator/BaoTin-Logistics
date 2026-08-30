@@ -5,12 +5,20 @@ from hr_system_manager import update_phu_cap_matrix_transaction
 from utils_core import import_excel_phu_cap_transaction
 
 db = st.session_state.get('db')
+current_user = st.session_state.get('username') or st.session_state.get('user', 'Admin')
 
-# Lấy chính xác username từ phiên đăng nhập thực tế của người dùng, nếu không có mặc định là 'Admin'[cite: 3]
-current_user = st.session_state.get('username') or st.session_state.get('user') or st.session_state.get('logged_in_user', 'Admin')
+if not db:
+    st.error("⚠️ Lỗi kết nối Cơ sở dữ liệu.")
+    st.stop()
 
 st.markdown("### 💰 BẢNG CẤU HÌNH PHỤ CẤP SẢN LƯỢNG TÀI XẾ")
 st.info("💡 Hướng dẫn: Click đúp vào ô số tiền để sửa trực tiếp (như dùng Excel). Nhấn nút LƯU ở dưới cùng để chốt dữ liệu.")
+
+# 🔄 NÚT LÀM MỚI DỮ LIỆU TỔNG THỂ
+col_rf1, col_rf2 = st.columns([6, 1])
+with col_rf2:
+    if st.button("🔄 Làm mới dữ liệu", use_container_width=True):
+        st.rerun()
 
 tab1, tab2 = st.tabs([
     "⚙️ 1. Cấu hình phụ cấp",
@@ -20,16 +28,20 @@ tab1, tab2 = st.tabs([
 with tab1:
     @st.fragment
     def vung_thao_tac_config_phu_cap():
-        df_tt = db.execute_query("SELECT id, ten_hien_thi FROM dm_tai_trong_phu_cap ORDER BY tai_trong_min ASC")
-        df_tc = db.execute_query("SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap ORDER BY id ASC")
-        df_mt = db.execute_query("SELECT tai_trong_id, tieu_chi_id, so_tien FROM ma_tran_phu_cap")
+        try:
+            df_tt = db.execute_query("SELECT id, ten_hien_thi FROM dm_tai_trong_phu_cap ORDER BY tai_trong_min ASC")
+            df_tc = db.execute_query("SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap ORDER BY id ASC")
+            df_mt = db.execute_query("SELECT tai_trong_id, tieu_chi_id, so_tien FROM ma_tran_phu_cap")
+        except Exception as e:
+            st.error(f"❌ Lỗi truy vấn dữ liệu từ Database: {str(e)}")
+            return
 
-        if not df_tt.empty and not df_tc.empty:
+        if isinstance(df_tt, pd.DataFrame) and isinstance(df_tc, pd.DataFrame) and not df_tt.empty and not df_tc.empty:
             matrix_data = []
             for _, tt in df_tt.iterrows():
                 row_dict = {"Tải Trọng Xe": tt['ten_hien_thi']}
                 for _, tc in df_tc.iterrows():
-                    val = df_mt[(df_mt['tai_trong_id'] == tt['id']) & (df_mt['tieu_chi_id'] == tc['id'])]
+                    val = df_mt[(df_mt['tai_trong_id'] == tt['id']) & (df_mt['tieu_chi_id'] == tc['id'])] if isinstance(df_mt, pd.DataFrame) and not df_mt.empty else pd.DataFrame()
                     so_tien = float(val.iloc[0]['so_tien']) if not val.empty else 0.0
                     row_dict[tc['ten_tieu_chi']] = so_tien
                 matrix_data.append(row_dict)
@@ -67,11 +79,14 @@ with tab1:
 
             if st.button("💾 LƯU BẢNG PHỤ CẤP", type="primary"):
                 with st.spinner("Đang đồng bộ dữ liệu vào hệ thống..."):
-                    is_ok, msg = update_phu_cap_matrix_transaction(db.pool, df_edited, current_user)
-                    if is_ok:
-                        st.success(msg)
-                    else:
-                        st.error(f"Lỗi: {msg}")
+                    try:
+                        is_ok, msg = update_phu_cap_matrix_transaction(db.pool, df_edited, current_user)
+                        if is_ok:
+                            st.success(msg)
+                        else:
+                            st.error(f"Lỗi: {msg}")
+                    except Exception as ex:
+                        st.error(f"❌ Lỗi hệ thống khi lưu: {str(ex)}")
         else:
             st.warning("⚠️ Chưa có dữ liệu Khai báo Tải trọng hoặc Tiêu chí. Vui lòng thêm trong Cài đặt chung trước!")
 
@@ -146,7 +161,10 @@ with tab1:
                 
                 with col_edit1:
                     st.markdown("**1. Sửa Tiêu chí Phụ cấp**")
-                    df_tc_edit = db.execute_query("SELECT id, ten_tieu_chi, km_min, km_max FROM dm_tieu_chi_phu_cap ORDER BY ten_tieu_chi ASC")
+                    try:
+                        df_tc_edit = db.execute_query("SELECT id, ten_tieu_chi, km_min, km_max FROM dm_tieu_chi_phu_cap ORDER BY ten_tieu_chi ASC")
+                    except Exception:
+                        df_tc_edit = pd.DataFrame()
                     
                     if isinstance(df_tc_edit, pd.DataFrame) and not df_tc_edit.empty:
                         tc_edit_dict = {int(r['id']): r for _, r in df_tc_edit.iterrows()}
@@ -211,7 +229,10 @@ with tab1:
                 
                 with col_edit2:
                     st.markdown("**2. Sửa Mức Tải Trọng**")
-                    df_tt_edit = db.execute_query("SELECT id, ten_hien_thi, tai_trong_min, tai_trong_max FROM dm_tai_trong_phu_cap ORDER BY tai_trong_min ASC")
+                    try:
+                        df_tt_edit = db.execute_query("SELECT id, ten_hien_thi, tai_trong_min, tai_trong_max FROM dm_tai_trong_phu_cap ORDER BY tai_trong_min ASC")
+                    except Exception:
+                        df_tt_edit = pd.DataFrame()
                     
                     if isinstance(df_tt_edit, pd.DataFrame) and not df_tt_edit.empty:
                         tt_edit_dict = {int(r['id']): r for _, r in df_tt_edit.iterrows()}
@@ -275,7 +296,11 @@ with tab1:
                 
                 with col_del1:
                     st.markdown("**1. Xóa Tiêu chí**")
-                    df_tc_del = db.execute_query("SELECT id, ten_tieu_chi, km_min, km_max FROM dm_tieu_chi_phu_cap ORDER BY ten_tieu_chi ASC")
+                    try:
+                        df_tc_del = db.execute_query("SELECT id, ten_tieu_chi, km_min, km_max FROM dm_tieu_chi_phu_cap ORDER BY ten_tieu_chi ASC")
+                    except Exception:
+                        df_tc_del = pd.DataFrame()
+                        
                     if isinstance(df_tc_del, pd.DataFrame) and not df_tc_del.empty:
                         tc_del_dict = {
                             int(r['id']): f"{r['ten_tieu_chi']} ({float(r.get('km_min', 0)):.1f} - {float(r.get('km_max', 0)):.1f} km)"
@@ -323,7 +348,11 @@ with tab1:
 
                 with col_del2:
                     st.markdown("**2. Xóa Mức Tải Trọng**")
-                    df_tt_del = db.execute_query("SELECT id, ten_hien_thi FROM dm_tai_trong_phu_cap ORDER BY tai_trong_min ASC")
+                    try:
+                        df_tt_del = db.execute_query("SELECT id, ten_hien_thi FROM dm_tai_trong_phu_cap ORDER BY tai_trong_min ASC")
+                    except Exception:
+                        df_tt_del = pd.DataFrame()
+                        
                     if isinstance(df_tt_del, pd.DataFrame) and not df_tt_del.empty:
                         tt_del_dict = dict(zip(df_tt_del['id'], df_tt_del['ten_hien_thi']))
                         del_tt_id = st.selectbox("Chọn tải trọng cần xóa", options=list(tt_del_dict.keys()),
@@ -378,14 +407,30 @@ with tab2:
             if not uploaded_file:
                 st.warning("⚠️ Vui lòng tải lên một file Excel!")
             else:
-                with st.spinner("Đang quét cấu trúc file và đồng bộ Database..."):
-                    try:
-                        df_import = pd.read_excel(uploaded_file)
-                        success, msg = import_excel_phu_cap_transaction(db.pool, df_import, current_user)
-                        if success:
-                            st.success(f"✅ {msg}")
-                            st.balloons()
-                        else:
-                            st.error(f"❌ Lỗi SQL: {msg}")
-                    except Exception as ex:
-                        st.error(f"❌ Lỗi đọc file Excel: {str(ex)}")
+                # 📊 KHU VỰC HIỂN THỊ TIẾN TRÌNH CHO NGƯỜI DÙNG
+                progress_text = st.empty()
+                progress_bar = st.progress(0)
+                
+                try:
+                    progress_text.text("⏳ Đang đọc cấu trúc file Excel...")
+                    progress_bar.progress(25)
+                    
+                    df_import = pd.read_excel(uploaded_file)
+                    
+                    progress_text.text("⏳ Đang phân tích dữ liệu ma trận và kiểm tra Database...")
+                    progress_bar.progress(50)
+                    
+                    success, msg = import_excel_phu_cap_transaction(db.pool, df_import, current_user)
+                    
+                    progress_bar.progress(100)
+                    progress_text.text("🎉 Hoàn tất quá trình đồng bộ!")
+                    
+                    if success:
+                        st.success(f"✅ {msg}")
+                        st.balloons()
+                    else:
+                        st.error(f"❌ Lỗi SQL: {msg}")
+                except Exception as ex:
+                    progress_bar.empty()
+                    progress_text.empty()
+                    st.error(f"❌ Lỗi đọc file Excel hoặc xử lý dữ liệu: {str(ex)}")
