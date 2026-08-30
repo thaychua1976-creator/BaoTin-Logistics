@@ -188,17 +188,7 @@ with tab2:
         if "api_km" not in st.session_state: st.session_state["api_km"] = 0.0
         if "form_reset_counter" not in st.session_state: st.session_state["form_reset_counter"] = 0
 
-        # 🚀 THÊM MỚI: HIỂN THỊ HỘP COPY TIN NHẮN
-        if "tn_tai_xe" in st.session_state and "tn_khach" in st.session_state:
-            st.info("💡 Lệnh điều xe đã được lưu. Hãy Copy nội dung dưới đây để gửi Zalo cho Tài xế và Khách hàng:")
-            c_msg1, c_msg2 = st.columns(2)
-            c_msg1.text_area("📱 Gửi cho Tài xế:", value=st.session_state["tn_tai_xe"], height=140)
-            c_msg2.text_area("📱 Gửi cho Khách hàng:", value=st.session_state["tn_khach"], height=140)
-            if st.button("✅ Đã gửi xong / Đóng thông báo", type="primary"):
-                del st.session_state["tn_tai_xe"]
-                del st.session_state["tn_khach"]
-                st.rerun()
-            st.divider() 
+        
 
         # --- CHỌN CHẾ ĐỘ THAO TÁC & LOẠI HÌNH NGHIỆP VỤ ---
         col_mode1, col_mode2 = st.columns(2)
@@ -653,11 +643,40 @@ with tab2:
                     tt_opts = ["Cong_No", "Tien_Mat"]
                     ngoai_thanh_toan = nx8.selectbox("Hình thức thanh toán ngoài", options=tt_opts, index=get_idx(tt_opts, trip_data.get('hinh_thuc_thanh_toan_ngoai', 'Cong_No')), format_func=lambda x: "Công nợ tháng" if x=="Cong_No" else "Tiền mặt")
                 
-                btn_submit = st.columns(2)
-                btn_label = "🔄 LƯU THAY ĐỔI CHUYẾN ĐI" if mode_action == "✏️ Sửa chuyến hiện tại" else "💾 XÁC NHẬN & PHÁT LỆNH ĐIỀU XE"
-                #submit_save = btn_submit[0].form_submit_button(btn_label, type="primary", use_container_width=True)
-                submit_send = btn_submit[1].form_submit_button("📲 LƯU & GỬI THÔNG TIN TÀI XẾ", type="secondary", use_container_width=True)
+                # ===== ĐÃ GỘP THÀNH 1 NÚT BẤM DUY NHẤT, CĂN GIỮA VÀ ĐỔI MÀU ĐỎ =====
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                # CSS tùy chỉnh để ép màu đỏ cho nút Primary bên trong Form
+                st.markdown("""
+                    <style>
+                        div[data-testid="stForm"] button[kind="primary"] {
+                            background-color: #d32f2f !important; /* Màu đỏ nổi bật */
+                            color: white !important;
+                            border: none !important;
+                            font-weight: 800 !important;
+                            font-size: 16px !important;
+                            border-radius: 8px !important;
+                            padding: 10px 0px !important;
+                            box-shadow: 0 4px 6px rgba(211, 47, 47, 0.3) !important;
+                            transition: all 0.3s ease !important;
+                        }
+                        div[data-testid="stForm"] button[kind="primary"]:hover {
+                            background-color: #b71c1c !important; /* Đỏ đậm hơn khi hover */
+                            transform: translateY(-2px);
+                            box-shadow: 0 6px 8px rgba(183, 28, 28, 0.4) !important;
+                        }
+                    </style>
+                """, unsafe_allow_html=True)
+                
+                # Sử dụng 3 cột để ép nút vào giữa (Tỷ lệ 1 : 2 : 1)
+                col_btn_left, col_btn_center, col_btn_right = st.columns([1, 2, 1])
+                
+                btn_label = "🔄 LƯU THAY ĐỔI & GỬI THÔNG TIN" if mode_action == "✏️ Sửa chuyến hiện tại" else "📲 LƯU VÀ GỬI THÔNG TIN TÀI XẾ"
+                
+                with col_btn_center:
+                    submit_send = st.form_submit_button(btn_label, type="primary", use_container_width=True)
             
+           
             # ----------------------------------------------------
             # XỬ LÝ SUBMIT CHÍNH THỨC
             # ----------------------------------------------------
@@ -791,6 +810,22 @@ with tab2:
                     st.rerun()
                 else:
                     st.error(f"❌ Lỗi Database: {result}")
+            # =========================================================
+            # 🚀 THÊM MỚI: HIỂN THỊ HỘP COPY TIN NHẮN (ĐÃ CHUYỂN XUỐNG ĐÂY)
+            # =========================================================
+        if "tn_tai_xe" in st.session_state and "tn_khach" in st.session_state:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.success("✅ Hệ thống đã lên lệnh thành công! Vui lòng copy thông tin dưới đây để gửi đi:")
+                
+            c_msg1, c_msg2 = st.columns(2)
+            c_msg1.text_area("📱 Gửi cho Tài xế:", value=st.session_state["tn_tai_xe"], height=160, key="copy_tx")
+            c_msg2.text_area("📱 Gửi cho Khách hàng:", value=st.session_state["tn_khach"], height=160, key="copy_kh")
+                
+            if st.button("✅ Đã gửi xong / Đóng thông báo", type="primary", use_container_width=True):
+                del st.session_state["tn_tai_xe"]
+                del st.session_state["tn_khach"]
+                st.rerun()
+            st.divider()
 
     vung_thao_tac_chuyen_di()
 #######################
