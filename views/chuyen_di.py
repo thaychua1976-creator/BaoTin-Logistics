@@ -993,6 +993,7 @@ with tab3:
                                         
                                         kho_di = str(row.get('DIA_CHI_KHO_DI', '')).strip()
                                         kho_den = str(row.get('DIA_CHI_KHO_DEN', '')).strip()
+                                        ghi_chu_excel = str(row.get('GHI_CHU', ''))
                                         
                                         xe_phu_hop = None
                                         for xe in xe_list:
@@ -1024,6 +1025,7 @@ with tab3:
                                             
                                             if is_ok:
                                                 success_count += 1
+                                                # Đã bổ sung trường "Ghi Chú" vào dữ liệu xuất
                                                 danh_sach_xuat_excel.append({
                                                     "Mã Chuyến Hệ Thống": result_msg, 
                                                     "Ngày Chạy": ngay_chay_str,
@@ -1034,7 +1036,8 @@ with tab3:
                                                     "Tài Xế Phụ Trách": xe_phu_hop['ten_tai_xe'], 
                                                     "Số Điện Thoại Tài Xế": xe_phu_hop['sdt_tai_xe'] if pd.notna(xe_phu_hop['sdt_tai_xe']) else "Chưa cập nhật",
                                                     "CCCD Tài Xế": xe_phu_hop['cccd_tai_xe'] if pd.notna(xe_phu_hop['cccd_tai_xe']) else "Chưa cập nhật",
-                                                    "Lộ Trình": f"{kho_di} ➡️ {kho_den}"
+                                                    "Lộ Trình": f"{kho_di} ➡️ {kho_den}",
+                                                    "Ghi Chú": ghi_chu_excel
                                                 })
                                     
                                     st.session_state["export_dieu_xe"] = pd.DataFrame(danh_sach_xuat_excel)
@@ -1054,23 +1057,34 @@ with tab3:
             for _, row in st.session_state["export_dieu_xe"].iterrows():
                 bien_so = str(row['Biển Số Xe']) if pd.notna(row['Biển Số Xe']) else "CHUA_GAN_XE"
                 ten_group = "".join([c for c in bien_so if c.isalnum()]).upper()
+                ghi_chu_row = str(row.get('Ghi Chú', ''))
                 
-                noi_dung_chat = (
+                # Format cột 1: Thông tin cho Tài xế
+                msg_tai_xe = (
                     f"🚛 LỆNH ĐIỀU XE BẢO TÍN\n"
+                    f"- Lộ trình: {row['Lộ Trình']}\n"
                     f"- Mã chuyến: {row['Mã Chuyến Hệ Thống']}\n"
-                    f"- Ngày chạy: {row['Ngày Chạy']}\n"
                     f"- Khách hàng: {row['Khách Hàng']}\n"
-                    f"- Địa chỉ KH: {row['Địa Chỉ Khách Hàng']}\n"
+                    f"- Địa chỉ: {row['Địa Chỉ Khách Hàng']}\n"
+                    f"- Ngày chạy: {row['Ngày Chạy']}\n"
+                    f"- Ghi chú: {ghi_chu_row}"
+                )
+                
+                # Format cột 2: Thông tin cho Khách hàng
+                msg_khach_hang = (
+                    f"📦 THÔNG TIN TÀI XẾ VẬN CHUYỂN\n"
+                    f"- Tên tài xế: {row['Tài Xế Phụ Trách']}\n"
+                    f"- SĐT: {row['Số Điện Thoại Tài Xế']}\n"
+                    f"- CCCD: {row['CCCD Tài Xế']}\n"
                     f"- Biển số xe: {row['Biển Số Xe']}\n"
                     f"- Tải trọng: {float(row['Tải Trọng Đã Book (KG)']):,.0f} KG\n"
-                    f"- Tài xế: {row['Tài Xế Phụ Trách']} (SĐT: {row['Số Điện Thoại Tài Xế']})\n"
-                    f"- CCCD Tài xế: {row['CCCD Tài Xế']}\n"
-                    f"- Lộ trình: {row['Lộ Trình']}\n"
+                    f"- Ghi chú: {ghi_chu_row}"
                 )
                 
                 danh_sach_zalo.append({
                     "TEN_GROUP": ten_group,
-                    "NOI_DUNG_ZALO": noi_dung_chat,
+                    "GUI_THONG_TIN_TAI_XE": msg_tai_xe,
+                    "GUI_THONG_TIN_KHACH_HANG": msg_khach_hang,
                     **row.to_dict()
                 })
             
@@ -1088,7 +1102,7 @@ with tab3:
                     st.rerun()
             with col_btn2:
                 st.download_button(
-                    label="⬇️ TẢI FILE EXCEL (CÓ CỘT TEN_GROUP, SĐT, CCCD, ĐỊA CHỈ & ZALO THỦ CÔNG)", 
+                    label="⬇️ TẢI FILE EXCEL (CÓ CỘT TEN_GROUP, THÔNG TIN GỬI TÀI XẾ/KHÁCH HÀNG & ZALO THỦ CÔNG)", 
                     data=buffer_export.getvalue(), 
                     file_name=f"Lenh_Dieu_Xe_ZaloThuCong_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx", 
                     type="primary",
