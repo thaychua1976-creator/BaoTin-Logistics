@@ -1111,15 +1111,16 @@ with tab3:
                 file_name=f"Mau_Quyet_Toan_Tudong_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
                 use_container_width=True
             )
-        
-        with st.form("form_mass_close"):
+            # Đưa file_uploader ra ngoài form để giao diện cập nhật (rerun) ngay khi chọn file
             file_close = st.file_uploader("Chọn file Excel Quyết toán (Đuôi .xlsx, .csv)", type=["xlsx", "xls", "csv"])
-            submit_close = st.form_submit_button("🏁 Khóa sổ & Chốt chuyến hàng loạt", type="primary")
+            # Kiểm tra trạng thái: Nếu chưa có file thì True (Mờ nút), có file thì False (Sáng nút)
+            is_disabled = file_close is None
+            # Đổi thành st.button và gắn điều kiện disabled
+            submit_close = st.button("🏁 Khóa sổ & Chốt chuyến hàng loạt", type="primary", disabled=is_disabled, use_container_width=True)
+            
             
             if submit_close:
-                if not file_close:
-                    st.warning("⚠️ Bạn chưa tải file Excel lên!")
-                else:
+                
                     with st.spinner("⏳ Đang quét Bảng giá & Phụ phí theo Khối Lượng Book ban đầu..."):
                         try:
                             if file_close.name.endswith('.csv'):
