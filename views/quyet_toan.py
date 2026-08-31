@@ -1043,7 +1043,6 @@ with tab3:
                     "SO_NGAY_NEO_CONT": 0,
                     "IS_HUY_CHUYEN": 0,
                     "IS_BOC_XEP": 0,
-                    "IS_VE_KHUYA": 0,
                     "IS_OVERLOAD_CONT": 0,
                     "CANG_NANG_HA": "",
                     "LOAI_HANG_HOA": "Thường",

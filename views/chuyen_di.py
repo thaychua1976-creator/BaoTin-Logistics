@@ -573,12 +573,17 @@ with tab2:
             )
             
             c_lt1, c_lt2 = st.columns(2)
-            if chon_lo_trinh is None:
-                diem_di_val, diem_den_val = "", ""
-            else:
-                parts = chon_lo_trinh.split(" ➡️ ")
-                diem_di_val = parts[0]
-                diem_den_val = parts[-1] if len(parts) > 1 else ""
+            
+            # --- KHẮC PHỤC LỖI TẠI ĐÂY ---
+            # Ưu tiên lấy lộ trình được chọn từ Selectbox, nếu không có thì lấy lộ trình cũ từ Database
+            lo_trinh_hien_thi = chon_lo_trinh if chon_lo_trinh is not None else lo_trinh_db
+            
+            diem_di_val, diem_den_val = "", ""
+            if lo_trinh_hien_thi and "➡️" in lo_trinh_hien_thi:
+                parts = lo_trinh_hien_thi.split("➡️")
+                diem_di_val = parts[0].strip()
+                diem_den_val = parts[-1].strip()
+            # -------------------------------
                 
             diem_dau = c_lt1.text_input("🏠 Địa chỉ bốc hàng*", value=diem_di_val, disabled=True)
             diem_cuoi = c_lt2.text_input("🎯 Địa chỉ giao hàng*", value=diem_den_val, disabled=True)
