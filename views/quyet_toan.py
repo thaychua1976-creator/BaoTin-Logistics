@@ -1224,8 +1224,8 @@ with tab3:
                                                 has_lanh = 'lạnh' in loai_cont_excel or 'lanh' in loai_cont_excel
 
                                                 for _, rc in df_rc.iterrows():
-                                                    pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip()
-                                                    qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ")
+                                                    pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip().lower()
+                                                    qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ").replace(",", ".")
 
                                                     req_nguy_hiem = any(x in qc_gia for x in ['nguy hiem', 'nguyhiem'])
                                                     req_lanh = any(x in qc_gia for x in ['lạnh', 'lanh', 'rf'])
@@ -1236,12 +1236,12 @@ with tab3:
                                                     if req_lanh and not has_lanh: is_prop_match = False
                                                     if req_thuong and (has_nguy_hiem or has_lanh): is_prop_match = False
 
-                                                    if pl_pt_gia in ['Xe_Tai', 'Hang_Le']:
+                                                    if pl_pt_gia in ['xe_tai', 'hang_le', 'xe tai', 'hang le'] or 'tai' in pl_pt_gia or 'lẻ' in pl_pt_gia:
                                                         nums_in_str = re.findall(r'\d+\.?\d*', qc_gia)
                                                         float_nums = [float(n) for n in nums_in_str]
                                                         is_weight_match = False
 
-                                                        if len(float_nums) == 2:
+                                                        if len(float_nums) >= 2:
                                                             if min(float_nums) <= tai_trong_so_sanh_tan <= max(float_nums): is_weight_match = True
                                                         elif len(float_nums) == 1:
                                                             val = float_nums[0]
@@ -1250,7 +1250,7 @@ with tab3:
                                                             elif any(op in qc_gia for op in ['>=', 'trên', 'tren']) and tai_trong_so_sanh_tan >= val: is_weight_match = True
                                                             elif '>' in qc_gia and tai_trong_so_sanh_tan > val: is_weight_match = True
                                                             else:
-                                                                if tai_trong_so_sanh_tan == val: is_weight_match = True
+                                                                if abs(tai_trong_so_sanh_tan - val) <= 0.1: is_weight_match = True
                                                         elif len(float_nums) == 0:
                                                             is_weight_match = True
 
