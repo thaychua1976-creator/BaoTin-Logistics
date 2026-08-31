@@ -688,9 +688,14 @@ with tab2:
             # ----------------------------------------------------
             #if submit_save or submit_send:
             if  submit_send:    
-                if chon_lo_trinh is None:
+                # ĐÃ FIX: Chỉ chặn khi Tạo Mới, hoặc Sửa nhưng lộ trình cũ bị rỗng hoàn toàn
+                if chon_lo_trinh is None and mode_action == "➕ Tạo chuyến mới":
                     st.error("❌ HỆ THỐNG CHẶN: Vui lòng chọn lộ trình hợp lệ từ danh sách! Nếu chưa có, hãy tạo mới trong Bảng Giá trước.")
                     st.stop()
+                elif chon_lo_trinh is None and mode_action == "✏️ Sửa chuyến hiện tại" and (diem_dau == "" or diem_cuoi == ""):
+                    st.error("❌ HỆ THỐNG CHẶN: Không có dữ liệu lộ trình. Vui lòng chọn lại lộ trình từ danh sách!")
+                    st.stop()
+                    
                 if c_kh_sel is None or c_kh_sel == 0:
                     st.error("❌ Vui lòng chọn Khách hàng hợp lệ trước khi lưu!")
                     st.stop()
