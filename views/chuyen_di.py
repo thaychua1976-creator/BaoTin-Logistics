@@ -844,6 +844,7 @@ with tab3:
         st.markdown("##### 📥 1. Tải File Mẫu (Templates) chuẩn của hệ thống")
         col_t1, col_t2 = st.columns(2)
         with col_t1:
+            # 1. Tạo DataFrame cho Sheet Mẫu Book Xe
             df_tpl_order = pd.DataFrame([{
                 "NGAY_CHAY": "format cell là text: dd/mm/yyyy", 
                 "MA_SO_THUE": "0316666666", 
@@ -855,9 +856,35 @@ with tab3:
                 "THE_TICH_CBM": 5.5, 
                 "GHI_CHU": "Hàng nguyên chuyến"
             }])
+            
+            # 2. Truy vấn dữ liệu Khách hàng từ Database
+            sql_kh_export = "SELECT ma_khach_hang, ten_khach_hang, ma_so_thue, so_dien_thoai, dia_chi FROM khach_hang"
+            df_kh_export = db.execute_query(sql_kh_export)
+            
+            if not isinstance(df_kh_export, pd.DataFrame) or df_kh_export.empty:
+                df_kh_export = pd.DataFrame(columns=["Mã Khách Hàng", "Tên Khách Hàng", "Mã Số Thuế", "Số Điện Thoại", "Địa Chỉ"])
+            else:
+                df_kh_export.rename(columns={
+                    'ma_khach_hang': 'Mã Khách Hàng',
+                    'ten_khach_hang': 'Tên Khách Hàng',
+                    'ma_so_thue': 'Mã Số Thuế',
+                    'so_dien_thoai': 'Số Điện Thoại',
+                    'dia_chi': 'Địa Chỉ'
+                }, inplace=True)
+
+            # 3. Ghi vào file Excel với 2 Sheets
             buffer_order = io.BytesIO()
             with pd.ExcelWriter(buffer_order, engine='xlsxwriter') as writer: 
-                df_tpl_order.to_excel(writer, index=False)
+                df_tpl_order.to_excel(writer, index=False, sheet_name="Mau_Book_Xe")
+                df_kh_export.to_excel(writer, index=False, sheet_name="Thong_Tin_Khach_Hang")
+                
+                # Format độ rộng cột cho sheet Khách hàng để dễ đọc
+                worksheet_kh = writer.sheets["Thong_Tin_Khach_Hang"]
+                worksheet_kh.set_column('A:A', 20)  # Mã Khách Hàng
+                worksheet_kh.set_column('B:B', 45)  # Tên Khách Hàng
+                worksheet_kh.set_column('C:C', 20)  # Mã Số Thuế
+                worksheet_kh.set_column('D:D', 15)  # Số Điện Thoại
+                worksheet_kh.set_column('E:E', 60)  # Địa Chỉ
                 
             st.download_button(
                 label="⬇️ Tải mẫu Excel Điều phối tự động", 
@@ -869,185 +896,187 @@ with tab3:
         st.divider()
 
         st.markdown("##### 🚀 2. Nạp file Excel đơn hàng & Thuật toán điều phối tự động")
-        with st.form("form_auto_dispatch_tab5"):
-            file_order = st.file_uploader("Chọn file Excel danh sách đơn hàng (.xlsx)", type=["xlsx", "xls"])
-            submit_order = st.form_submit_button("🚀 Kiểm tra MST & Chạy thuật toán tự động", type="primary", use_container_width=True)
-            
-            if submit_order:
-                if not file_order: 
-                    st.warning("⚠️ Vui lòng tải file Excel đơn hàng lên!")
-                else:
-                    with st.spinner("⏳ Đang phân tích file Excel và kiểm tra dữ liệu hệ thống..."):
-                        try:
-                            df_orders = pd.read_excel(file_order, dtype={'MA_SO_THUE': str, 'MA_KHACH_HANG': str,'TEN_KHACH_HANG': str})
-                            df_orders.columns = [str(c).strip().upper() for c in df_orders.columns] 
-                            df_orders['NGAY_CHAY_CHUAN'] = pd.to_datetime(df_orders['NGAY_CHAY'], dayfirst=True, errors='coerce')
+        
+        # Đưa file_uploader ra ngoài form để bắt sự kiện thay đổi trạng thái (rerun) ngay lập tức
+        file_order = st.file_uploader("Chọn file Excel danh sách đơn hàng (.xlsx)", type=["xlsx", "xls"])
+        
+        # Kiểm tra file đã được tải lên chưa, nếu chưa thì disable nút
+        is_disabled = file_order is None
+        
+        # Dùng st.button thay cho st.form_submit_button
+        submit_order = st.button("🚀 Kiểm tra MST & Chạy thuật toán tự động", type="primary", use_container_width=True, disabled=is_disabled)
+        
+        if submit_order:
+            with st.spinner("⏳ Đang phân tích file Excel và kiểm tra dữ liệu hệ thống..."):
+                try:
+                    df_orders = pd.read_excel(file_order, dtype={'MA_SO_THUE': str, 'MA_KHACH_HANG': str,'TEN_KHACH_HANG': str})
+                    df_orders.columns = [str(c).strip().upper() for c in df_orders.columns] 
+                    df_orders['NGAY_CHAY_CHUAN'] = pd.to_datetime(df_orders['NGAY_CHAY'], dayfirst=True, errors='coerce')
+                    
+                    df_kh = db.execute_query("SELECT id, ma_khach_hang, ten_khach_hang, ma_so_thue FROM khach_hang")
+                    
+                    kh_dict_mst = {}
+                    kh_dict_ma = {}
+                    kh_dict_ten = {}
+                    
+                    if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
+                        for _, r in df_kh.iterrows():
+                            kh_id = int(r['id'])
+                            mk = str(r['ma_khach_hang']).strip().lower() if pd.notna(r['ma_khach_hang']) else ""
+                            mst = str(r['ma_so_thue']).strip().lower() if pd.notna(r['ma_so_thue']) else ""
+                            ten = str(r['ten_khach_hang']).strip().lower() if pd.notna(r['ten_khach_hang']) else ""
                             
-                            df_kh = db.execute_query("SELECT id, ma_khach_hang, ten_khach_hang, ma_so_thue FROM khach_hang")
-                            
-                            kh_dict_mst = {}
-                            kh_dict_ma = {}
-                            kh_dict_ten = {}
-                            
-                            if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
-                                for _, r in df_kh.iterrows():
-                                    kh_id = int(r['id'])
-                                    mk = str(r['ma_khach_hang']).strip().lower() if pd.notna(r['ma_khach_hang']) else ""
-                                    mst = str(r['ma_so_thue']).strip().lower() if pd.notna(r['ma_so_thue']) else ""
-                                    ten = str(r['ten_khach_hang']).strip().lower() if pd.notna(r['ten_khach_hang']) else ""
+                            if mk: kh_dict_ma[mk] = kh_id
+                            if mst: kh_dict_mst[mst] = kh_id
+                            if ten: kh_dict_ten[ten] = kh_id
+                    
+                    missing_customers = []
+                    valid_orders = []
+                    
+                    for idx, row in df_orders.iterrows():
+                        raw_mst = str(row.get('MA_SO_THUE', '')).strip()
+                        mst = raw_mst.lower() if raw_mst.lower() != 'nan' else ""
+                        
+                        raw_ma_kh = str(row.get('MA_KHACH_HANG', '')).strip()
+                        ma_kh = raw_ma_kh.lower() if raw_ma_kh.lower() != 'nan' else ""
+                        
+                        raw_ten_kh = str(row.get('TEN_KHACH_HANG', '')).strip()
+                        ten_kh = raw_ten_kh.lower() if raw_ten_kh.lower() != 'nan' else ""
+                        
+                        kh_id = None
+                        
+                        if mst and mst in kh_dict_mst:
+                            kh_id = kh_dict_mst[mst]
+                        elif ma_kh and ma_kh in kh_dict_ma:
+                            kh_id = kh_dict_ma[ma_kh]
+                        elif ten_kh and ten_kh in kh_dict_ten:
+                            kh_id = kh_dict_ten[ten_kh]
+                        elif ten_kh and isinstance(df_kh, pd.DataFrame):
+                            matched_ids = []
+                            for _, r in df_kh.iterrows():
+                                db_ten = str(r['ten_khach_hang']).strip().lower()
+                                if db_ten and (ten_kh in db_ten or db_ten in ten_kh):
+                                    matched_ids.append(int(r['id']))
                                     
-                                    if mk: kh_dict_ma[mk] = kh_id
-                                    if mst: kh_dict_mst[mst] = kh_id
-                                    if ten: kh_dict_ten[ten] = kh_id
+                            if len(matched_ids) == 1:
+                                kh_id = matched_ids[0]
+                        
+                        if not kh_id:
+                            missing_customers.append({
+                                "STT Dòng Excel": idx + 2,
+                                "Mã Số Thuế / Mã KH": raw_mst if raw_mst else (raw_ma_kh if raw_ma_kh else "Trống"),
+                                "Tên Khách Hàng (Excel)": raw_ten_kh,
+                                "Lý do lỗi": "Tên khách không có trong DB hoặc có nhiều tên na ná nhau (Vui lòng gõ cụ thể hơn)" if ten_kh else "Thiếu dữ liệu tra cứu"
+                            })
+                        else:
+                            row['DB_KHACH_HANG_ID'] = kh_id
+                            valid_orders.append(row)
                             
-                            missing_customers = []
-                            valid_orders = []
+                    if missing_customers:
+                        st.error(f"🚨 PHÁT HIỆN {len(missing_customers)} ĐƠN HÀNG CÓ KHÁCH HÀNG CHƯA ĐĂNG KÝ HOẶC BỊ TRÙNG LẶP TÊN!")
+                        df_missing = pd.DataFrame(missing_customers).drop_duplicates()
+                        st.dataframe(df_missing, use_container_width=True, hide_index=True)
+                    
+                    df_valid_orders = pd.DataFrame(valid_orders)
+                    
+                    if not df_valid_orders.empty and not missing_customers:
+                        sql_xe_ranh = """
+                            SELECT x.id, x.bien_so_xe, x.tai_xe_co_dinh_id, x.tai_trong_thiet_ke, x.dung_tich_cbm, 
+                                nv.ho_ten as ten_tai_xe, nv.so_dien_thoai as sdt_tai_xe, nv.cccd as cccd_tai_xe
+                            FROM xe x 
+                            LEFT JOIN nhan_vien nv ON x.tai_xe_co_dinh_id = nv.id
+                            WHERE x.trang_thai = 'Dang_Hoat_Dong'
+                            AND x.id NOT IN (
+                                SELECT xe_id FROM chuyen_di 
+                                WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') 
+                                    AND xe_id IS NOT NULL
+                            )
+                            ORDER BY x.tai_trong_thiet_ke ASC, x.dung_tich_cbm ASC
+                        """
+                        df_xe_ranh = db.execute_query(sql_xe_ranh)
+                        
+                        if isinstance(df_xe_ranh, str) or df_xe_ranh.empty:
+                            st.error("❌ Hiện tại không có xe nội bộ nào đang rảnh rỗi để điều phối tự động!")
+                        else:
+                            success_count = 0
+                            xe_list = df_xe_ranh.to_dict('records')
+                            danh_sach_xuat_excel = [] 
+                            for xe in xe_list: xe['is_used'] = False 
                             
-                            for idx, row in df_orders.iterrows():
-                                raw_mst = str(row.get('MA_SO_THUE', '')).strip()
-                                mst = raw_mst.lower() if raw_mst.lower() != 'nan' else ""
+                            def safe_float(val):
+                                try: return 0.0 if pd.isna(val) or str(val).strip() == "" else float(val)
+                                except: return 0.0
                                 
-                                raw_ma_kh = str(row.get('MA_KHACH_HANG', '')).strip()
-                                ma_kh = raw_ma_kh.lower() if raw_ma_kh.lower() != 'nan' else ""
-                                
-                                raw_ten_kh = str(row.get('TEN_KHACH_HANG', '')).strip()
-                                ten_kh = raw_ten_kh.lower() if raw_ten_kh.lower() != 'nan' else ""
-                                
-                                kh_id = None
-                                
-                                if mst and mst in kh_dict_mst:
-                                    kh_id = kh_dict_mst[mst]
-                                elif ma_kh and ma_kh in kh_dict_ma:
-                                    kh_id = kh_dict_ma[ma_kh]
-                                elif ten_kh and ten_kh in kh_dict_ten:
-                                    kh_id = kh_dict_ten[ten_kh]
-                                elif ten_kh and isinstance(df_kh, pd.DataFrame):
-                                    matched_ids = []
-                                    for _, r in df_kh.iterrows():
-                                        db_ten = str(r['ten_khach_hang']).strip().lower()
-                                        if db_ten and (ten_kh in db_ten or db_ten in ten_kh):
-                                            matched_ids.append(int(r['id']))
-                                            
-                                    if len(matched_ids) == 1:
-                                        kh_id = matched_ids[0]
-                                
-                                if not kh_id:
-                                    missing_customers.append({
-                                        "STT Dòng Excel": idx + 2,
-                                        "Mã Số Thuế / Mã KH": raw_mst if raw_mst else (raw_ma_kh if raw_ma_kh else "Trống"),
-                                        "Tên Khách Hàng (Excel)": raw_ten_kh,
-                                        "Lý do lỗi": "Tên khách không có trong DB hoặc có nhiều tên na ná nhau (Vui lòng gõ cụ thể hơn)" if ten_kh else "Thiếu dữ liệu tra cứu"
-                                    })
-                                else:
-                                    row['DB_KHACH_HANG_ID'] = kh_id
-                                    valid_orders.append(row)
-                                    
-                            if missing_customers:
-                                st.error(f"🚨 PHÁT HIỆN {len(missing_customers)} ĐƠN HÀNG CÓ KHÁCH HÀNG CHƯA ĐĂNG KÝ HOẶC BỊ TRÙNG LẶP TÊN!")
-                                df_missing = pd.DataFrame(missing_customers).drop_duplicates()
-                                st.dataframe(df_missing, use_container_width=True, hide_index=True)
+                            df_valid_orders['SORT_KG'] = df_valid_orders['KHOI_LUONG_KG'].apply(safe_float)
+                            df_valid_orders['SORT_CBM'] = df_valid_orders['THE_TICH_CBM'].apply(safe_float)
+                            df_orders_sorted = df_valid_orders.sort_values(by=['SORT_KG', 'SORT_CBM'], ascending=[False, False])
                             
-                            df_valid_orders = pd.DataFrame(valid_orders)
-                            
-                            if not df_valid_orders.empty and not missing_customers:
-                                sql_xe_ranh = """
-                                    SELECT x.id, x.bien_so_xe, x.tai_xe_co_dinh_id, x.tai_trong_thiet_ke, x.dung_tich_cbm, 
-                                        nv.ho_ten as ten_tai_xe, nv.so_dien_thoai as sdt_tai_xe, nv.cccd as cccd_tai_xe
-                                    FROM xe x 
-                                    LEFT JOIN nhan_vien nv ON x.tai_xe_co_dinh_id = nv.id
-                                    WHERE x.trang_thai = 'Dang_Hoat_Dong'
-                                    AND x.id NOT IN (
-                                        SELECT xe_id FROM chuyen_di 
-                                        WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') 
-                                            AND xe_id IS NOT NULL
-                                    )
-                                    ORDER BY x.tai_trong_thiet_ke ASC, x.dung_tich_cbm ASC
-                                """
-                                df_xe_ranh = db.execute_query(sql_xe_ranh)
+                            for idx, row in df_orders_sorted.iterrows():
+                                if pd.isna(row['NGAY_CHAY_CHUAN']): continue
+                                ngay_chay_str = row['NGAY_CHAY_CHUAN'].strftime('%Y-%m-%d')       
+                                req_kg = row['SORT_KG']
+                                req_cbm = row['SORT_CBM']
                                 
-                                if isinstance(df_xe_ranh, str) or df_xe_ranh.empty:
-                                    st.error("❌ Hiện tại không có xe nội bộ nào đang rảnh rỗi để điều phối tự động!")
-                                else:
-                                    success_count = 0
-                                    xe_list = df_xe_ranh.to_dict('records')
-                                    danh_sach_xuat_excel = [] 
-                                    for xe in xe_list: xe['is_used'] = False 
+                                kh_id = row.get('DB_KHACH_HANG_ID')
+                                khach_hang_ten = str(row.get('TEN_KHACH_HANG', 'Khách Lẻ')).strip()
+                                dia_chi_kh = str(row.get('DIA_CHI_KHACH_HANG', '')).strip()
+                                
+                                kho_di = str(row.get('DIA_CHI_KHO_DI', '')).strip()
+                                kho_den = str(row.get('DIA_CHI_KHO_DEN', '')).strip()
+                                ghi_chu_excel = str(row.get('GHI_CHU', ''))
+                                
+                                xe_phu_hop = None
+                                for xe in xe_list:
+                                    if xe['is_used'] or pd.isna(xe['tai_xe_co_dinh_id']): continue 
+                                    cap_kg = float(xe['tai_trong_thiet_ke'] or 0) * 1000 
+                                    cap_cbm = float(xe['dung_tich_cbm'] or 0)
+                                    if (cap_kg >= req_kg) and (req_cbm == 0 or cap_cbm >= req_cbm):
+                                        xe_phu_hop = xe
+                                        xe['is_used'] = True
+                                        break
+                                
+                                if xe_phu_hop:
+                                    data_chuyen_di = {
+                                        'ngay_chuyen_di': ngay_chay_str,
+                                        'khach_hang_id': kh_id,
+                                        'ten_khach_hang': khach_hang_ten,
+                                        'dia_chi_khach_hang': dia_chi_kh,
+                                        'xe_id': xe_phu_hop['id'],
+                                        'dia_diem_giao_nhan': f"{kho_di} ➡️ {kho_den}",
+                                        'khoi_luong_kg': req_kg,
+                                        'the_tich_cbm': req_cbm, 
+                                        'is_thue_ngoai': 0,
+                                        'trang_thai_chuyen': 'Tao_Moi', 
+                                        'ghi_chu': str(row.get('GHI_CHU', 'Điều phối tự động qua Excel'))
+                                    }
+                                
+                                    tx_id = int(float(xe_phu_hop['tai_xe_co_dinh_id']))
+                                    is_ok, result_msg = save_trip_full_process(db.pool, data_chuyen_di, tx_id)
                                     
-                                    def safe_float(val):
-                                        try: return 0.0 if pd.isna(val) or str(val).strip() == "" else float(val)
-                                        except: return 0.0
-                                        
-                                    df_valid_orders['SORT_KG'] = df_valid_orders['KHOI_LUONG_KG'].apply(safe_float)
-                                    df_valid_orders['SORT_CBM'] = df_valid_orders['THE_TICH_CBM'].apply(safe_float)
-                                    df_orders_sorted = df_valid_orders.sort_values(by=['SORT_KG', 'SORT_CBM'], ascending=[False, False])
-                                    
-                                    for idx, row in df_orders_sorted.iterrows():
-                                        if pd.isna(row['NGAY_CHAY_CHUAN']): continue
-                                        ngay_chay_str = row['NGAY_CHAY_CHUAN'].strftime('%Y-%m-%d')       
-                                        req_kg = row['SORT_KG']
-                                        req_cbm = row['SORT_CBM']
-                                        
-                                        kh_id = row.get('DB_KHACH_HANG_ID')
-                                        khach_hang_ten = str(row.get('TEN_KHACH_HANG', 'Khách Lẻ')).strip()
-                                        dia_chi_kh = str(row.get('DIA_CHI_KHACH_HANG', '')).strip()
-                                        
-                                        kho_di = str(row.get('DIA_CHI_KHO_DI', '')).strip()
-                                        kho_den = str(row.get('DIA_CHI_KHO_DEN', '')).strip()
-                                        ghi_chu_excel = str(row.get('GHI_CHU', ''))
-                                        
-                                        xe_phu_hop = None
-                                        for xe in xe_list:
-                                            if xe['is_used'] or pd.isna(xe['tai_xe_co_dinh_id']): continue 
-                                            cap_kg = float(xe['tai_trong_thiet_ke'] or 0) * 1000 
-                                            cap_cbm = float(xe['dung_tich_cbm'] or 0)
-                                            if (cap_kg >= req_kg) and (req_cbm == 0 or cap_cbm >= req_cbm):
-                                                xe_phu_hop = xe
-                                                xe['is_used'] = True
-                                                break
-                                        
-                                        if xe_phu_hop:
-                                            data_chuyen_di = {
-                                                'ngay_chuyen_di': ngay_chay_str,
-                                                'khach_hang_id': kh_id,
-                                                'ten_khach_hang': khach_hang_ten,
-                                                'dia_chi_khach_hang': dia_chi_kh,
-                                                'xe_id': xe_phu_hop['id'],
-                                                'dia_diem_giao_nhan': f"{kho_di} ➡️ {kho_den}",
-                                                'khoi_luong_kg': req_kg,
-                                                'the_tich_cbm': req_cbm, 
-                                                'is_thue_ngoai': 0,
-                                                'trang_thai_chuyen': 'Tao_Moi', 
-                                                'ghi_chu': str(row.get('GHI_CHU', 'Điều phối tự động qua Excel'))
-                                            }
-                                        
-                                            tx_id = int(float(xe_phu_hop['tai_xe_co_dinh_id']))
-                                            is_ok, result_msg = save_trip_full_process(db.pool, data_chuyen_di, tx_id)
-                                            
-                                            if is_ok:
-                                                success_count += 1
-                                                # Đã bổ sung trường "Ghi Chú" vào dữ liệu xuất
-                                                danh_sach_xuat_excel.append({
-                                                    "Mã Chuyến Hệ Thống": result_msg, 
-                                                    "Ngày Chạy": ngay_chay_str,
-                                                    "Khách Hàng": khach_hang_ten,
-                                                    "Địa Chỉ Khách Hàng": dia_chi_kh,
-                                                    "Biển Số Xe": xe_phu_hop['bien_so_xe'],
-                                                    "Tải Trọng Đã Book (KG)": req_kg,
-                                                    "Tài Xế Phụ Trách": xe_phu_hop['ten_tai_xe'], 
-                                                    "Số Điện Thoại Tài Xế": xe_phu_hop['sdt_tai_xe'] if pd.notna(xe_phu_hop['sdt_tai_xe']) else "Chưa cập nhật",
-                                                    "CCCD Tài Xế": xe_phu_hop['cccd_tai_xe'] if pd.notna(xe_phu_hop['cccd_tai_xe']) else "Chưa cập nhật",
-                                                    "Lộ Trình": f"{kho_di} ➡️ {kho_den}",
-                                                    "Ghi Chú": ghi_chu_excel
-                                                })
-                                    
-                                    st.session_state["export_dieu_xe"] = pd.DataFrame(danh_sach_xuat_excel)
-                                    if success_count > 0:
-                                        st.success(f"🎉 Hệ thống đã tự động điều phối thành công {success_count} đơn hàng!")
-                                        time.sleep(1.5)
-                                        st.rerun()
-                                        
-                        except Exception as e:
-                            st.error(f"❌ Lỗi xử lý thuật toán tự động: {str(e)}")
+                                    if is_ok:
+                                        success_count += 1
+                                        danh_sach_xuat_excel.append({
+                                            "Mã Chuyến Hệ Thống": result_msg, 
+                                            "Ngày Chạy": ngay_chay_str,
+                                            "Khách Hàng": khach_hang_ten,
+                                            "Địa Chỉ Khách Hàng": dia_chi_kh,
+                                            "Biển Số Xe": xe_phu_hop['bien_so_xe'],
+                                            "Tải Trọng Đã Book (KG)": req_kg,
+                                            "Tài Xế Phụ Trách": xe_phu_hop['ten_tai_xe'], 
+                                            "Số Điện Thoại Tài Xế": xe_phu_hop['sdt_tai_xe'] if pd.notna(xe_phu_hop['sdt_tai_xe']) else "Chưa cập nhật",
+                                            "CCCD Tài Xế": xe_phu_hop['cccd_tai_xe'] if pd.notna(xe_phu_hop['cccd_tai_xe']) else "Chưa cập nhật",
+                                            "Lộ Trình": f"{kho_di} ➡️ {kho_den}",
+                                            "Ghi Chú": ghi_chu_excel
+                                        })
+                            
+                            st.session_state["export_dieu_xe"] = pd.DataFrame(danh_sach_xuat_excel)
+                            if success_count > 0:
+                                st.success(f"🎉 Hệ thống đã tự động điều phối thành công {success_count} đơn hàng!")
+                                time.sleep(1.5)
+                                st.rerun()
+                                
+                except Exception as e:
+                    st.error(f"❌ Lỗi xử lý thuật toán tự động: {str(e)}")
 
         if st.session_state.get("export_dieu_xe") is not None and not st.session_state["export_dieu_xe"].empty:
             st.markdown("### 🖨️ Danh sách chuyến xe điều phối thành công & Hỗ trợ Zalo Thủ Công")
