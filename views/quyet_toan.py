@@ -40,8 +40,10 @@ tab1, tab2, tab3,tab4 = st.tabs([
 ])
 # =========================================================================
 # HÀM LÕI: ĐỘNG CƠ LUẬT TÍNH PHỤ PHÍ (RULE ENGINE) - DÙNG CHUNG CHO TAB 1 & TAB 3
-# ========================================================================
+# =========================================================================
 
+import json
+import pandas as pd
 import re
 
 def clean_money_val(val):
@@ -331,7 +333,7 @@ def tinh_phu_cap_tai_xe(db_instance, xe_id, danh_sach_tieu_chi_id):
         print(f"Lỗi tính phụ cấp: {e}")
         return 0.0, ""
 # ==========================================
-# TAB 1: QUYẾT TOÁN ĐƠN CHUYẾN (ĐÃ TỐI ƯU HÓA)
+# TAB 3: QUYẾT TOÁN ĐƠN CHUYẾN (ĐÃ TỐI ƯU HÓA)
 # ==========================================
 with tab1:
     tao_tieu_de_kem_nut_refresh("📋 Quyết toán và cập nhật chi phí chuyến đi", "ref_tab1")
@@ -605,7 +607,6 @@ with tab1:
                 if not is_thue_ngoai:
                     st.markdown("##### 🎁 3. Khai báo Phụ cấp Tài xế (Theo ma trận tải trọng)")
                     
-                    
                     # 🚀 LẤY KHOẢNG CÁCH TỪ BẢNG GIÁ ĐỂ TỰ ĐỘNG CHỌN TIÊU CHÍ PHỤ CẤP
                     kc_auto = 0.0
                     auto_tc_ids = []
@@ -617,43 +618,26 @@ with tab1:
                                 kc_auto = float(df_kc.iloc[0]['khoang_cach'] or 0.0)
                                 
                             if kc_auto > 0:
+                                # 🚀 Tự động map ID tiêu chí phụ cấp dựa trên Cự ly (km_min, km_max) VÀ Tính chất Hàng về
                                 sql_find_tc = "SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap WHERE %s >= km_min AND %s <= km_max"
                                 df_find_tc = db.execute_query(sql_find_tc, (kc_auto, kc_auto))
-                                
                                 if isinstance(df_find_tc, pd.DataFrame) and not df_find_tc.empty:
-                                    lo_trinh_hien_tai_lower = str(row_sel.get('dia_diem_giao_nhan', '')).lower()
-                                    # Danh sách các từ khóa địa danh đặc thù có trong nội dung phụ cấp
-                                    ds_dia_danh = ["nhơn trạch", "cát lái", "cái mép", "hiệp phước", "vict", "sóng thần", "mỹ phước", "ngoại quan", "phú hữu", "bến lức", "đức hòa", "củ chi", "daklak", "đắk lắk", "biên hoà", "biên hòa", "tbs", "mộc bài"]
-                                    
                                     for _, r_tc in df_find_tc.iterrows():
                                         tc_id = int(r_tc['id'])
                                         ten_tc = str(r_tc['ten_tieu_chi']).lower()
                                         
-                                        # 1. KIỂM TRA ĐỊA DANH (Nếu tên tiêu chí có địa danh mà lộ trình thực tế không có -> Bỏ qua)
-                                        is_sai_tuyen = False
-                                        for dd in ds_dia_danh:
-                                            if (dd in ten_tc) and (dd not in lo_trinh_hien_tai_lower):
-                                                is_sai_tuyen = True
-                                                break
+                                        # Phân tích xem tên tiêu chí có yêu cầu "hàng về" hay không
+                                        is_tieu_chi_hang_ve = any(kw in ten_tc for kw in ["hàng về", "hang ve", "2 chiều", "2 chieu", "hai chiều", "hai chieu", "nhận về", "nhan ve"])
                                         
-                                        if is_sai_tuyen: 
-                                            continue 
-                                        
-                                        # 2. KIỂM TRA TÍNH CHẤT HÀNG VỀ (2 CHIỀU) / KHÔNG HÀNG VỀ (1 CHIỀU)
-                                        phu_dinh_kws = ["không nhận", "khong nhan", "không có", "khong co", "1 chiều", "1 chieu", "một chiều", "mot chieu"]
-                                        is_tieu_chi_khong_hang_ve = any(kw in ten_tc for kw in phu_dinh_kws)
-                                        
-                                        khang_dinh_kws = ["có nhận", "co nhan", "hàng về", "hang ve", "2 chiều", "2 chieu", "hai chiều", "hai chieu", "nhận về", "nhan ve"]
-                                        is_tieu_chi_hang_ve = any(kw in ten_tc for kw in khang_dinh_kws) and not is_tieu_chi_khong_hang_ve
-                                        
-                                        if is_hang_ve_ui:
-                                            # Nếu có tick hàng về -> Dùng tiêu chí có hàng về (hoặc tiêu chí không có ràng buộc 1/2 chiều)
-                                            if is_tieu_chi_hang_ve or (not is_tieu_chi_hang_ve and not is_tieu_chi_khong_hang_ve):
+                                        # THUẬT TOÁN ĐÃ ĐƯỢC SỬA LẠI:
+                                        if is_tieu_chi_hang_ve:
+                                            # Tiêu chí này YÊU CẦU có hàng về. Chỉ tự động tick nếu ô "Có chở hàng về" được check
+                                            if is_hang_ve_ui:
                                                 auto_tc_ids.append(tc_id)
                                         else:
-                                            # Nếu KHÔNG tick hàng về -> Dùng tiêu chí không hàng về (hoặc tiêu chí không có ràng buộc)
-                                            if is_tieu_chi_khong_hang_ve or (not is_tieu_chi_hang_ve and not is_tieu_chi_khong_hang_ve):
-                                                auto_tc_ids.append(tc_id)
+                                            # Tiêu chí KHÔNG yêu cầu hàng về (Tiêu chí cự ly bình thường).
+                                            # Luôn tự động tick nếu thỏa mãn số Km.
+                                            auto_tc_ids.append(tc_id)
                     except Exception: pass
 
                     df_tc = db.execute_query("SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap")
@@ -1043,6 +1027,7 @@ with tab3:
                     "SO_NGAY_NEO_CONT": 0,
                     "IS_HUY_CHUYEN": 0,
                     "IS_BOC_XEP": 0,
+                    "IS_VE_KHUYA": 0,
                     "IS_OVERLOAD_CONT": 0,
                     "CANG_NANG_HA": "",
                     "LOAI_HANG_HOA": "Thường",
@@ -1111,16 +1096,15 @@ with tab3:
                 file_name=f"Mau_Quyet_Toan_Tudong_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
                 use_container_width=True
             )
-            # Đưa file_uploader ra ngoài form để giao diện cập nhật (rerun) ngay khi chọn file
+        
+        with st.form("form_mass_close"):
             file_close = st.file_uploader("Chọn file Excel Quyết toán (Đuôi .xlsx, .csv)", type=["xlsx", "xls", "csv"])
-            # Kiểm tra trạng thái: Nếu chưa có file thì True (Mờ nút), có file thì False (Sáng nút)
-            is_disabled = file_close is None
-            # Đổi thành st.button và gắn điều kiện disabled
-            submit_close = st.button("🏁 Khóa sổ & Chốt chuyến hàng loạt", type="primary", disabled=is_disabled, use_container_width=True)
-            
+            submit_close = st.form_submit_button("🏁 Khóa sổ & Chốt chuyến hàng loạt", type="primary")
             
             if submit_close:
-                
+                if not file_close:
+                    st.warning("⚠️ Bạn chưa tải file Excel lên!")
+                else:
                     with st.spinner("⏳ Đang quét Bảng giá & Phụ phí theo Khối Lượng Book ban đầu..."):
                         try:
                             if file_close.name.endswith('.csv'):
@@ -1225,7 +1209,7 @@ with tab3:
 
                                                 for _, rc in df_rc.iterrows():
                                                     pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip()
-                                                    qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ").replace(",", ".")
+                                                    qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ")
 
                                                     req_nguy_hiem = any(x in qc_gia for x in ['nguy hiem', 'nguyhiem'])
                                                     req_lanh = any(x in qc_gia for x in ['lạnh', 'lanh', 'rf'])
@@ -1241,7 +1225,7 @@ with tab3:
                                                         float_nums = [float(n) for n in nums_in_str]
                                                         is_weight_match = False
 
-                                                        if len(float_nums) >= 2:
+                                                        if len(float_nums) == 2:
                                                             if min(float_nums) <= tai_trong_so_sanh_tan <= max(float_nums): is_weight_match = True
                                                         elif len(float_nums) == 1:
                                                             val = float_nums[0]
@@ -1250,7 +1234,7 @@ with tab3:
                                                             elif any(op in qc_gia for op in ['>=', 'trên', 'tren']) and tai_trong_so_sanh_tan >= val: is_weight_match = True
                                                             elif '>' in qc_gia and tai_trong_so_sanh_tan > val: is_weight_match = True
                                                             else:
-                                                                if abs(tai_trong_so_sanh_tan - val) <= 0.1: is_weight_match = True
+                                                                if tai_trong_so_sanh_tan == val: is_weight_match = True
                                                         elif len(float_nums) == 0:
                                                             is_weight_match = True
 
