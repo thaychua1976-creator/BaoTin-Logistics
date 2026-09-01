@@ -1224,7 +1224,7 @@ with tab3:
                                                 has_lanh = 'lạnh' in loai_cont_excel or 'lanh' in loai_cont_excel
 
                                                 for _, rc in df_rc.iterrows():
-                                                    pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip().lower()
+                                                    pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip()
                                                     qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ").replace(",", ".")
 
                                                     req_nguy_hiem = any(x in qc_gia for x in ['nguy hiem', 'nguyhiem'])
@@ -1236,7 +1236,7 @@ with tab3:
                                                     if req_lanh and not has_lanh: is_prop_match = False
                                                     if req_thuong and (has_nguy_hiem or has_lanh): is_prop_match = False
 
-                                                    if pl_pt_gia in ['xe_tai', 'hang_le', 'xe tai', 'hang le'] or 'tai' in pl_pt_gia or 'lẻ' in pl_pt_gia:
+                                                    if pl_pt_gia in ['Xe_Tai', 'Hang_Le']:
                                                         nums_in_str = re.findall(r'\d+\.?\d*', qc_gia)
                                                         float_nums = [float(n) for n in nums_in_str]
                                                         is_weight_match = False
