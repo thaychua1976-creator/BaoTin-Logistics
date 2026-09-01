@@ -492,8 +492,12 @@ with tab1:
                                             break
                                     continue
 
-                                if pl_pt_gia in ['Xe_Tai', 'Hang_Le']:
-                                    nums_in_str = re.findall(r'\d+\.?\d*', qc_gia)
+                                # Chuyển về chữ thường để tránh lỗi phân biệt hoa/thường
+                                pl_pt_gia_lower = pl_pt_gia.lower()
+                                if pl_pt_gia_lower in ['xe_tai', 'hang_le', 'xe tai', 'hang le']:
+                                    # Thêm replace dấu phẩy đề phòng nhập sai "5,0T"
+                                    qc_gia_clean = qc_gia.replace(",", ".")
+                                    nums_in_str = re.findall(r'\d+\.?\d*', qc_gia_clean)
                                     float_nums = [float(n) for n in nums_in_str]
                                     is_weight_match = False
 
@@ -501,19 +505,15 @@ with tab1:
                                         if min(float_nums) <= tt_xe_tan <= max(float_nums): is_weight_match = True
                                     elif len(float_nums) == 1:
                                         val = float_nums[0]
-                                        if any(op in qc_gia for op in ['<=', 'dưới', 'duoi']):
-                                            if tt_xe_tan <= val: is_weight_match = True
-                                        elif '<' in qc_gia:
-                                            if tt_xe_tan < val: is_weight_match = True
-                                        elif any(op in qc_gia for op in ['>=', 'trên', 'tren']):
-                                            if tt_xe_tan >= val: is_weight_match = True
-                                        elif '>' in qc_gia:
-                                            if tt_xe_tan > val: is_weight_match = True
+                                        if any(op in qc_gia for op in ['<=', 'dưới', 'duoi']) and tt_xe_tan <= val: is_weight_match = True
+                                        elif '<' in qc_gia and tt_xe_tan < val: is_weight_match = True
+                                        elif any(op in qc_gia for op in ['>=', 'trên', 'tren']) and tt_xe_tan >= val: is_weight_match = True
+                                        elif '>' in qc_gia and tt_xe_tan > val: is_weight_match = True
                                         else:
-                                            # 🎯 CHỈ SO SÁNH CHÍNH XÁC (KHÔNG TỰ Ý LÀM TRÒN)
-                                            if tt_xe_tan == val: is_weight_match = True
+                                            # Dùng dung sai 0.1 để vượt qua lỗi số thực
+                                            if abs(tt_xe_tan - val) <= 0.1: is_weight_match = True
                                     elif len(float_nums) == 0:
-                                        is_weight_match = True 
+                                        is_weight_match = True
 
                                     if not (is_weight_match and is_prop_match):
                                         continue
@@ -1169,6 +1169,16 @@ with tab3:
                                     booked_kg = float(row_db.get('khoi_luong_kg', 0.0) or 0.0)
                                     tai_trong_so_sanh_tan = booked_kg / 1000.0 if booked_kg > 0 else 0.0
 
+                                    # THÊM FALLBACK GIỐNG TAB 1: Nếu không có khối lượng, lấy tải trọng xe
+                                    if tai_trong_so_sanh_tan <= 0:
+                                        try:
+                                            sql_tt = "SELECT tai_trong_thiet_ke FROM xe WHERE id = %s"
+                                            df_tt = db.execute_query(sql_tt, (row_db.get('xe_id'),))
+                                            if isinstance(df_tt, pd.DataFrame) and not df_tt.empty:
+                                                tt_xe_float = float(df_tt.iloc[0]['tai_trong_thiet_ke'] or 0.0)
+                                                tai_trong_so_sanh_tan = (tt_xe_float / 1000.0) if tt_xe_float >= 50 else tt_xe_float
+                                        except: pass
+
                                     doanh_thu_db = float(row_db.get('doanh_thu', 0.0) or 0.0)
                                     lo_trinh_hien_tai = str(row_db.get('dia_diem_giao_nhan', '')).strip()
                                     
@@ -1208,7 +1218,7 @@ with tab3:
                                                 has_lanh = 'lạnh' in loai_cont_excel or 'lanh' in loai_cont_excel
 
                                                 for _, rc in df_rc.iterrows():
-                                                    pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip()
+                                                    pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip().lower()
                                                     qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ")
 
                                                     req_nguy_hiem = any(x in qc_gia for x in ['nguy hiem', 'nguyhiem'])
@@ -1220,7 +1230,7 @@ with tab3:
                                                     if req_lanh and not has_lanh: is_prop_match = False
                                                     if req_thuong and (has_nguy_hiem or has_lanh): is_prop_match = False
 
-                                                    if pl_pt_gia in ['Xe_Tai', 'Hang_Le']:
+                                                    if pl_pt_gia in ['xe_tai', 'hang_le', 'xe tai', 'hang le']:
                                                         nums_in_str = re.findall(r'\d+\.?\d*', qc_gia)
                                                         float_nums = [float(n) for n in nums_in_str]
                                                         is_weight_match = False
