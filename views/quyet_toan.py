@@ -332,9 +332,6 @@ def tinh_phu_cap_tai_xe(db_instance, xe_id, danh_sach_tieu_chi_id):
     except Exception as e:
         print(f"Lỗi tính phụ cấp: {e}")
         return 0.0, ""
-# ==========================================
-# TAB 3: QUYẾT TOÁN ĐƠN CHUYẾN (ĐÃ TỐI ƯU HÓA)
-# ==========================================
 with tab1:
     tao_tieu_de_kem_nut_refresh("📋 Quyết toán và cập nhật chi phí chuyến đi", "ref_tab1")
 
@@ -343,7 +340,6 @@ with tab1:
         if "reset_chuyen_form" not in st.session_state: 
             st.session_state["reset_chuyen_form"] = 0
 
-            # có bổ sung cd.stt_chuyen_ghep
         sql_load = """
             SELECT cd.id, cd.ngay_chuyen_di, cd.ten_khach_hang, cd.khach_hang_id, cd.xe_id,
                 COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) AS bien_so_xe, 
@@ -353,7 +349,7 @@ with tab1:
                 cd.trang_thai_chuyen, cd.doanh_thu, cd.dia_diem_giao_nhan,
                 cd.cong_chuyen, cd.tien_them,
                 cd.phi_hai_quan, cd.phi_boc_xep, cd.phi_khac, cd.ghi_chu_quyet_toan,
-                cd.is_gop_chuyen, cd.stt_chuyen_ghep, cd.is_ve_khuya, cd.khoi_luong_kg, cd.the_tich_cbm,cd.is_hang_tra_ve,
+                cd.is_gop_chuyen, cd.stt_chuyen_ghep, cd.is_ve_khuya, cd.khoi_luong_kg, cd.the_tich_cbm, cd.is_hang_tra_ve,
                 cd.is_thue_ngoai, cd.chi_phi_thue_ngoai, cd.hinh_thuc_thanh_toan_ngoai
             FROM chuyen_di cd
             LEFT JOIN xe x ON cd.xe_id = x.id
@@ -378,7 +374,7 @@ with tab1:
             )
             
             row_sel = df_cd[df_cd['id'] == cd_id].iloc[0]
-            is_thue_ngoai = bool(row_sel['is_thue_ngoai'])
+            is_thue_ngoai = bool(row_sel.get('is_thue_ngoai', 0))
             
             kh_id_raw = row_sel.get('khach_hang_id')
             ten_kh_qt = row_sel.get('ten_khach_hang')
@@ -391,11 +387,7 @@ with tab1:
                         kh_id_qt = int(df_find_kh.iloc[0]['id'])
                 except: pass
 
-            # ========================================================
-            # 📦 THÊM GIAO DIỆN CHỌN THUỘC TÍNH HÀNG HÓA & CONTAINER
-            # ========================================================
             st.markdown("##### 📦 Khai báo Tính chất Hàng hóa & Container")
-            # 🚀 CHỈNH SỬA: Tăng lên 4 cột và kéo Checkbox "Hàng về" ra khỏi Form để load giá Real-time
             col_hh1, col_hh2, col_hh3, col_hh4 = st.columns(4)
             loai_hang_ui = col_hh1.selectbox("Tính chất hàng", options=["Thường", "Nguy hiểm"], key=f"lh_{cd_id}")
             loai_cont_ui = col_hh2.selectbox("Loại Container", options=["Thường", "Lạnh (RF)"], key=f"lc_{cd_id}")
@@ -404,145 +396,128 @@ with tab1:
             is_hang_ve_db_val = bool(row_sel.get('is_hang_tra_ve', 0))
             is_hang_ve_ui = col_hh4.checkbox("🔄 Chở hàng về (Lấy giá 2 chiều)", value=is_hang_ve_db_val, key=f"is_ve_{cd_id}")
 
-            # Đính kèm biến is_hang_ve_ui vào key để AI biết mà load lại giá khi check/uncheck
-            dt_state_key = f"cached_dt_{cd_id}_{loai_hang_ui}_{loai_cont_ui}_{is_hang_ve_ui}"
+            # 🛠️ GỠ BỎ HOÀN TOÀN CACHE Ở ĐÂY 🛠️
+            doanh_thu_hien_tai = float(row_sel.get('doanh_thu', 0) or 0.0)
+            lo_trinh_hien_tai = str(row_sel.get('dia_diem_giao_nhan', ''))
+            has_route_in_db = False
             
-            if dt_state_key not in st.session_state:
-                doanh_thu_db = float(row_sel.get('doanh_thu', 0) or 0.0)
-                lo_trinh_hien_tai = str(row_sel.get('dia_diem_giao_nhan', ''))
-                # --- KHỞI TẠO CỜ HIỆU ĐỂ BÁO CÁO RA UI ---
-                st.session_state[f"has_route_{cd_id}"] = False
-                st.session_state[f"tt_tan_{cd_id}"] = 0.0
-                if doanh_thu_db == 0 and "➡️" in lo_trinh_hien_tai and kh_id_qt:
-                    try:
-                        import re
-                        parts = lo_trinh_hien_tai.split("➡️")
-                        ddi = parts[0].strip()
-                        dden = parts[1].strip()
+            booked_kg = float(row_sel.get('khoi_luong_kg', 0.0) or 0.0)
+            tt_xe_tan = (booked_kg / 1000.0) if booked_kg > 0 else 0.0
+            
+            if tt_xe_tan <= 0:
+                tt_xe_float = float(row_sel.get('tai_trong', 99.0) or 99.0)
+                tt_xe_tan = (tt_xe_float / 1000.0) if tt_xe_float >= 50 else tt_xe_float
+
+            parts = None
+            if "➡️" in lo_trinh_hien_tai: parts = lo_trinh_hien_tai.split("➡️")
+            elif "->" in lo_trinh_hien_tai: parts = lo_trinh_hien_tai.split("->")
+            elif "-" in lo_trinh_hien_tai: parts = lo_trinh_hien_tai.split("-")
+
+            ddi_save = ""
+            dden_save = ""
+            
+            if doanh_thu_hien_tai == 0 and kh_id_qt and parts and len(parts) >= 2:
+                try:
+                    ddi = parts[0].strip()
+                    dden = parts[-1].strip()
+                    ddi_save = ddi
+                    dden_save = dden
+                    
+                    flag_hang_ve = 1 if is_hang_ve_ui else 0
+                    
+                    sql_rc = """
+                        SELECT id, don_gia_cuoc, gia_chuyen_tiep_noi, phan_loai_phuong_tien, loai_xe_quy_cach 
+                        FROM rate_cards 
+                        WHERE khach_hang_id = %s AND diem_di LIKE %s AND diem_den LIKE %s AND is_hang_tra_ve = %s
+                        ORDER BY id DESC
+                    """
+                    df_rc = db.execute_query(sql_rc, (kh_id_qt, f"%{ddi}%", f"%{dden}%", flag_hang_ve))
+                    
+                    if flag_hang_ve == 0 and (not isinstance(df_rc, pd.DataFrame) or df_rc.empty):
+                        df_rc = db.execute_query(sql_rc, (kh_id_qt, f"%{dden}%", f"%{ddi}%", 0))
+                    
+                    if isinstance(df_rc, pd.DataFrame) and not df_rc.empty:
+                        has_route_in_db = True
+                        matched_price = 0.0
                         
-                        # 🚀 NÂNG CẤP SQL: TÌM GIÁ KẾT HỢP BIẾN HÀNG VỀ & LOGIC ĐẢO CHIỀU
-                        flag_hang_ve = 1 if is_hang_ve_ui else 0
+                        quy_cach_xe = str(row_sel.get('quy_cach_thung', '')).lower()
+                        ghi_chu_chuyen = str(row_sel.get('ghi_chu', '')).lower()
+                        text_context = f"{quy_cach_xe} {ghi_chu_chuyen}".replace("_", " ")
+
+                        has_nguy_hiem = (loai_hang_ui == "Nguy hiểm") or ('nguy hiem' in text_context) or ('nguyhiem' in text_context)
+                        has_lanh = (loai_cont_ui == "Lạnh (RF)") or ('lạnh' in text_context) or ('lanh' in text_context) or ('rf' in text_context)
                         
-                        sql_rc = """
-                            SELECT id, don_gia_cuoc,gia_chuyen_tiep_noi, phan_loai_phuong_tien, loai_xe_quy_cach 
-                            FROM rate_cards 
-                            WHERE khach_hang_id = %s AND diem_di LIKE %s AND diem_den LIKE %s AND is_hang_tra_ve = %s
-                            ORDER BY id DESC
-                        """
-                        df_rc = db.execute_query(sql_rc, (kh_id_qt, f"%{ddi}%", f"%{dden}%", flag_hang_ve))
-                        
-                        # 💡 BỘ LỌC DỰ PHÒNG (FALLBACK): 
-                        # Nếu là chuyến bình thường (flag_hang_ve = 0) mà lại không tìm thấy giá gốc.
-                        # -> Đảo ngược Điểm Đến & Điểm Đi để lấy 100% giá chiều đi (VD: Cát Lái -> Cty sẽ lấy giá của Cty -> Cát Lái)
-                        if flag_hang_ve == 0 and (not isinstance(df_rc, pd.DataFrame) or df_rc.empty):
-                            df_rc = db.execute_query(sql_rc, (kh_id_qt, f"%{dden}%", f"%{ddi}%", 0))
-                        
-                        if isinstance(df_rc, pd.DataFrame) and not df_rc.empty:
-                            matched_price = 0.0
-                            # 2. FIX LỖI SO SÁNH TRỌNG TẢI: Ưu tiên lấy Khối lượng (KG) khách book của riêng mã chuyến này
-                            booked_kg = float(row_sel.get('khoi_luong_kg', 0.0) or 0.0)
-                            tt_xe_tan = (booked_kg / 1000.0) if booked_kg > 0 else 0.0
-                            
-                            # Fallback: Chỉ khi Kế toán lúc lên lệnh quên nhập KG thì mới lấy tạm tải trọng xe
-                            if tt_xe_tan <= 0:
-                                tt_xe_float = float(row_sel.get('tai_trong', 99.0) or 99.0)
-                                tt_xe_tan = (tt_xe_float / 1000.0) if tt_xe_float >= 50 else tt_xe_float
-                            
-                            quy_cach_xe = str(row_sel.get('quy_cach_thung', '')).lower()
-                            ghi_chu_chuyen = str(row_sel.get('ghi_chu', '')).lower()
-                            text_context = f"{quy_cach_xe} {ghi_chu_chuyen}".replace("_", " ")
+                        is_ghep = int(row_sel.get('is_gop_chuyen', 0) if pd.notna(row_sel.get('is_gop_chuyen')) else 0)
+                        stt_ghep = int(row_sel.get('stt_chuyen_ghep', 1) if pd.notna(row_sel.get('stt_chuyen_ghep')) else 1)
 
-                            has_nguy_hiem = (loai_hang_ui == "Nguy hiểm") or ('nguy hiem' in text_context) or ('nguyhiem' in text_context)
-                            has_lanh = (loai_cont_ui == "Lạnh (RF)") or ('lạnh' in text_context) or ('lanh' in text_context) or ('rf' in text_context)
-                            # 2. BỐC DỮ LIỆU TỪ DATABASE (Đã fix theo đúng schema của bạn)
-                            is_ghep = int(row_sel.get('is_gop_chuyen', 0) if pd.notna(row_sel.get('is_gop_chuyen')) else 0)
-                            stt_ghep = int(row_sel.get('stt_chuyen_ghep', 1) if pd.notna(row_sel.get('stt_chuyen_ghep')) else 1)
+                        for _, rc in df_rc.iterrows():
+                            pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip().lower() 
+                            qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ").replace(",", ".")
 
-                            for _, rc in df_rc.iterrows():
-                                pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip() 
-                                qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ")
+                            req_nguy_hiem = any(x in qc_gia for x in ['nguy hiem', 'nguyhiem'])
+                            req_lanh = any(x in qc_gia for x in ['lạnh', 'lanh', 'rf'])
+                            req_thuong = any(x in qc_gia for x in ['thường', 'thuong'])
 
-                                req_nguy_hiem = any(x in qc_gia for x in ['nguy hiem', 'nguyhiem'])
-                                req_lanh = any(x in qc_gia for x in ['lạnh', 'lanh', 'rf'])
-                                req_thuong = any(x in qc_gia for x in ['thường', 'thuong'])
+                            is_prop_match = True
+                            if req_nguy_hiem and not has_nguy_hiem: is_prop_match = False
+                            if req_lanh and not has_lanh: is_prop_match = False
+                            if req_thuong and (has_nguy_hiem or has_lanh): is_prop_match = False
 
-                                is_prop_match = True
-                                if req_nguy_hiem and not has_nguy_hiem: is_prop_match = False
-                                if req_lanh and not has_lanh: is_prop_match = False
-                                if req_thuong and (has_nguy_hiem or has_lanh): is_prop_match = False
+                            if pl_pt_gia == 'xe_may':
+                                if tt_xe_tan < 1.0 or 'xe may' in text_context or 'xe máy' in text_context:
+                                    if is_prop_match:
+                                        matched_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
+                                        break
+                                continue
 
-                                if pl_pt_gia == 'Xe_May':
-                                    if tt_xe_tan < 1.0 or 'xe may' in text_context or 'xe máy' in text_context:
-                                        if is_prop_match:
-                                            matched_price = float(rc['don_gia_cuoc'])
-                                            break
-                                    continue
+                            if pl_pt_gia == 'container':
+                                cont_kws = ['20', '40', '45', 'hc', 'dc','rf'] 
+                                req_kws = [kw for kw in cont_kws if kw in qc_gia]
+                                if req_kws:
+                                    if all(kw in text_context for kw in req_kws) and is_prop_match:
+                                        matched_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
+                                        break
+                                else:
+                                    if ('cont' in text_context or tt_xe_tan >= 15) and is_prop_match:
+                                        matched_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
+                                        break
+                                continue
 
-                                if pl_pt_gia == 'Container':
-                                    cont_kws = ['20', '40', '45', 'hc', 'dc','rf'] 
-                                    req_kws = [kw for kw in cont_kws if kw in qc_gia]
-                                    
-                                    if req_kws:
-                                        if all(kw in text_context for kw in req_kws) and is_prop_match:
-                                            matched_price = float(rc['don_gia_cuoc'])
-                                            break
+                            if pl_pt_gia in ['xe_tai', 'hang_le', 'xe tai', 'xe tải', 'hang le', 'hàng lẻ', '', 'nan', 'none'] or any(kw in pl_pt_gia for kw in ['tai', 'tải', 'le', 'lẻ']):
+                                nums_in_str = re.findall(r'\d+\.?\d*', qc_gia)
+                                float_nums = [float(n) for n in nums_in_str]
+                                is_weight_match = False
+
+                                if len(float_nums) >= 2:
+                                    if min(float_nums) <= tt_xe_tan <= max(float_nums): is_weight_match = True
+                                elif len(float_nums) == 1:
+                                    val = float_nums[0]
+                                    if any(op in qc_gia for op in ['<=', 'dưới', 'duoi']) and tt_xe_tan <= val: is_weight_match = True
+                                    elif '<' in qc_gia and tt_xe_tan < val: is_weight_match = True
+                                    elif any(op in qc_gia for op in ['>=', 'trên', 'tren']) and tt_xe_tan >= val: is_weight_match = True
+                                    elif '>' in qc_gia and tt_xe_tan > val: is_weight_match = True
                                     else:
-                                        if ('cont' in text_context or tt_xe_tan >= 15) and is_prop_match:
-                                            matched_price = float(rc['don_gia_cuoc'])
-                                            break
+                                        if abs(tt_xe_tan - val) <= 0.1: is_weight_match = True
+                                elif len(float_nums) == 0:
+                                    is_weight_match = True 
+
+                                if not (is_weight_match and is_prop_match):
                                     continue
-
-                                # Chuyển về chữ thường để tránh lỗi phân biệt hoa/thường
-                                pl_pt_gia_lower = pl_pt_gia.lower()
-                                if pl_pt_gia_lower in ['xe_tai', 'hang_le', 'xe tai', 'hang le']:
-                                    # Thêm replace dấu phẩy đề phòng nhập sai "5,0T"
-                                    qc_gia_clean = qc_gia.replace(",", ".")
-                                    nums_in_str = re.findall(r'\d+\.?\d*', qc_gia_clean)
-                                    float_nums = [float(n) for n in nums_in_str]
-                                    is_weight_match = False
-
-                                    if len(float_nums) == 2:
-                                        if min(float_nums) <= tt_xe_tan <= max(float_nums): is_weight_match = True
-                                    elif len(float_nums) == 1:
-                                        val = float_nums[0]
-                                        if any(op in qc_gia for op in ['<=', 'dưới', 'duoi']) and tt_xe_tan <= val: is_weight_match = True
-                                        elif '<' in qc_gia and tt_xe_tan < val: is_weight_match = True
-                                        elif any(op in qc_gia for op in ['>=', 'trên', 'tren']) and tt_xe_tan >= val: is_weight_match = True
-                                        elif '>' in qc_gia and tt_xe_tan > val: is_weight_match = True
-                                        else:
-                                            # Dùng dung sai 0.1 để vượt qua lỗi số thực
-                                            if abs(tt_xe_tan - val) <= 0.1: is_weight_match = True
-                                    elif len(float_nums) == 0:
-                                        is_weight_match = True
-
-                                    if not (is_weight_match and is_prop_match):
-                                        continue
-
-                                
-                                    # 3. CHỐT GIÁ: Dùng đúng dữ liệu stt_chuyen_ghep từ Database của bạn
-                                    gia_goc = float(rc.get('don_gia_cuoc', 0) or 0.0)
-                                    gia_tiep_noi = float(rc.get('gia_chuyen_tiep_noi', 0) or 0.0)
-                                    
-                                    if is_ghep == 1 and stt_ghep > 1:
-                                        # Nếu là chuyến thứ 2 trở đi -> Lấy giá tiếp nối. 
-                                        # Nếu giá tiếp nối = 0 (chưa thiết lập) -> Fallback lấy giá gốc.
-                                        matched_price = gia_tiep_noi if gia_tiep_noi > 0 else gia_goc
-                                    else:
-                                        # Chuyến đầu tiên (STT = 1) -> Lấy giá gốc
-                                        matched_price = gia_goc
-                                        
-                                    break # Match thành công -> Thoát vòng lặp
                             
-                            if matched_price > 0:
-                                doanh_thu_db = matched_price
+                                gia_goc = float(rc.get('don_gia_cuoc', 0) or 0.0)
+                                gia_tiep_noi = float(rc.get('gia_chuyen_tiep_noi', 0) or 0.0)
                                 
-                    except Exception as e: pass 
-                
-                st.session_state[dt_state_key] = doanh_thu_db
-
-            doanh_thu_hien_tai = st.session_state[dt_state_key]
-            has_route_in_db = st.session_state.get(f"has_route_{cd_id}", False)
-            tt_xe_tan = st.session_state.get(f"tt_tan_{cd_id}", 0.0)
+                                if is_ghep == 1 and stt_ghep > 1:
+                                    matched_price = gia_tiep_noi if gia_tiep_noi > 0 else gia_goc
+                                else:
+                                    matched_price = gia_goc
+                                    
+                                break
+                        
+                        if matched_price > 0:
+                            doanh_thu_hien_tai = matched_price
+                            
+                except Exception as e: print(f"Lỗi hệ thống dò bảng giá Tab 1: {e}") 
 
             with st.form(key=f"form_qt_{st.session_state['reset_chuyen_form']}"):
                 st.markdown(f"##### 📍 1. Chi phí vận hành {'[THUÊ NGOÀI]' if is_thue_ngoai else '[NỘI BỘ]'}")
@@ -572,9 +547,9 @@ with tab1:
                     hinh_thuc_thanh_toan_ngoai = "Cong_No"
                 else:
                     col_n1, col_n2 = st.columns(2)
-                    chi_phi_ngoai_input = col_n1.text_input("Chi phí thuê xe ngoài (VNĐ)*", value=f"{float(row_sel['chi_phi_thue_ngoai'] or 0):,.0f}")
+                    chi_phi_ngoai_input = col_n1.text_input("Chi phí thuê xe ngoài (VNĐ)*", value=f"{float(row_sel.get('chi_phi_thue_ngoai', 0) or 0):,.0f}")
                     tt_opts = ["Cong_No", "Tien_Mat"]
-                    def_idx = tt_opts.index(row_sel['hinh_thuc_thanh_toan_ngoai']) if pd.notna(row_sel['hinh_thuc_thanh_toan_ngoai']) and row_sel['hinh_thuc_thanh_toan_ngoai'] in tt_opts else 0
+                    def_idx = tt_opts.index(row_sel['hinh_thuc_thanh_toan_ngoai']) if pd.notna(row_sel.get('hinh_thuc_thanh_toan_ngoai')) and row_sel['hinh_thuc_thanh_toan_ngoai'] in tt_opts else 0
                     hinh_thuc_thanh_toan_ngoai = col_n2.selectbox("Hình thức thanh toán", options=tt_opts, index=def_idx, format_func=lambda x: "Công nợ" if x=="Cong_No" else "Tiền mặt")
 
                 st.divider()
@@ -591,8 +566,7 @@ with tab1:
                 f_boc = c_f6.checkbox("📦 Có bốc xếp")
                 f_overload_cont = c_f7.checkbox("🛂 Quá tải container")
 
-                # GIAO DIỆN MỚI CHO CÁC NGHIỆP VỤ CAO CẤP (Đã bỏ checkbox hàng về)
-                c_f8, c_f9, c_f10, c_f11,c_f12 = st.columns(5)
+                c_f8, c_f9, c_f10, c_f11, c_f12 = st.columns(5)
                 f_seal = c_f8.checkbox("🔒 Lấy Seal/Cont sớm 1 ngày")
                 f_khac_khu = c_f9.checkbox("🏢 Giao khác khu nội bộ")
                 cang_opts = ["", "Dong_Nai", "Hiep_Phuoc", "VICT", "Cai_Mep"]
@@ -602,23 +576,18 @@ with tab1:
                 f_lam_hang_cang = c_f12.checkbox("📦 Có làm hàng cảng")
                 st.divider()
 
-                # --- BỔ SUNG: KHAI BÁO PHỤ CẤP TÀI XẾ ---
                 selected_tc_ids = []
                 if not is_thue_ngoai:
                     st.markdown("##### 🎁 3. Khai báo Phụ cấp Tài xế (Theo ma trận tải trọng)")
-                    
-                    # 🚀 LẤY KHOẢNG CÁCH TỪ BẢNG GIÁ ĐỂ TỰ ĐỘNG CHỌN TIÊU CHÍ PHỤ CẤP
                     kc_auto = 0.0
                     auto_tc_ids = []
                     try:
-                        if "➡️" in str(row_sel.get('dia_diem_giao_nhan', '')) and kh_id_qt:
-                            parts = str(row_sel['dia_diem_giao_nhan']).split("➡️")
+                        if parts and len(parts) >= 2 and kh_id_qt:
                             df_kc = db.execute_query("SELECT khoang_cach FROM rate_cards WHERE khach_hang_id=%s AND diem_di LIKE %s AND diem_den LIKE %s LIMIT 1", (kh_id_qt, f"%{parts[0].strip()}%", f"%{parts[1].strip()}%"))
                             if isinstance(df_kc, pd.DataFrame) and not df_kc.empty:
                                 kc_auto = float(df_kc.iloc[0]['khoang_cach'] or 0.0)
                                 
                             if kc_auto > 0:
-                                # 🚀 Tự động map ID tiêu chí phụ cấp dựa trên Cự ly (km_min, km_max) VÀ Tính chất Hàng về
                                 sql_find_tc = "SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap WHERE %s >= km_min AND %s <= km_max"
                                 df_find_tc = db.execute_query(sql_find_tc, (kc_auto, kc_auto))
                                 if isinstance(df_find_tc, pd.DataFrame) and not df_find_tc.empty:
@@ -626,17 +595,11 @@ with tab1:
                                         tc_id = int(r_tc['id'])
                                         ten_tc = str(r_tc['ten_tieu_chi']).lower()
                                         
-                                        # Phân tích xem tên tiêu chí có yêu cầu "hàng về" hay không
                                         is_tieu_chi_hang_ve = any(kw in ten_tc for kw in ["hàng về", "hang ve", "2 chiều", "2 chieu", "hai chiều", "hai chieu", "nhận về", "nhan ve"])
                                         
-                                        # THUẬT TOÁN ĐÃ ĐƯỢC SỬA LẠI:
                                         if is_tieu_chi_hang_ve:
-                                            # Tiêu chí này YÊU CẦU có hàng về. Chỉ tự động tick nếu ô "Có chở hàng về" được check
-                                            if is_hang_ve_ui:
-                                                auto_tc_ids.append(tc_id)
+                                            if is_hang_ve_ui: auto_tc_ids.append(tc_id)
                                         else:
-                                            # Tiêu chí KHÔNG yêu cầu hàng về (Tiêu chí cự ly bình thường).
-                                            # Luôn tự động tick nếu thỏa mãn số Km.
                                             auto_tc_ids.append(tc_id)
                     except Exception: pass
 
@@ -645,27 +608,25 @@ with tab1:
                         tc_cols = st.columns(2)
                         for i, r_tc in df_tc.iterrows():
                             tc_id = int(r_tc['id'])
-                            is_checked = tc_id in auto_tc_ids # Tự động tick nếu khớp cự ly
+                            is_checked = tc_id in auto_tc_ids 
                             if tc_cols[i % 2].checkbox(r_tc['ten_tieu_chi'].upper(), value=is_checked, key=f"tc_{cd_id}_{tc_id}"):
                                 selected_tc_ids.append(tc_id)
                     st.divider()
 
                 st.markdown("##### 🧾 4. Quyết toán Phí thủ công & Ghi chú")
 
-                
                 col3_1, col3_2, col3_3 = st.columns(3)
-                num_hq = col3_1.text_input("Phí Hải Quan/Bến bãi (Nhập tay)", value=f"{float(row_sel['phi_hai_quan'] or 0):,.0f}")
-                num_bx = col3_2.text_input("Phí Bốc Xếp (Nhập tay)", value=f"{float(row_sel['phi_boc_xep'] or 0):,.0f}")
-                num_k  = col3_3.text_input("Phí Khác (Nhập tay)", value=f"{float(row_sel['phi_khac'] or 0):,.0f}")
+                num_hq = col3_1.text_input("Phí Hải Quan/Bến bãi (Nhập tay)", value=f"{float(row_sel.get('phi_hai_quan', 0) or 0):,.0f}")
+                num_bx = col3_2.text_input("Phí Bốc Xếp (Nhập tay)", value=f"{float(row_sel.get('phi_boc_xep', 0) or 0):,.0f}")
+                num_k  = col3_3.text_input("Phí Khác (Nhập tay)", value=f"{float(row_sel.get('phi_khac', 0) or 0):,.0f}")
                 
-                gc_hien_thi = "" if pd.isna(row_sel['ghi_chu_quyet_toan']) else str(row_sel['ghi_chu_quyet_toan'])
+                gc_hien_thi = "" if pd.isna(row_sel.get('ghi_chu_quyet_toan')) else str(row_sel.get('ghi_chu_quyet_toan', ''))
                 edit_gc = st.text_input("Ghi chú quyết toán", value=gc_hien_thi, placeholder="Nhập thêm ghi chú nếu cần...")
                 
                 st.markdown("##### 🛡️ Xác nhận thao tác")
                 xac_nhan_chot = st.checkbox("⚠️ TÔI XÁC NHẬN SỐ LIỆU LÀ HỢP LÝ VÀ ĐỒNG Ý CHỐT SỔ CHUYẾN ĐI.")
                 
                 b1, b2= st.columns(2)
-                #submit_luu  = b1.form_submit_button("💾 LƯU CẬP NHẬT TẠM", type="secondary")
                 submit_chot = b1.form_submit_button("🏁 CHỐT SỔ CHUYẾN ĐI", type="primary")
                 submit_xoa  = b2.form_submit_button("🗑️ XÓA CHUYẾN ĐI")
 
@@ -676,19 +637,7 @@ with tab1:
                         phi_bx_nhap_tay = clean_money_val(num_bx)
                         phi_hq_nhap_tay = clean_money_val(num_hq)
                         
-                        # 🚀 SỬA LỖI: Ưu tiên lấy Khối lượng (KG) Khách book làm mốc so sánh
-                        booked_kg = float(row_sel.get('khoi_luong_kg', 0.0) or 0.0)
-                        tai_trong_so_sanh_tan = (booked_kg / 1000.0) if booked_kg > 0 else 0.0
-                        
-                        # Fallback (chỉ kích hoạt nếu Kế toán lúc Book quên nhập Khối lượng)
-                        if tai_trong_so_sanh_tan <= 0:
-                            raw_tt = float(row_sel.get('tai_trong', 0.0) or 0.0)
-                            tai_trong_so_sanh_tan = (raw_tt / 1000.0) if raw_tt >= 50 else raw_tt
-                        
-                        # [Đoạn ngay_chd, facts_dict... giữ nguyên]
-                        
-                        # 🚀 LẤY NGÀY CHUYẾN ĐI ĐỂ KIỂM TRA CHỦ NHẬT
-                        ngay_chd = row_sel['ngay_chuyen_di']
+                        ngay_chd = row_sel.get('ngay_chuyen_di')
                         is_chu_nhat = False
                         if pd.notna(ngay_chd):
                             try:
@@ -703,7 +652,7 @@ with tab1:
                             'so_ngay_neo_cont': f_neo_cont,
                             'is_huy_chuyen': f_huy,
                             'is_boc_xep': f_boc,
-                            'is_ve_khuya': bool(row_sel['is_ve_khuya']),
+                            'is_ve_khuya': bool(row_sel.get('is_ve_khuya', 0)),
                             'is_overload_cont': f_overload_cont,
                             'cang_nang_ha': f_cang,
                             'chieu_cont': 'nhap' if chieu_cont_ui == "Nhập" else ('xuat' if chieu_cont_ui == "Xuất" else ''),
@@ -717,8 +666,7 @@ with tab1:
                             'is_chu_nhat': is_chu_nhat
                         }
                         
-                        tong_phi_ai, chuoi_ghi_chu_ai = rule_engine_calc(kh_id_qt, tai_trong_so_sanh_tan, doanh_thu_val, facts_dict, db)
-                        # --- BỔ SUNG: TÍNH TỔNG PHỤ CẤP TÀI XẾ ---
+                        tong_phi_ai, chuoi_ghi_chu_ai = rule_engine_calc(kh_id_qt, tt_xe_tan, doanh_thu_val, facts_dict, db)
                         tien_phu_cap_tx, chuoi_phu_cap_tx = tinh_phu_cap_tai_xe(db, row_sel.get('xe_id'), selected_tc_ids)
                         tien_them_final = float(row_sel.get('tien_them', 0.0) or 0.0) + tien_phu_cap_tx
 
@@ -727,7 +675,6 @@ with tab1:
                         if chuoi_ghi_chu_ai:
                             gc_final += f" [AI Tự động: {', '.join(chuoi_ghi_chu_ai)}]"
                         if chuoi_phu_cap_tx:
-                            # Nối cả tổng tiền và chi tiết phụ cấp vào ghi chú
                             gc_final += f" [Phụ cấp TX: +{tien_phu_cap_tx:,.0f}đ ({chuoi_phu_cap_tx})]"
 
                         data_dict_thu_cong = {
@@ -738,19 +685,15 @@ with tab1:
                             'phi_hai_quan': phi_hq_nhap_tay,
                             'phi_boc_xep': phi_bx_nhap_tay,
                             'phi_khac': phi_khac_final,
-                            'tien_them': tien_them_final, # Đã tự động cộng tiền phụ cấp
+                            'tien_them': tien_them_final,
                             'ghi_chu_quyet_toan': gc_final
                         }
 
                         if submit_chot and not xac_nhan_chot:
                             st.error("✋ HỆ THỐNG ĐÃ CHẶN: Vui lòng tick vào ô 'Tôi xác nhận...' trước khi chốt sổ!")
                         else:
-                            # --- AI TỰ ĐỘNG LƯU BẢNG GIÁ NẾU ĐƯỢC CHỌN ---
-                            if is_save_to_rc and doanh_thu_val > 0:
-                                ddi_save = st.session_state.get(f"ddi_{cd_id}", "")
-                                dden_save = st.session_state.get(f"dden_{cd_id}", "")
+                            if is_save_to_rc and doanh_thu_val > 0 and ddi_save and dden_save:
                                 qc_moi = f"{tt_xe_tan}T"
-                                
                                 sql_insert_rc = """
                                     INSERT INTO rate_cards (khach_hang_id, diem_di, diem_den, phan_loai_phuong_tien, loai_xe_quy_cach, don_gia_cuoc, gia_chuyen_tiep_noi, is_hang_tra_ve) 
                                     VALUES (%s, %s, %s, %s, %s, %s, 0, %s)
@@ -765,7 +708,6 @@ with tab1:
                             trang_thai_luu = 'Hoan_Thanh' if submit_chot else row_sel['trang_thai_chuyen']
                             is_ok, msg = settle_trip_transaction(db.pool, data_dict_thu_cong, trang_thai_luu, cd_id)
                             if is_ok:
-                                if dt_state_key in st.session_state: del st.session_state[dt_state_key]
                                 st.session_state["reset_chuyen_form"] += 1
                                 st.success(f"🎉 THÀNH CÔNG! AI đã tính thêm **{tong_phi_ai:,.0f} VNĐ** phụ phí vào Phí Khác!")
                                 time.sleep(2)
@@ -776,7 +718,6 @@ with tab1:
                 if submit_xoa:
                     success, msg = delete_trip_safe(db.pool, cd_id)
                     if success:
-                        if dt_state_key in st.session_state: del st.session_state[dt_state_key]
                         st.session_state["reset_chuyen_form"] += 1
                         st.success("✅ Đã xóa chuyến đi thành công!")
                         time.sleep(1)
@@ -785,7 +726,7 @@ with tab1:
                         st.error(f"❌ Lỗi xóa chuyến: {msg}")
         else:
             st.info("🎉 Tuyệt vời! Hiện tại không có chuyến đi nào đang chờ quyết toán.")
-    vung_thao_tac_quyet_toan_chuyen_di()        
+    vung_thao_tac_quyet_toan_chuyen_di()
 
 # ==========================================
 # TAB 2: SỬA DỮ LIỆU ĐÃ QUYẾT TOÁN (HỖ TRỢ XE NGOÀI)
@@ -1198,10 +1139,11 @@ with tab3:
                                             
                                             flag_hang_ve = 1 if is_hang_ve_excel else 0
                                             
+                                            # ĐÃ FIX: Cứu các dòng Bảng giá cũ bị NULL
                                             sql_rc = """
                                                 SELECT id, don_gia_cuoc, phan_loai_phuong_tien, loai_xe_quy_cach, khoang_cach 
                                                 FROM rate_cards 
-                                                WHERE khach_hang_id = %s AND diem_di LIKE %s AND diem_den LIKE %s AND is_hang_tra_ve = %s
+                                                WHERE khach_hang_id = %s AND diem_di LIKE %s AND diem_den LIKE %s AND COALESCE(is_hang_tra_ve, 0) = %s
                                                 ORDER BY id DESC
                                             """
                                             df_rc = db.execute_query(sql_rc, (kh_id, f"%{ddi}%", f"%{dden}%", flag_hang_ve))
@@ -1211,6 +1153,7 @@ with tab3:
 
                                             if isinstance(df_rc, pd.DataFrame) and not df_rc.empty:
                                                 matched_price = 0.0
+                                                matched_khoang_cach = 0.0
                                                 
                                                 loai_hang_excel = str(r.get('LOAI_HANG_HOA', 'Thường')).strip().lower()
                                                 loai_cont_excel = str(r.get('LOAI_CONT', 'Thường')).strip().lower()
@@ -1219,7 +1162,7 @@ with tab3:
 
                                                 for _, rc in df_rc.iterrows():
                                                     pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip().lower()
-                                                    qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ")
+                                                    qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ").replace(",", ".")
 
                                                     req_nguy_hiem = any(x in qc_gia for x in ['nguy hiem', 'nguyhiem'])
                                                     req_lanh = any(x in qc_gia for x in ['lạnh', 'lanh', 'rf'])
@@ -1230,12 +1173,13 @@ with tab3:
                                                     if req_lanh and not has_lanh: is_prop_match = False
                                                     if req_thuong and (has_nguy_hiem or has_lanh): is_prop_match = False
 
-                                                    if pl_pt_gia in ['xe_tai', 'hang_le', 'xe tai', 'hang le']:
+                                                    # ĐÃ FIX: Chấp nhận rate_cards có phân loại xe bị NULL/Rỗng
+                                                    if pl_pt_gia in ['xe_tai', 'hang_le', 'xe tai', 'hang le', '', 'nan', 'none'] or 'tai' in pl_pt_gia or 'lẻ' in pl_pt_gia:
                                                         nums_in_str = re.findall(r'\d+\.?\d*', qc_gia)
                                                         float_nums = [float(n) for n in nums_in_str]
                                                         is_weight_match = False
 
-                                                        if len(float_nums) == 2:
+                                                        if len(float_nums) >= 2:
                                                             if min(float_nums) <= tai_trong_so_sanh_tan <= max(float_nums): is_weight_match = True
                                                         elif len(float_nums) == 1:
                                                             val = float_nums[0]
@@ -1244,7 +1188,7 @@ with tab3:
                                                             elif any(op in qc_gia for op in ['>=', 'trên', 'tren']) and tai_trong_so_sanh_tan >= val: is_weight_match = True
                                                             elif '>' in qc_gia and tai_trong_so_sanh_tan > val: is_weight_match = True
                                                             else:
-                                                                if tai_trong_so_sanh_tan == val: is_weight_match = True
+                                                                if abs(tai_trong_so_sanh_tan - val) <= 0.1: is_weight_match = True
                                                         elif len(float_nums) == 0:
                                                             is_weight_match = True
 
