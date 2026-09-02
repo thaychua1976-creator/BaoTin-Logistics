@@ -180,6 +180,9 @@ with tab1:
 # ==========================================
 # TAB 2: ĐĂNG KÝ, SỬA & XÓA CHUYẾN ĐI THỦ CÔNG
 # ==========================================
+# ==========================================
+# TAB 2: ĐĂNG KÝ, SỬA & XÓA CHUYẾN ĐI THỦ CÔNG
+# ==========================================
 with tab2:
     tao_tieu_de_kem_nut_refresh("📋 Đăng ký & Quản lý chuyến đi thủ công", "ref_tab2")
     
@@ -188,8 +191,6 @@ with tab2:
         # 1. KHỞI TẠO BIẾN STATE (ĐẢM BẢO RESET TRẮNG FORM)
         if "api_km" not in st.session_state: st.session_state["api_km"] = 0.0
         if "form_reset_counter" not in st.session_state: st.session_state["form_reset_counter"] = 0
-
-        
 
         # --- CHỌN CHẾ ĐỘ THAO TÁC & LOẠI HÌNH NGHIỆP VỤ ---
         col_mode1, col_mode2 = st.columns(2)
@@ -477,7 +478,6 @@ with tab2:
                     
                     title_selectbox = "✅ Chọn Xe Nội Bộ (Điều phối/Ghép chuyến)*" if is_ghep_chuyen else "✅ Chọn Xe Nội Bộ (Đang trống)*"
                     
-                    # 🛠️ FIXED: Luôn nạp index an toàn để tránh bug mất giá trị UI của Streamlit
                     c_xe_sel = st.selectbox(
                         title_selectbox, 
                         options=xe_keys, 
@@ -546,10 +546,16 @@ with tab2:
             if c_kh_sel and c_kh_sel != "NEW": khach_id_filter = int(c_kh_sel)
             elif mode_action == "✏️ Sửa chuyến hiện tại": khach_id_filter = trip_data.get('khach_hang_id')
 
+            # --- CẢI TIẾN: BỔ SUNG LỌC THEO is_hang_tra_ve ---
+            is_hang_ve_db = bool(trip_data.get('is_hang_tra_ve', 0)) if mode_action == "✏️ Sửa chuyến hiện tại" else False
+            is_hang_ve_ui = st.checkbox("🔄 Lộ trình chở hàng về (Chỉ lọc các tuyến chiều về)", value=is_hang_ve_db, key=f"is_hang_ve_ui_{trip_suffix}")
+
             lo_trinh_opts = {None: "-- Vui lòng chọn lộ trình (Tạo mới nếu chưa có) --"}
             if khach_id_filter:
-                sql_rates = "SELECT DISTINCT diem_di, diem_den FROM rate_cards WHERE khach_hang_id = %s ORDER BY diem_di"
-                df_rates = db.execute_query(sql_rates, (khach_id_filter,))
+                flag_hang_ve = 1 if is_hang_ve_ui else 0
+                # Truy vấn SQL kèm theo điều kiện is_hang_tra_ve để chống nhiễu dữ liệu
+                sql_rates = "SELECT DISTINCT diem_di, diem_den FROM rate_cards WHERE khach_hang_id = %s AND is_hang_tra_ve = %s ORDER BY diem_di"
+                df_rates = db.execute_query(sql_rates, (khach_id_filter, flag_hang_ve))
                 if isinstance(df_rates, pd.DataFrame) and not df_rates.empty:
                     for _, r in df_rates.iterrows():
                         lt_key = f"{r['diem_di']} ➡️ {r['diem_den']}"
@@ -573,9 +579,6 @@ with tab2:
             )
             
             c_lt1, c_lt2 = st.columns(2)
-            
-            # --- KHẮC PHỤC LỖI TẠI ĐÂY ---
-            # Ưu tiên lấy lộ trình được chọn từ Selectbox, nếu không có thì lấy lộ trình cũ từ Database
             lo_trinh_hien_thi = chon_lo_trinh if chon_lo_trinh is not None else lo_trinh_db
             
             diem_di_val, diem_den_val = "", ""
@@ -583,7 +586,6 @@ with tab2:
                 parts = lo_trinh_hien_thi.split("➡️")
                 diem_di_val = parts[0].strip()
                 diem_den_val = parts[-1].strip()
-            # -------------------------------
                 
             diem_dau = c_lt1.text_input("🏠 Địa chỉ bốc hàng*", value=diem_di_val, disabled=True)
             diem_cuoi = c_lt2.text_input("🎯 Địa chỉ giao hàng*", value=diem_den_val, disabled=True)
@@ -649,14 +651,11 @@ with tab2:
                     tt_opts = ["Cong_No", "Tien_Mat"]
                     ngoai_thanh_toan = nx8.selectbox("Hình thức thanh toán ngoài", options=tt_opts, index=get_idx(tt_opts, trip_data.get('hinh_thuc_thanh_toan_ngoai', 'Cong_No')), format_func=lambda x: "Công nợ tháng" if x=="Cong_No" else "Tiền mặt")
                 
-                # ===== ĐÃ GỘP THÀNH 1 NÚT BẤM DUY NHẤT, CĂN GIỮA VÀ ĐỔI MÀU ĐỎ =====
                 st.markdown("<br>", unsafe_allow_html=True)
-                
-                # CSS tùy chỉnh để ép màu đỏ cho nút Primary bên trong Form
                 st.markdown("""
                     <style>
                         div[data-testid="stForm"] button[kind="primary"] {
-                            background-color: #d32f2f !important; /* Màu đỏ nổi bật */
+                            background-color: #d32f2f !important;
                             color: white !important;
                             border: none !important;
                             font-weight: 800 !important;
@@ -667,28 +666,23 @@ with tab2:
                             transition: all 0.3s ease !important;
                         }
                         div[data-testid="stForm"] button[kind="primary"]:hover {
-                            background-color: #b71c1c !important; /* Đỏ đậm hơn khi hover */
+                            background-color: #b71c1c !important;
                             transform: translateY(-2px);
                             box-shadow: 0 6px 8px rgba(183, 28, 28, 0.4) !important;
                         }
                     </style>
                 """, unsafe_allow_html=True)
                 
-                # Sử dụng 3 cột để ép nút vào giữa (Tỷ lệ 1 : 2 : 1)
                 col_btn_left, col_btn_center, col_btn_right = st.columns([1, 2, 1])
-                
-                btn_label = "🔄 LƯU THAY ĐỔI & GỬI THÔNG TIN" if mode_action == "✏️ Sửa chuyến hiện tại" else "📲 LƯU VÀ GỬI THÔNG TIN TÀI XẾ"
+                btn_label = "🔄 LƯU THAY ĐỔI " if mode_action == "✏️ Sửa chuyến hiện tại" else "📲 LƯU VÀ GỬI THÔNG TIN TÀI XẾ"
                 
                 with col_btn_center:
                     submit_send = st.form_submit_button(btn_label, type="primary", use_container_width=True)
             
-           
             # ----------------------------------------------------
             # XỬ LÝ SUBMIT CHÍNH THỨC
             # ----------------------------------------------------
-            #if submit_save or submit_send:
-            if  submit_send:    
-                # ĐÃ FIX: Chỉ chặn khi Tạo Mới, hoặc Sửa nhưng lộ trình cũ bị rỗng hoàn toàn
+            if submit_send:    
                 if chon_lo_trinh is None and mode_action == "➕ Tạo chuyến mới":
                     st.error("❌ HỆ THỐNG CHẶN: Vui lòng chọn lộ trình hợp lệ từ danh sách! Nếu chưa có, hãy tạo mới trong Bảng Giá trước.")
                     st.stop()
@@ -700,7 +694,6 @@ with tab2:
                     st.error("❌ Vui lòng chọn Khách hàng hợp lệ trước khi lưu!")
                     st.stop()
 
-                # 🛠️ FIXED: Sửa triệt để lỗi báo "Vui lòng chọn Xe nội bộ và Tài xế phụ trách" 
                 tx_id_assign_final = None
                 if loai_hinh_xe == "🚀 Chạy Xe Công Ty":
                     if c_xe_sel in (None, 0, "") or tx_id_assign in (None, 0, ""):
@@ -756,7 +749,8 @@ with tab2:
                     'khoi_luong_kg': float(khoi_luong),                          
                     'the_tich_cbm': float(so_cbm),                       
                     'trang_thai_chuyen': str(STATUS_MAP[trang_thai_ui_value]),                    
-                    'ghi_chu': gc_final               
+                    'ghi_chu': gc_final,
+                    'is_hang_tra_ve': 1 if is_hang_ve_ui else 0               
                 }
                 
                 if loai_hinh_xe == "🚀 Chạy Xe Công Ty":
@@ -790,9 +784,6 @@ with tab2:
                 
                 if success:
                     st.success(msg_success)
-                    
-                    #if submit_send:
-                    # (Mặc định xuất thông tin Zalo sau khi lưu thành công)
                     ma_chuyen_gui = result if mode_action == "➕ Tạo chuyến mới" else edit_trip_id_cast
                     if loai_hinh_xe == "🚀 Chạy Xe Công Ty":
                             bien_so_gui = xe_map.get(int(c_xe_sel), {}).get('bien_so_xe', '') if c_xe_sel else ''
@@ -821,9 +812,7 @@ with tab2:
                     st.rerun()
                 else:
                     st.error(f"❌ Lỗi Database: {result}")
-            # =========================================================
-            # 🚀 THÊM MỚI: HIỂN THỊ HỘP COPY TIN NHẮN (ĐÃ CHUYỂN XUỐNG ĐÂY)
-            # =========================================================
+
         if "tn_tai_xe" in st.session_state and "tn_khach" in st.session_state:
             st.markdown("<br>", unsafe_allow_html=True)
             st.success("✅ Hệ thống đã lên lệnh thành công! Vui lòng copy thông tin dưới đây để gửi đi:")

@@ -13,12 +13,14 @@ class Database:
         # 1. Cấu hình thông số kết nối MySQL chuẩn bị cho Pool
         db_config = {
             "host": os.getenv("DB_HOST"),
-            "port": int(os.getenv("DB_PORT", 25060)), # Chuyển port sang kiểu số nguyên
+            "port": int(os.getenv("DB_PORT", 25060)),
             "user": os.getenv("DB_USER"),
             "password": os.getenv("DB_PASS"),
             "database": os.getenv("DB_NAME"),
             "ssl_ca": "ca.pem",
-            "ssl_disabled": False
+            "ssl_disabled": False,
+            # 🚀 FIX LỖI 1: Bật tính năng dọn dẹp kết nối rác khi lấy/trả vào Pool
+            "pool_reset_session": True 
         }
         
         # 2. Khởi tạo Bể chứa kết nối (Connection Pool)
@@ -33,13 +35,22 @@ class Database:
 
     # Để file chuyen_di.py có thể mượn kết nối làm Transaction
     def get_connection(self):
-        return self.pool.get_connection()
+        try:
+            conn = self.pool.get_connection()
+            # 🚀 FIX LỖI 2: Ping kiểm tra máy chủ. Nếu Aiven đã ngắt kết nối, tự động nối lại (thử 3 lần, cách nhau 1 giây)
+            conn.ping(reconnect=True, attempts=3, delay=1)
+            return conn
+        except mysql.connector.Error as err:
+            st.error(f"❌ Mất kết nối hoàn toàn đến Aiven MySQL: {err}")
+            return None
 
     def execute_query(self, query, params=None):
         conn = None
         cursor = None
         try:
             conn = self.get_connection()
+            if not conn: # Bổ sung dòng này
+                return "Lỗi: Không thể kết nối đến máy chủ cơ sở dữ liệu."
             is_select = query.strip().upper().startswith("SELECT")
             
             if is_select:
