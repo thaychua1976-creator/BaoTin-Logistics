@@ -2,6 +2,15 @@ import streamlit as st
 import pandas as pd
 from audit_logger import ghi_log_he_thong
 
+# --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_cached_master_data(_db_instance, query, params=None):
+    return _db_instance.execute_query(query, params)
+
+def clear_master_cache():
+    get_cached_master_data.clear()
+# ---------------------------------
+
 # ==========================================
 # HÀM HIỂN THỊ POPUP LỖI GIỮA MÀN HÌNH
 # ==========================================
@@ -129,7 +138,7 @@ def render_quan_ly_khach_hang():
         st.markdown("##### 📊 Bảng danh bạ khách hàng và thông tin pháp lý")
         
         sql_load = "SELECT id, ma_khach_hang, ten_khach_hang, so_dien_thoai, ma_so_thue, dia_chi FROM khach_hang ORDER BY id ASC"
-        df_kh = db.execute_query(sql_load)
+        df_kh = get_cached_master_data(db, sql_load)
         
         if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
             search_query = st.text_input("🔍 Tìm kiếm nhanh theo tên hoặc mã số thuế:", placeholder="Nhập tên công ty hoặc MST...")
@@ -170,6 +179,7 @@ def render_quan_ly_khach_hang():
                     else:
                         success, msg = save_khach_hang_transaction(db.pool, 'DELETE', None, selected_del_id, current_user)
                         if success:
+                            clear_master_cache()
                             st.success("✅ Đã xóa khách hàng thành công!")
                             import time; time.sleep(1)
                             st.rerun()
@@ -221,19 +231,19 @@ def render_quan_ly_khach_hang():
                     
                     success, msg = save_khach_hang_transaction(db.pool, 'CREATE', data_tuple, None, current_user)
                     if success:
+                        clear_master_cache()
                         st.success("✅ Thêm mới hồ sơ khách hàng thành công!")
                         st.balloons()
                         import time; time.sleep(1)
                         st.rerun()
                     else:
-                        # GỌI POPUP LỖI Ở ĐÂY
                         show_error_popup(msg)
 
         # -------------------------------------------------------------
         # CHẾ ĐỘ 2: CẬP NHẬT (Sử dụng st.form)
         # -------------------------------------------------------------
         else:
-            df_all = db.execute_query("SELECT id, ten_khach_hang, ma_khach_hang, so_dien_thoai, ma_so_thue, dia_chi FROM khach_hang ORDER BY id DESC")
+            df_all = get_cached_master_data(db, "SELECT id, ten_khach_hang, ma_khach_hang, so_dien_thoai, ma_so_thue, dia_chi FROM khach_hang ORDER BY id DESC")
             if isinstance(df_all, pd.DataFrame) and not df_all.empty:
                 edit_opts = {r['id']: f"#{r['id']} - {r['ten_khach_hang']} (MST: {r['ma_so_thue']})" for _, r in df_all.iterrows()}
                 target_id = st.selectbox("Chọn khách hàng cần chỉnh sửa:", options=list(edit_opts.keys()), format_func=lambda x: edit_opts[x], key="sel_edit_kh")
@@ -271,11 +281,11 @@ def render_quan_ly_khach_hang():
                                 
                                 success, msg = save_khach_hang_transaction(db.pool, 'UPDATE', data_tuple, target_id, current_user)
                                 if success:
+                                    clear_master_cache()
                                     st.success("✅ Cập nhật hồ sơ khách hàng thành công!")
                                     import time; time.sleep(1)
                                     st.rerun()
                                 else:
-                                    # GỌI POPUP LỖI Ở ĐÂY
                                     show_error_popup(msg)
             else:
                 st.warning("⚠️ Không có dữ liệu khách hàng để cập nhật.")

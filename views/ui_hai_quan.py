@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import time
-import uuid  # Bổ sung thư viện uuid để tạo key động
+import uuid  
 
 from declare_hq_manager import (
     save_bang_gia_hai_quan_transaction, 
@@ -18,20 +18,24 @@ current_user = st.session_state.get('username') or st.session_state.get('user') 
 if not db:
     st.error("⚠️ Lỗi kết nối Cơ sở dữ liệu.")
     st.stop()
+
+# --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_cached_master_data(query, params=None):
+    return db.execute_query(query, params)
+
+def clear_master_cache():
+    get_cached_master_data.clear()
+# ---------------------------------
+
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>🏢 NHẬP SỐ LIỆU BÁO GIÁ THỦ TỤC HẢI QUAN </h3>", unsafe_allow_html=True)
 st.divider()
 
 st.title("🚢 Quản Lý Nghiệp Vụ Hải Quan")
     
-# Lấy danh sách khách hàng để dùng chung cho 2 Tab
-conn = db.get_connection()
-cursor = conn.cursor(dictionary=True)
-cursor.execute("SELECT id, ten_khach_hang FROM khach_hang")
-ds_kh = cursor.fetchall()
-cursor.close()
-conn.close()
-    
-dict_kh = {kh['ten_khach_hang']: kh['id'] for kh in ds_kh}
+# Lấy danh sách khách hàng qua CACHE thay vì gọi DB thủ công
+df_kh = get_cached_master_data("SELECT id, ten_khach_hang FROM khach_hang")
+dict_kh = {row['ten_khach_hang']: row['id'] for _, row in df_kh.iterrows()} if isinstance(df_kh, pd.DataFrame) and not df_kh.empty else {}
 list_kh = list(dict_kh.keys())
 
 tab1, tab2, tab3 = st.tabs([
@@ -46,7 +50,6 @@ tab1, tab2, tab3 = st.tabs([
 with tab1:
     st.subheader("Thiết lập giá theo hợp đồng (Continental, Tân Châu, Zhengxing...)")
     
-    # Tạo dynamic key cho form tạo mới để ép clear sạch sẽ mọi ô chọn
     if "form_tao_bg_key" not in st.session_state:
         st.session_state["form_tao_bg_key"] = "form_bang_gia_hq_1"
         
@@ -88,8 +91,8 @@ with tab1:
                 
                 success, msg = save_bang_gia_hai_quan_transaction(db, data_dict, current_user)
                 if success: 
+                    clear_master_cache() # Dọn dẹp cache sau khi thêm mới
                     st.success(msg)
-                    # Ép tái tạo form mới hoàn toàn để mọi thứ về None
                     st.session_state["form_tao_bg_key"] = f"form_bang_gia_hq_{uuid.uuid4()}"
                     time.sleep(1)
                     st.rerun()
@@ -102,18 +105,16 @@ with tab1:
 with tab2:
     st.subheader("Chỉnh sửa Bảng giá Hải Quan đã cấu hình")
     
-    conn = db.get_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
+    # Sử dụng CACHE để lấy danh sách bảng giá
+    sql_bg = """
         SELECT bg.id, bg.khach_hang_id, kh.ten_khach_hang, bg.nhom_dich_vu, 
                bg.phan_loai_chi_tiet, bg.dia_diem_thong_quan, bg.don_gia_hq, bg.ghi_chu 
         FROM bang_gia_hai_quan bg
         JOIN khach_hang kh ON bg.khach_hang_id = kh.id
         ORDER BY bg.id DESC
-    """)
-    ds_bang_gia = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    """
+    df_bang_gia = get_cached_master_data(sql_bg)
+    ds_bang_gia = df_bang_gia.to_dict('records') if isinstance(df_bang_gia, pd.DataFrame) and not df_bang_gia.empty else []
 
     if not ds_bang_gia:
         st.info("📭 Chưa có dữ liệu bảng giá nào để chỉnh sửa.")
@@ -123,7 +124,6 @@ with tab2:
             for r in ds_bang_gia
         }
         
-        # Tạo dynamic key cho ô Chọn Sửa
         if "key_edit_bg" not in st.session_state:
             st.session_state["key_edit_bg"] = "sel_edit_bg_1"
             
@@ -170,8 +170,8 @@ with tab2:
                     
                     success, msg = update_bang_gia_hai_quan_transaction(db, bg_edit_id, data_update, current_user)
                     if success:
+                        clear_master_cache() # Dọn dẹp cache sau khi cập nhật
                         st.success(msg)
-                        # Đổi key ép tái tạo ô chọn về None
                         st.session_state["key_edit_bg"] = f"sel_edit_bg_{uuid.uuid4()}"
                         time.sleep(1)
                         st.rerun()
@@ -186,7 +186,6 @@ with tab3:
     if not ds_bang_gia:
         st.info("📭 Không có dữ liệu để xóa.")
     else:
-        # Tạo dynamic key cho ô Chọn Xóa
         if "key_del_bg" not in st.session_state:
             st.session_state["key_del_bg"] = "sel_del_bg_1"
             
@@ -199,8 +198,8 @@ with tab3:
                 with st.spinner("Đang xóa dữ liệu..."):
                     success, msg = delete_bang_gia_hai_quan_transaction(db, bg_del_id, current_user)
                     if success:
+                        clear_master_cache() # Dọn dẹp cache sau khi xóa
                         st.success(msg)
-                        # Đổi key ép tái tạo ô chọn về None
                         st.session_state["key_del_bg"] = f"sel_del_bg_{uuid.uuid4()}"
                         time.sleep(1)
                         st.rerun()

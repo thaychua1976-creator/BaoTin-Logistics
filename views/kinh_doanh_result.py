@@ -1,29 +1,27 @@
 import streamlit as st
 import datetime
 import pandas as pd
+import io
 from trip_manager import get_bao_cao_pnl_chuyen_di
+
+# --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_cached_master_data(_db_instance, query, params=None):
+    return _db_instance.execute_query(query, params)
+
+def clear_master_cache():
+    get_cached_master_data.clear()
+# ---------------------------------
+
 db = st.session_state['db']
 
 st.markdown("## 💰 BÁO CÁO KẾT QUẢ KINH DOANH (P&L)")
 st.caption("Phân tích Doanh thu, Chi phí trực tiếp và Lợi nhuận gộp theo từng chuyến đi.")
-# --- 1. LẤY DANH SÁCH XE (TẠO XE_DICT) ---
-@st.cache_data(ttl=300) # Cache lại 5 phút để tránh query DB liên tục
-def get_danh_sach_xe(_db_pool):
-    try:
-        conn = _db_pool.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, bien_so_xe FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'")
-        rows = cursor.fetchall()
-        return {row[0]: row[1] for row in rows}
-    except Exception as e:
-        st.error(f"Lỗi lấy danh sách xe: {e}")
-        return {}
-    finally:
-        if 'cursor' in locals() and cursor: cursor.close()
-        if 'conn' in locals() and conn: conn.close()
 
-# Khởi tạo biến xe_dict từ hàm trên (Giả sử connection pool của bạn tên là db.pool)
-xe_dict = get_danh_sach_xe(db.pool)
+# --- 1. LẤY DANH SÁCH XE (SỬ DỤNG CACHE CHUẨN HÓA) ---
+sql_xe = "SELECT id, bien_so_xe FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'"
+df_xe = get_cached_master_data(db, sql_xe)
+xe_dict = {row['id']: row['bien_so_xe'] for _, row in df_xe.iterrows()} if isinstance(df_xe, pd.DataFrame) and not df_xe.empty else {}
 
 # --- BỘ LỌC TÌM KIẾM ---
 with st.container(border=True):
@@ -75,55 +73,52 @@ if not df_pnl.empty:
     )
 else:
     st.info("Không có chuyến đi nào hoàn thành trong giai đoạn được chọn.")
-# ... (code st.dataframe(...) hiện tại của bạn) ...
 
 st.markdown("<br>", unsafe_allow_html=True)
     
-    # --- TẠO FILE EXCEL VÀ NÚT TẢI XUỐNG ---
-import io
-    
-    # Tạo bộ đệm lưu file Excel trong bộ nhớ
+# --- TẠO FILE EXCEL VÀ NÚT TẢI XUỐNG ---
+# Tạo bộ đệm lưu file Excel trong bộ nhớ
 buffer_pnl = io.BytesIO()
     
-    # Sử dụng context manager (with) để tự động lưu file sau khi viết xong
+# Sử dụng context manager (with) để tự động lưu file sau khi viết xong
 with pd.ExcelWriter(buffer_pnl, engine='xlsxwriter') as writer:
-        df_pnl.to_excel(writer, index=False, sheet_name="Bao_Cao_PnL")
+    df_pnl.to_excel(writer, index=False, sheet_name="Bao_Cao_PnL")
+    
+    # Lấy đối tượng worksheet để định dạng
+    worksheet = writer.sheets['Bao_Cao_PnL']
+    
+    # Định dạng Header (Tiêu đề): Nền đỏ đô (Màu tài chính), chữ trắng in đậm
+    header_format = writer.book.add_format({
+        'bold': True, 
+        'font_color': 'white', 
+        'bg_color': '#800000', 
+        'border': 1
+    })
+    
+    # Áp dụng định dạng cho dòng tiêu đề (Dòng 0)
+    for col_num, col_name in enumerate(df_pnl.columns):
+        worksheet.write(0, col_num, col_name, header_format)
         
-        # Lấy đối tượng worksheet để định dạng
-        worksheet = writer.sheets['Bao_Cao_PnL']
-        
-        # Định dạng Header (Tiêu đề): Nền đỏ đô (Màu tài chính), chữ trắng in đậm
-        header_format = writer.book.add_format({
-            'bold': True, 
-            'font_color': 'white', 
-            'bg_color': '#800000', 
-            'border': 1
-        })
-        
-        # Áp dụng định dạng cho dòng tiêu đề (Dòng 0)
-        for col_num, col_name in enumerate(df_pnl.columns):
-            worksheet.write(0, col_num, col_name, header_format)
-            
-        # Căn chỉnh tự động độ rộng của từng cột cho vừa với dữ liệu bên trong
-        for idx, col in enumerate(df_pnl.columns):
-            series_str = df_pnl[col].fillna("").astype(str)
-            # Tính độ rộng cột: max(độ dài dữ liệu lớn nhất, độ dài tên cột) + một chút khoảng cách
-            max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
-            # Giới hạn độ rộng tối đa là 40 để bảng không bị quá bè
-            worksheet.set_column(idx, idx, min(max_len, 40))
+    # Căn chỉnh tự động độ rộng của từng cột cho vừa với dữ liệu bên trong
+    for idx, col in enumerate(df_pnl.columns):
+        series_str = df_pnl[col].fillna("").astype(str)
+        # Tính độ rộng cột: max(độ dài dữ liệu lớn nhất, độ dài tên cột) + một chút khoảng cách
+        max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
+        # Giới hạn độ rộng tối đa là 40 để bảng không bị quá bè
+        worksheet.set_column(idx, idx, min(max_len, 40))
 
-    # Căn chỉnh giao diện: Đẩy nút Download sang bên trái màn hình
+# Căn chỉnh giao diện: Đẩy nút Download sang bên trái màn hình
 col_btn_1, col_btn_2 = st.columns([1, 3])
 with col_btn_1:
-        # Lấy tên xe để đưa vào tên file (Nếu xe_duoc_chon = 0 thì tên là "Toan_Bo_Xe")
-        ten_xe_file = "Toan_Bo_Xe" if xe_duoc_chon == 0 else str(xe_dict.get(xe_duoc_chon, "Xe")).replace(" ", "_")
-        ngay_xuat = datetime.date.today().strftime('%d_%m_%Y')
-        
-        st.download_button(
-            label="📥 XUẤT FILE EXCEL P&L",
-            data=buffer_pnl.getvalue(),
-            file_name=f"Bao_Cao_Loi_Nhuan_{ten_xe_file}_{ngay_xuat}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
-            use_container_width=True
-        )
+    # Lấy tên xe để đưa vào tên file (Nếu xe_duoc_chon = 0 thì tên là "Toan_Bo_Xe")
+    ten_xe_file = "Toan_Bo_Xe" if xe_duoc_chon == 0 else str(xe_dict.get(xe_duoc_chon, "Xe")).replace(" ", "_")
+    ngay_xuat = datetime.date.today().strftime('%d_%m_%Y')
+    
+    st.download_button(
+        label="📥 XUẤT FILE EXCEL P&L",
+        data=buffer_pnl.getvalue(),
+        file_name=f"Bao_Cao_Loi_Nhuan_{ten_xe_file}_{ngay_xuat}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type="primary",
+        use_container_width=True
+    )

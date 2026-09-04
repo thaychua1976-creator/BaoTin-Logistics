@@ -4,6 +4,15 @@ import datetime, time
 from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 from co_manager import save_co_transaction, delete_co_transaction, get_don_gia_co_theo_khach_hang
 
+# --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_cached_master_data(_db_instance, query, params=None):
+    return _db_instance.execute_query(query, params)
+
+def clear_master_cache():
+    get_cached_master_data.clear()
+# ---------------------------------
+
 # 1. KIỂM TRA ĐĂNG NHẬP (Bắt buộc)
 if 'username' not in st.session_state or not st.session_state['username']:
     st.error("⚠️ Phiên đăng nhập đã hết hạn hoặc bạn chưa đăng nhập. Vui lòng đăng nhập lại!")
@@ -39,9 +48,9 @@ with tab_khai_co:
         # -------------------------------------------------------------
         col_a, col_b, col_c = st.columns(3)
         
-        # 1. Chọn khách hàng
+        # 1. Chọn khách hàng (Sử dụng Cache)
         sql_kh = "SELECT id, ten_khach_hang, ma_khach_hang FROM khach_hang ORDER BY ten_khach_hang ASC"
-        df_kh = db.execute_query(sql_kh)
+        df_kh = get_cached_master_data(db, sql_kh)
         dict_kh = {r['id']: f"[{r['ma_khach_hang']}] {r['ten_khach_hang']}" for _, r in df_kh.iterrows()} if not df_kh.empty else {}
         
         khach_hang_id = col_a.selectbox(
@@ -49,11 +58,11 @@ with tab_khai_co:
             format_func=lambda x: dict_kh[x],
             index=0)
         
-        # 2. Chọn tờ khai xuất khẩu lọc theo khách hàng
+        # 2. Chọn tờ khai xuất khẩu lọc theo khách hàng (Sử dụng Cache)
         dict_tk = {}
         if khach_hang_id:
             sql_tk_xuat = "SELECT id, so_to_khai, ngay_khai FROM to_khai_hai_quan WHERE loai_to_khai = 'Xuat_Khau' AND khach_hang_id = %s ORDER BY id DESC"
-            df_tk_xuat = db.execute_query(sql_tk_xuat, (khach_hang_id,))
+            df_tk_xuat = get_cached_master_data(db, sql_tk_xuat, (khach_hang_id,))
             if isinstance(df_tk_xuat, pd.DataFrame) and not df_tk_xuat.empty:
                 dict_tk = {r['id']: f"Số TK: {r['so_to_khai']} ({r['ngay_khai']})" for _, r in df_tk_xuat.iterrows()}
                 
@@ -108,6 +117,7 @@ with tab_khai_co:
                     }
                     ok, msg = save_co_transaction(db.pool, co_data, None, current_user)
                     if ok:
+                        clear_master_cache()
                         st.success("✅ Đã lưu chứng từ C/O thành công!")
                         st.session_state["select_co_action"] = None
                         time.sleep(1)
@@ -128,7 +138,7 @@ with tab_quan_ly_co:
         co_tu_ngay = col_f1.date_input("Từ ngày", value=today.replace(day=1), key="co_tu_ngay")
         co_den_ngay = col_f2.date_input("Đến ngày", value=today, key="co_den_ngay")
         
-        # Bổ sung trường kh.id (khach_hang_id) để phòng trường hợp sửa Tờ khai
+        # Bổ sung trường kh.id (khach_hang_id) để phòng trường hợp sửa Tờ khai (Truy vấn động KHÔNG CẦN CACHE)
         sql_ds_co = """
             SELECT co.id, co.to_khai_id, co.form_co, co.so_co, co.ngay_co, 
                 co.phi_co, co.phi_dvhq, co.so_hoa_don_co, co.ghi_chu, 
@@ -172,6 +182,7 @@ with tab_quan_ly_co:
                     if st.button("Xác Nhận Xóa C/O", type="primary"):
                         ok, msg = delete_co_transaction(db.pool, selected_co_id, current_user)
                         if ok:
+                            clear_master_cache()
                             st.success("✅ Đã xóa chứng từ C/O thành công!")
                             if "select_co_action" in st.session_state:
                                 del st.session_state["select_co_action"]
@@ -180,9 +191,9 @@ with tab_quan_ly_co:
                             st.error(f"Lỗi: {msg}")
                 else:
                     with st.form(f"form_edit_co_{selected_co_id}", clear_on_submit=False):
-                        # Lấy lại danh sách Tờ khai của chính khách hàng này để có thể sửa đổi nếu cần
+                        # Lấy lại danh sách Tờ khai của chính khách hàng này để có thể sửa đổi (Sử dụng Cache)
                         sql_tk_edit = "SELECT id, so_to_khai FROM to_khai_hai_quan WHERE khach_hang_id = %s"
-                        df_tk_edit = db.execute_query(sql_tk_edit, (co_info['khach_hang_id'],))
+                        df_tk_edit = get_cached_master_data(db, sql_tk_edit, (co_info['khach_hang_id'],))
                         dict_tk_edit = {r['id']: f"Số TK: {r['so_to_khai']}" for _, r in df_tk_edit.iterrows()} if not df_tk_edit.empty else {co_info['to_khai_id']: co_info['so_to_khai']}
                         
                         e_to_khai_id = st.selectbox("Tờ Khai Xuất Khẩu Liên Kết", options=list(dict_tk_edit.keys()), index=get_idx(list(dict_tk_edit.keys()), co_info['to_khai_id']), format_func=lambda x: dict_tk_edit[x])
@@ -218,6 +229,7 @@ with tab_quan_ly_co:
                                 }
                                 ok, msg = save_co_transaction(db.pool, co_update_data, selected_co_id, current_user)
                                 if ok:
+                                    clear_master_cache()
                                     st.success("✅ Cập nhật chứng từ C/O thành công!")
                                     if "select_co_action" in st.session_state:
                                         del st.session_state["select_co_action"]

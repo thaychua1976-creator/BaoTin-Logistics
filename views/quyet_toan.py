@@ -15,6 +15,15 @@ def get_map_service(): return MapService()
 map_srv = get_map_service()
 db = st.session_state['db']
 
+# --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_cached_master_data(query, params=None):
+    return db.execute_query(query, params)
+
+def clear_master_cache():
+    get_cached_master_data.clear()
+# ---------------------------------
+
 hide_enter_submit_css = """
 <style>
     div[data-testid="InputInstructions"] { display: none !important; visibility: hidden !important; }
@@ -81,8 +90,9 @@ def rule_engine_calc(kh_id, tai_trong_xe_tan, doanh_thu, facts, db_instance):
         return float(gia_niem_yet)
         
     try:
+        # Ứng dụng cache cho Phụ phí khách hàng (Vì ít khi thay đổi trong ca làm việc)
         sql_pp = "SELECT ten_phu_phi, don_gia_phu_phi, loai_ap_dung, dieu_kien_kich_hoat FROM phu_phi_khach_hang WHERE khach_hang_id = %s"
-        df_pp = db_instance.execute_query(sql_pp, (kh_id,))
+        df_pp = get_cached_master_data(sql_pp, (kh_id,))
         
         matched_candidates = []
         
@@ -275,13 +285,13 @@ def rule_engine_calc(kh_id, tai_trong_xe_tan, doanh_thu, facts, db_instance):
 def tinh_phu_cap_tai_xe(db_instance, xe_id, danh_sach_tieu_chi_id):
     if not danh_sach_tieu_chi_id or pd.isna(xe_id) or not xe_id: return 0.0, ""
     try:
-        df_xe = db_instance.execute_query("SELECT tai_trong_thiet_ke FROM xe WHERE id = %s", (int(xe_id),))
-        if not isinstance(df_xe, pd.DataFrame) or df_xe.empty: return 0.0, ""
+        # Ứng dụng cache
+        df_xe = get_cached_master_data("SELECT tai_trong_thiet_ke FROM xe WHERE id = %s", (int(xe_id),))
+        if df_xe.empty: return 0.0, ""
         tai_trong = float(df_xe.iloc[0]['tai_trong_thiet_ke'] or 0)
         
-        sql_khung = "SELECT id FROM dm_tai_trong_phu_cap WHERE tai_trong_min <= %s AND tai_trong_max >= %s ORDER BY tai_trong_min DESC LIMIT 1"
-        df_khung = db_instance.execute_query(sql_khung, (tai_trong, tai_trong))
-        if not isinstance(df_khung, pd.DataFrame) or df_khung.empty: return 0.0, ""
+        df_khung = get_cached_master_data("SELECT id FROM dm_tai_trong_phu_cap WHERE tai_trong_min <= %s AND tai_trong_max >= %s ORDER BY tai_trong_min DESC LIMIT 1", (tai_trong, tai_trong))
+        if df_khung.empty: return 0.0, ""
         tt_id = int(df_khung.iloc[0]['id'])
         
         format_strs = ','.join(['%s'] * len(danh_sach_tieu_chi_id))
@@ -339,7 +349,7 @@ def keyword_match_score(app_str, db_str):
     return len(intersection) / min_len if min_len > 0 else 0.0
 
 # ==========================================
-# TAB 1: QUYẾT TOÁN ĐƠN CHUYẾN
+# TAB 1: QUYẾT TOÁN ĐƠN CHUYẾN (ĐÃ TỐI ƯU CACHE)
 # ==========================================
 with tab1:
     tao_tieu_de_kem_nut_refresh("📋 Quyết toán và cập nhật chi phí chuyến đi", "ref_tab1")
@@ -349,6 +359,7 @@ with tab1:
         if "reset_chuyen_form" not in st.session_state: 
             st.session_state["reset_chuyen_form"] = 0
 
+        # Dữ liệu chuyến đi đang thay đổi liên tục -> Không dùng Cache
         sql_load = """
             SELECT cd.id, cd.ngay_chuyen_di, cd.ten_khach_hang, cd.khach_hang_id, cd.xe_id,
                 COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) AS bien_so_xe, 
@@ -391,7 +402,8 @@ with tab1:
             
             if not kh_id_qt and pd.notna(ten_kh_qt):
                 try:
-                    df_find_kh = db.execute_query("SELECT id FROM khach_hang WHERE ten_khach_hang LIKE %s LIMIT 1", (f"%{str(ten_kh_qt).strip()}%",))
+                    # Ứng dụng Cache tìm kiếm Khách hàng tĩnh
+                    df_find_kh = get_cached_master_data("SELECT id FROM khach_hang WHERE ten_khach_hang LIKE %s LIMIT 1", (f"%{str(ten_kh_qt).strip()}%",))
                     if isinstance(df_find_kh, pd.DataFrame) and not df_find_kh.empty: 
                         kh_id_qt = int(df_find_kh.iloc[0]['id'])
                 except: pass
@@ -405,6 +417,13 @@ with tab1:
             is_hang_ve_db_val = bool(row_sel.get('is_hang_tra_ve', 0))
             is_hang_ve_ui = col_hh4.checkbox("🔄 Chở hàng về (Lấy giá 2 chiều)", value=is_hang_ve_db_val, key=f"is_ve_{cd_id}")
 
+            st.markdown("##### 🚚 Khai báo Bao Chuyến (Cước cố định, ví dụ như JIFA)")
+            col_bc1, col_bc2 = st.columns(2)
+            is_bao_chuyen_ui = col_bc1.checkbox("📦 Chuyến đi này là Hàng Bao Chuyến: JIFA..", key=f"is_bao_{cd_id}")
+            loai_xe_bao_ui = None
+            if is_bao_chuyen_ui:
+                loai_xe_bao_ui = col_bc2.radio("Phân loại xe bao chuyến:", ["Xe Tải", "Container"], horizontal=True, key=f"loai_bao_{cd_id}")
+            
             dt_raw = row_sel.get('doanh_thu')
             doanh_thu_hien_tai = 0.0 if pd.isna(dt_raw) or dt_raw == "" else float(dt_raw)
             lo_trinh_hien_tai = str(row_sel.get('dia_diem_giao_nhan', ''))
@@ -439,7 +458,8 @@ with tab1:
                         WHERE khach_hang_id = %s
                         ORDER BY id DESC
                     """
-                    df_rc = db.execute_query(sql_rc, (kh_id_qt,))
+                    # Ứng dụng Cache gọi Bảng giá Khách hàng tĩnh
+                    df_rc = get_cached_master_data(sql_rc, (kh_id_qt,))
                     
                     if isinstance(df_rc, pd.DataFrame) and not df_rc.empty:
                         matched_rc_rows = []
@@ -466,9 +486,26 @@ with tab1:
                             is_ghep = int(row_sel.get('is_gop_chuyen', 0) if pd.notna(row_sel.get('is_gop_chuyen')) else 0)
                             stt_ghep = int(row_sel.get('stt_chuyen_ghep', 1) if pd.notna(row_sel.get('stt_chuyen_ghep')) else 1)
 
+                            valid_candidates = []
+                            booked_cbm = float(row_sel.get('the_tich_cbm', 0.0) or 0.0)
+
                             for _, rc in df_matched.iterrows():
                                 pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip().lower() 
                                 qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ").replace(",", ".")
+
+                                if is_bao_chuyen_ui:
+                                    target_kw = "bao xe tai" if loai_xe_bao_ui == "Xe Tải" else "bao xe cont"
+                                    if target_kw in qc_gia or target_kw.replace(" ", "_") in qc_gia:
+                                        gia_goc = float(rc.get('don_gia_cuoc', 0) or 0.0)
+                                        gia_tiep_noi = float(rc.get('gia_chuyen_tiep_noi', 0) or 0.0)
+                                        m_price = gia_tiep_noi if (is_ghep == 1 and stt_ghep > 1 and gia_tiep_noi > 0) else gia_goc
+                                        m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
+                                        valid_candidates.append({'price': m_price, 'kc': m_kc, 'cap': 0})
+                                        break
+                                    continue
+                                else:
+                                    if 'bao xe tai' in qc_gia or 'bao_xe_tai' in qc_gia or 'bao xe cont' in qc_gia or 'bao_xe_cont' in qc_gia:
+                                        continue
 
                                 req_nguy_hiem = any(x in qc_gia for x in ['nguy hiem', 'nguyhiem'])
                                 req_lanh = any(x in qc_gia for x in ['lạnh', 'lanh', 'rf'])
@@ -479,32 +516,60 @@ with tab1:
                                 if req_lanh and not has_lanh: is_prop_match = False
                                 if req_thuong and (has_nguy_hiem or has_lanh): is_prop_match = False
 
+                                if not is_prop_match: continue
+
                                 if pl_pt_gia in ['xe_tai', 'hang_le', 'xe tai', 'xe tải', 'hang le', 'hàng lẻ', '', 'nan', 'none'] or any(kw in pl_pt_gia for kw in ['tai', 'tải', 'le', 'lẻ']):
-                                    nums_in_str = re.findall(r'\d+\.?\d*', qc_gia)
-                                    float_nums = [float(n) for n in nums_in_str]
                                     is_weight_match = False
 
-                                    if len(float_nums) >= 2:
-                                        if min(float_nums) <= tt_xe_tan <= max(float_nums): is_weight_match = True
-                                    elif len(float_nums) == 1:
-                                        val = float_nums[0]
+                                    gh_kg = float(rc.get('gioi_han_kg', 0) or 0)
+                                    gh_cbm = float(rc.get('gioi_han_cbm', 0) or 0)
+
+                                    cap_tan = (gh_kg / 1000.0) if gh_kg > 0 else None
+                                    cap_cbm = gh_cbm if gh_cbm > 0 else None
+
+                                    if cap_tan is None or cap_cbm is None:
+                                        tan_m = re.search(r'(\d+\.?\d*)\s*(t|tấn|tan)\b', qc_gia)
+                                        kg_m = re.search(r'(\d+\.?\d*)\s*(kg)\b', qc_gia)
+                                        cbm_m = re.search(r'(\d+\.?\d*)\s*(khối|khoi|cbm|m3)\b', qc_gia)
+
+                                        if tan_m: cap_tan = float(tan_m.group(1))
+                                        elif kg_m: cap_tan = float(kg_m.group(1)) / 1000.0
+                                        if cbm_m: cap_cbm = float(cbm_m.group(1))
+
+                                    nums_in_str = [float(n) for n in re.findall(r'\d+\.?\d*', qc_gia)]
+
+                                    if cap_tan is not None and cap_cbm is not None:
+                                        if tt_xe_tan <= cap_tan and booked_cbm <= cap_cbm:
+                                            is_weight_match = True
+                                    elif cap_tan is not None:
+                                        if tt_xe_tan <= cap_tan: is_weight_match = True
+                                    elif cap_cbm is not None:
+                                        if booked_cbm <= cap_cbm: is_weight_match = True
+                                    elif len(nums_in_str) >= 2 and '-' in qc_gia:
+                                        if min(nums_in_str) <= tt_xe_tan <= max(nums_in_str): is_weight_match = True
+                                    elif len(nums_in_str) == 1:
+                                        val = nums_in_str[0]
                                         if any(op in qc_gia for op in ['<=', 'dưới', 'duoi']) and tt_xe_tan <= val: is_weight_match = True
                                         elif '<' in qc_gia and tt_xe_tan < val: is_weight_match = True
                                         elif any(op in qc_gia for op in ['>=', 'trên', 'tren']) and tt_xe_tan >= val: is_weight_match = True
                                         elif '>' in qc_gia and tt_xe_tan > val: is_weight_match = True
-                                        else:
-                                            if abs(tt_xe_tan - val) <= 0.1: is_weight_match = True
-                                    elif len(float_nums) == 0:
-                                        is_weight_match = True 
+                                        elif tt_xe_tan <= val: is_weight_match = True 
+                                    elif len(nums_in_str) == 0:
+                                        is_weight_match = True
 
-                                    if not (is_weight_match and is_prop_match):
-                                        continue
-                                
-                                    gia_goc = float(rc.get('don_gia_cuoc', 0) or 0.0)
-                                    gia_tiep_noi = float(rc.get('gia_chuyen_tiep_noi', 0) or 0.0)
-                                    matched_price = gia_tiep_noi if (is_ghep == 1 and stt_ghep > 1 and gia_tiep_noi > 0) else gia_goc
-                                    matched_khoang_cach = float(rc.get('khoang_cach', 0.0) or 0.0)
-                                    break
+                                    if is_weight_match:
+                                        gia_goc = float(rc.get('don_gia_cuoc', 0) or 0.0)
+                                        gia_tiep_noi = float(rc.get('gia_chuyen_tiep_noi', 0) or 0.0)
+                                        m_price = gia_tiep_noi if (is_ghep == 1 and stt_ghep > 1 and gia_tiep_noi > 0) else gia_goc
+                                        m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
+                                        
+                                        score = (cap_tan or 999.0) + (cap_cbm or 999.0)
+                                        valid_candidates.append({'price': m_price, 'kc': m_kc, 'cap': score})
+
+                            if valid_candidates:
+                                best_candidate = min(valid_candidates, key=lambda x: (x['cap'], x['price']))
+                                matched_price = best_candidate['price']
+                                matched_khoang_cach = best_candidate['kc']
                             
                             if matched_price > 0:
                                 doanh_thu_hien_tai = matched_price
@@ -574,7 +639,8 @@ with tab1:
                     try:
                         if kc_auto > 0:
                             sql_find_tc = "SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap WHERE %s >= km_min AND %s <= km_max"
-                            df_find_tc = db.execute_query(sql_find_tc, (kc_auto, kc_auto))
+                            # Ứng dụng Cache gọi DM tiêu chí Km
+                            df_find_tc = get_cached_master_data(sql_find_tc, (kc_auto, kc_auto))
                             if isinstance(df_find_tc, pd.DataFrame) and not df_find_tc.empty:
                                 lo_trinh_lower = lo_trinh_hien_tai.lower()
                                 ds_dia_danh = ["nhơn trạch", "cát lái", "cái mép", "hiệp phước", "vict", "sóng thần", "mỹ phước", "ngoại quan", "phú hữu", "bến lức", "đức hòa", "củ chi", "daklak", "đắk lắk", "biên hoà", "tbs"]
@@ -606,7 +672,8 @@ with tab1:
                                             auto_tc_ids.append(tc_id)
                     except Exception: pass
 
-                    df_tc = db.execute_query("SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap")
+                    # Ứng dụng Cache gọi DM tiêu chí chung
+                    df_tc = get_cached_master_data("SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap")
                     if isinstance(df_tc, pd.DataFrame) and not df_tc.empty:
                         tc_cols = st.columns(2)
                         for i, r_tc in df_tc.iterrows():
@@ -634,6 +701,7 @@ with tab1:
 
                 if submit_chot:
                     try:
+                        # Ràng buộc Parse tiền tệ từ utils_core
                         doanh_thu_val = parse_money_input(doanh_thu_input)
                         phi_khac_nhap_tay = parse_money_input(num_k)
                         phi_bx_nhap_tay = parse_money_input(num_bx)
@@ -691,10 +759,13 @@ with tab1:
                                 """
                                 try:
                                     flag_luu_db = 1 if is_hang_ve_ui else 0
+                                    # Insert tĩnh, không dùng cache, cập nhật lại db
                                     db.execute_non_query(sql_insert_rc, (kh_id_qt, ddi_save, dden_save, 'Hang_Le', qc_moi, doanh_thu_val, flag_luu_db))
+                                    clear_master_cache() # Clear cache bảng giá
                                     st.toast("✅ Đã thêm lộ trình mới vào Bảng giá!")
                                 except Exception as e: st.error(f"Lỗi lưu Bảng giá: {e}")
-                                        
+                                
+                            # Ràng buộc sử dụng hàm Transaction từ trip_manager
                             is_ok, msg = settle_trip_transaction(db.pool, data_dict_thu_cong, 'Hoan_Thanh', cd_id)
                             if is_ok:
                                 st.session_state["reset_chuyen_form"] += 1
@@ -705,6 +776,7 @@ with tab1:
                     except Exception as ex: st.error(f"❌ Lỗi xử lý: {ex}")
 
                 if submit_xoa:
+                    # Ràng buộc sử dụng hàm Transaction xóa an toàn
                     success, msg = delete_trip_safe(db.pool, cd_id)
                     if success:
                         st.session_state["reset_chuyen_form"] += 1
@@ -921,6 +993,7 @@ with tab3:
                OR (cd.trang_thai_chuyen = 'Hoan_Thanh' AND (cd.doanh_thu IS NULL OR cd.doanh_thu <= 0))
             ORDER BY cd.ngay_chuyen_di ASC
         """
+        # Data giao dịch thay đổi liên tục -> Không dùng Cache
         df_pending = db.execute_query(sql_pending)
         
         if isinstance(df_pending, pd.DataFrame) and not df_pending.empty:
@@ -949,7 +1022,10 @@ with tab3:
                     "SO_NGAY_NEO_XE_NHA_MAY": 0,
                     "SO_NGAY_NEO_CONT": 0,
                     "IS_HUY_CHUYEN": 0,
+                    "IS_BAO_CHUYEN": 0,          
+                    "LOAI_XE_BAO": "Xe Tải",     
                     "IS_BOC_XEP": 0,
+                    "DS_PHU_CAP_TAI_XE": "",
                     "IS_OVERLOAD_CONT": 0,
                     "CANG_NANG_HA": "",
                     "LOAI_HANG_HOA": "Thường",
@@ -959,7 +1035,6 @@ with tab3:
                     "GIAO_KHAC_KHU": 0,
                     "CONT_RONG": "Không",
                     "IS_HANG_VE": 0,
-                    "DS_PHU_CAP_TAI_XE": "",
                     "GHI_CHU": ""
                 })
             df_tpl_close = pd.DataFrame(template_data)
@@ -985,7 +1060,8 @@ with tab3:
         st.markdown("##### 📥 1. Tải File Mẫu (Đã tự động nạp mã chuyến và thông tin tham khảo)")
         col_t1, col_t2 = st.columns(2)
         with col_t1:
-            df_dm_pc = db.execute_query("SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap")
+            # Ứng dụng Cache lấy Danh mục
+            df_dm_pc = get_cached_master_data("SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap")
             buffer_close = io.BytesIO()
             with pd.ExcelWriter(buffer_close, engine='xlsxwriter') as writer: 
                 df_tpl_close.to_excel(writer, index=False, sheet_name="MAU_QUYET_TOAN")
@@ -1001,7 +1077,6 @@ with tab3:
             )
         
         with st.form("form_mass_close"):
-            # Sử dụng key động từ session_state để có thể xóa file upload sau khi xong
             file_close = st.file_uploader(
                 "Chọn file Excel Quyết toán (Đuôi .xlsx, .csv)", 
                 type=["xlsx", "xls", "csv"],
@@ -1010,22 +1085,18 @@ with tab3:
             submit_close = st.form_submit_button("🏁 Khóa sổ & Chốt chuyến hàng loạt", type="primary")
             
             if submit_close:
-                # 2. Bắt lỗi Validation: Yêu cầu chọn file trước
                 if not file_close:
                     st.error("⚠️ Lỗi: Vui lòng upload file Excel quyết toán trước khi bấm Khóa sổ!")
                 else:
                     try:
-                        if file_close.name.endswith('.csv'):
-                            df_close = pd.read_csv(file_close)
-                        else:
-                            df_close = pd.read_excel(file_close)
+                        if file_close.name.endswith('.csv'): df_close = pd.read_csv(file_close)
+                        else: df_close = pd.read_excel(file_close)
                             
                         df_close.columns = [str(c).strip().upper() for c in df_close.columns]
                         closed_count = 0
                         error_list = []
                         total_rows = len(df_close)
                         
-                        # 3. Khởi tạo Thanh tiến trình (Progress Bar)
                         progress_bar = st.progress(0, text="🚀 Đang quét dữ liệu, chuẩn bị quyết toán...")
                         
                         def parse_excel_money(val):
@@ -1043,8 +1114,16 @@ with tab3:
                             v_str = str(val).replace(".0", "").strip().lower()
                             return v_str in ['1', 'true', 'yes', 'có', 'x', 'v', 'y']
 
+                        # --- TỐI ƯU HÓA: Kéo dữ liệu tĩnh ra ngoài vòng lặp ---
+                        df_tc_db = get_cached_master_data("SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap")
+                        tc_dict = {}
+                        if isinstance(df_tc_db, pd.DataFrame) and not df_tc_db.empty:
+                            for _, r_tc in df_tc_db.iterrows():
+                                tc_dict[str(r_tc['id'])] = int(r_tc['id'])
+                                tc_dict[str(r_tc['ten_tieu_chi']).strip().lower()] = int(r_tc['id'])
+                        # -------------------------------------------------------
+
                         for index, r in df_close.iterrows():
-                            # Cập nhật thanh tiến trình theo số dòng hiện hành
                             current_step = index + 1
                             pct_complete = min(current_step / total_rows, 1.0)
                             
@@ -1057,11 +1136,12 @@ with tab3:
                             progress_bar.progress(pct_complete, text=f"⏳ Đang quyết toán dòng {current_step}/{total_rows} (Mã Chuyến: {cid})...")
                                 
                             try:
+                                # Chuyến đi là giao dịch cụ thể, KHÔNG dùng cache
                                 sql_check = """
                                     SELECT trang_thai_chuyen, khach_hang_id, ten_khach_hang, 
                                         doanh_thu, dia_diem_giao_nhan, chi_phi_thue_ngoai, 
                                         hinh_thuc_thanh_toan_ngoai, ghi_chu,
-                                        ngay_chuyen_di, khoi_luong_kg, xe_id
+                                        ngay_chuyen_di, khoi_luong_kg, xe_id, the_tich_cbm
                                     FROM chuyen_di 
                                     WHERE id = %s
                                 """
@@ -1092,6 +1172,8 @@ with tab3:
                                     
                                 matched_khoang_cach = 0.0
                                 is_hang_ve_excel = parse_excel_bool(r.get('IS_HANG_VE'))
+                                is_bao_excel = parse_excel_bool(r.get('IS_BAO_CHUYEN'))
+                                loai_xe_bao_excel = str(r.get('LOAI_XE_BAO', 'Xe Tải')).strip()
                                 
                                 if "➡️" in lo_trinh_hien_tai and kh_id:
                                     try:
@@ -1107,7 +1189,8 @@ with tab3:
                                             WHERE khach_hang_id = %s
                                             ORDER BY id DESC
                                         """
-                                        df_rc = db.execute_query(sql_rc, (kh_id,))
+                                        # Ứng dụng Cache bảng giá Khách hàng
+                                        df_rc = get_cached_master_data(sql_rc, (kh_id,))
 
                                         if isinstance(df_rc, pd.DataFrame) and not df_rc.empty:
                                             matched_rc_rows = []
@@ -1130,9 +1213,24 @@ with tab3:
                                                 has_nguy_hiem = 'nguy hiểm' in loai_hang_excel or 'nguy hiem' in loai_hang_excel
                                                 has_lanh = 'lạnh' in loai_cont_excel or 'lanh' in loai_cont_excel
 
+                                                valid_candidates = []
+                                                booked_cbm = float(row_db.get('the_tich_cbm', 0.0) or 0.0)
+
                                                 for _, rc in df_matched.iterrows():
-                                                    pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip()
-                                                    qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ")
+                                                    pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip().lower() 
+                                                    qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ").replace(",", ".")
+
+                                                    if is_bao_excel:
+                                                        target_kw = "bao xe tai" if "tai" in loai_xe_bao_excel.lower() or "tải" in loai_xe_bao_excel.lower() else "bao xe cont"
+                                                        if target_kw in qc_gia or target_kw.replace(" ", "_") in qc_gia:
+                                                            m_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
+                                                            m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
+                                                            valid_candidates.append({'price': m_price, 'kc': m_kc, 'cap': 0})
+                                                            break
+                                                        continue
+                                                    else:
+                                                        if 'bao xe tai' in qc_gia or 'bao_xe_tai' in qc_gia or 'bao xe cont' in qc_gia or 'bao_xe_cont' in qc_gia:
+                                                            continue
 
                                                     req_nguy_hiem = any(x in qc_gia for x in ['nguy hiem', 'nguyhiem'])
                                                     req_lanh = any(x in qc_gia for x in ['lạnh', 'lanh', 'rf'])
@@ -1143,28 +1241,57 @@ with tab3:
                                                     if req_lanh and not has_lanh: is_prop_match = False
                                                     if req_thuong and (has_nguy_hiem or has_lanh): is_prop_match = False
 
-                                                    if pl_pt_gia in ['Xe_Tai', 'Hang_Le']:
-                                                        nums_in_str = re.findall(r'\d+\.?\d*', qc_gia)
-                                                        float_nums = [float(n) for n in nums_in_str]
+                                                    if not is_prop_match: continue
+
+                                                    if pl_pt_gia in ['xe_tai', 'hang_le', 'xe tai', 'xe tải', 'hang le', 'hàng lẻ', '', 'nan', 'none'] or any(kw in pl_pt_gia for kw in ['tai', 'tải', 'le', 'lẻ']):
                                                         is_weight_match = False
 
-                                                        if len(float_nums) == 2:
-                                                            if min(float_nums) <= tai_trong_so_sanh_tan <= max(float_nums): is_weight_match = True
-                                                        elif len(float_nums) == 1:
-                                                            val = float_nums[0]
+                                                        gh_kg = float(rc.get('gioi_han_kg', 0) or 0)
+                                                        gh_cbm = float(rc.get('gioi_han_cbm', 0) or 0)
+
+                                                        cap_tan = (gh_kg / 1000.0) if gh_kg > 0 else None
+                                                        cap_cbm = gh_cbm if gh_cbm > 0 else None
+
+                                                        if cap_tan is None or cap_cbm is None:
+                                                            tan_m = re.search(r'(\d+\.?\d*)\s*(t|tấn|tan)\b', qc_gia)
+                                                            kg_m = re.search(r'(\d+\.?\d*)\s*(kg)\b', qc_gia)
+                                                            cbm_m = re.search(r'(\d+\.?\d*)\s*(khối|khoi|cbm|m3)\b', qc_gia)
+
+                                                            if tan_m: cap_tan = float(tan_m.group(1))
+                                                            elif kg_m: cap_tan = float(kg_m.group(1)) / 1000.0
+                                                            if cbm_m: cap_cbm = float(cbm_m.group(1))
+
+                                                        nums_in_str = [float(n) for n in re.findall(r'\d+\.?\d*', qc_gia)]
+
+                                                        if cap_tan is not None and cap_cbm is not None:
+                                                            if tai_trong_so_sanh_tan <= cap_tan and booked_cbm <= cap_cbm:
+                                                                is_weight_match = True
+                                                        elif cap_tan is not None:
+                                                            if tai_trong_so_sanh_tan <= cap_tan: is_weight_match = True
+                                                        elif cap_cbm is not None:
+                                                            if booked_cbm <= cap_cbm: is_weight_match = True
+                                                        elif len(nums_in_str) >= 2 and '-' in qc_gia:
+                                                            if min(nums_in_str) <= tai_trong_so_sanh_tan <= max(nums_in_str): is_weight_match = True
+                                                        elif len(nums_in_str) == 1:
+                                                            val = nums_in_str[0]
                                                             if any(op in qc_gia for op in ['<=', 'dưới', 'duoi']) and tai_trong_so_sanh_tan <= val: is_weight_match = True
                                                             elif '<' in qc_gia and tai_trong_so_sanh_tan < val: is_weight_match = True
                                                             elif any(op in qc_gia for op in ['>=', 'trên', 'tren']) and tai_trong_so_sanh_tan >= val: is_weight_match = True
                                                             elif '>' in qc_gia and tai_trong_so_sanh_tan > val: is_weight_match = True
-                                                            else:
-                                                                if tai_trong_so_sanh_tan == val: is_weight_match = True
-                                                        elif len(float_nums) == 0:
+                                                            elif tai_trong_so_sanh_tan <= val: is_weight_match = True 
+                                                        elif len(nums_in_str) == 0:
                                                             is_weight_match = True
 
-                                                        if is_weight_match and is_prop_match:
-                                                            matched_price = float(rc['don_gia_cuoc'])
-                                                            matched_khoang_cach = float(rc.get('khoang_cach', 0.0) or 0.0)
-                                                            break
+                                                        if is_weight_match:
+                                                            m_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
+                                                            m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
+                                                            score = (cap_tan or 999.0) + (cap_cbm or 999.0)
+                                                            valid_candidates.append({'price': m_price, 'kc': m_kc, 'cap': score})
+
+                                                if valid_candidates:
+                                                    best_candidate = min(valid_candidates, key=lambda x: (x['cap'], x['price']))
+                                                    matched_price = best_candidate['price']
+                                                    matched_khoang_cach = best_candidate['kc']
                                                 
                                                 if matched_price > 0 and doanh_thu_chuyen == 0:
                                                     doanh_thu_chuyen = matched_price
@@ -1206,15 +1333,10 @@ with tab3:
                                 
                                 tong_phi_ai, chuoi_ghi_chu_ai = rule_engine_calc(kh_id, tai_trong_so_sanh_tan, doanh_thu_chuyen, facts, db)
                                 
-                                df_tc_db = db.execute_query("SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap")
-                                tc_dict = {}
-                                if isinstance(df_tc_db, pd.DataFrame) and not df_tc_db.empty:
-                                    for _, r_tc in df_tc_db.iterrows():
-                                        tc_dict[str(r_tc['id'])] = int(r_tc['id'])
-                                        tc_dict[str(r_tc['ten_tieu_chi']).strip().lower()] = int(r_tc['id'])
-
                                 ds_phu_cap_str = str(r.get('DS_PHU_CAP_TAI_XE', '')).strip()
                                 selected_tc_ids_excel = []
+                                
+                                # Sử dụng tc_dict lấy từ cache ngoài vòng lặp
                                 if ds_phu_cap_str and ds_phu_cap_str.lower() not in ['nan', '']:
                                     items = [x.strip() for x in ds_phu_cap_str.split(',')]
                                     for item in items:
@@ -1230,7 +1352,8 @@ with tab3:
                                 if matched_khoang_cach > 0:
                                     try:
                                         sql_find_tc = "SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap WHERE %s >= km_min AND %s <= km_max"
-                                        df_find_tc = db.execute_query(sql_find_tc, (matched_khoang_cach, matched_khoang_cach))
+                                        # Ứng dụng Cache bảng phụ cấp km
+                                        df_find_tc = get_cached_master_data(sql_find_tc, (matched_khoang_cach, matched_khoang_cach))
                                         
                                         if isinstance(df_find_tc, pd.DataFrame) and not df_find_tc.empty:
                                             lo_trinh_lower = lo_trinh_hien_tai.lower()
@@ -1246,8 +1369,7 @@ with tab3:
                                                         is_sai_tuyen = True
                                                         break
                                                 
-                                                if is_sai_tuyen: 
-                                                    continue 
+                                                if is_sai_tuyen: continue 
                                                 
                                                 phu_dinh_kws = ["không nhận hàng về", "khong nhan hang ve", "không có hàng về", "khong co hang ve", "không hàng về", "khong hang ve", "1 chiều", "1 chieu", "một chiều", "mot chieu", "giao đi", "giao di"]
                                                 is_tieu_chi_khong_hang_ve = any(kw in ten_tc for kw in phu_dinh_kws)
@@ -1304,14 +1426,12 @@ with tab3:
                             except Exception as ex:
                                 error_list.append(f"❌ Dòng {index + 2} (Mã {cid}): Lỗi tính toán - {str(ex)}")
                                 
-                        # Báo hoàn tất tiến trình
                         progress_bar.progress(1.0, text="✅ Đã xử lý xong toàn bộ danh sách trong file!")        
                                 
                         if error_list:
                             st.warning(f"⚠️ Đã chốt thành công {closed_count} chuyến. Có {len(error_list)} lỗi/cảnh báo:")
                             for err in error_list: st.error(err)
-                            
-                        # 4. Khi thành công ít nhất 1 chuyến, tự động xóa File bằng Session State    
+                             
                         if closed_count > 0:
                             st.success(f"🎉 TUYỆT VỜI! Đã chốt {closed_count} chuyến thành công! Danh sách File sẽ tự động dọn dẹp...")
                             st.session_state["reset_file_upload"] += 1
@@ -1320,7 +1440,7 @@ with tab3:
                                     
                     except Exception as e:
                         st.error(f"❌ Lỗi đọc file Excel: {str(e)}")
-    vung_thao_tac_quyet_toan_auto()                
+    vung_thao_tac_quyet_toan_auto()         
 ########################################
 # ==========================================
 # TAB 4: 📊 LỊCH SỬ & CẢNH BÁO QUYẾT TOÁN

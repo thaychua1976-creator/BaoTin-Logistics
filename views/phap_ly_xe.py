@@ -6,6 +6,16 @@ import plotly.express as px
 import plotly.graph_objects as go
 from fleet_manager import  save_vehicle_transaction, delete_vehicle_transaction, get_canh_bao_bao_duong, save_lich_su_bao_duong,get_thong_ke_hoat_dong_xe,get_chi_tiet_bao_duong_xe,get_bieu_do_hoat_dong,get_bang_ke_tong_hop_xe
 from utils_core import  kiem_tra_va_gui_bao_cao_telegram
+
+# --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_cached_master_data(_db_instance, query, params=None):
+    return _db_instance.execute_query(query, params)
+
+def clear_master_cache():
+    get_cached_master_data.clear()
+# ---------------------------------
+
 # ==========================================
 # CSS ẨN HƯỚNG DẪN "PRESS ENTER TO SUBMIT"
 # ==========================================
@@ -23,17 +33,12 @@ st.markdown(hide_enter_submit_css, unsafe_allow_html=True)
 
 ########
 
-
-
-
 db = st.session_state['db']
 
 tab1, tab2,tab3 = st.tabs(["📋 Danh sách đội xe", "🚨 Cảnh báo pháp lý toàn diện","🛠️ Cảnh báo/Lập phiếu bảo dưỡng "])
 
-
-
-# Tải danh sách tài xế để làm danh mục gán cố định
-df_all_tx = db.execute_query("SELECT id, ho_ten FROM nhan_vien WHERE loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu') AND trang_thai='Dang_Lam_Viec'")
+# Tải danh sách tài xế để làm danh mục gán cố định (Sử dụng Cache)
+df_all_tx = get_cached_master_data(db, "SELECT id, ho_ten FROM nhan_vien WHERE loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu') AND trang_thai='Dang_Lam_Viec'")
 tx_dict = {row['id']: row['ho_ten'] for _, row in df_all_tx.iterrows()} if isinstance(df_all_tx, pd.DataFrame) and not df_all_tx.empty else {}
 
 ### Danh sách đội xe
@@ -50,15 +55,15 @@ with tab1:
             FROM xe x LEFT JOIN nhan_vien nv ON x.tai_xe_co_dinh_id = nv.id
             WHERE x.trang_thai = 'Dang_Hoat_Dong' ORDER BY x.id ASC
         """
-        df_xe = db.execute_query(sql_xe_list)
+        # Sử dụng Cache cho danh sách xe
+        df_xe = get_cached_master_data(db, sql_xe_list)
+        
         if isinstance(df_xe, pd.DataFrame) and not df_xe.empty:
-            # Tạo thanh chọn chế độ hiển thị (đặt ngang hàng để tiết kiệm diện tích)
             col_opt1, col_opt2 = st.columns([1, 7])
             with col_opt1:
                 che_do_xem = st.selectbox("Hiển thị:", ["10 dòng", "Tất cả"])
             
             if che_do_xem == "Tất cả":
-                # CHẾ ĐỘ 1: HIỂN THỊ TẤT CẢ (Không dùng nút phân trang)
                 st.caption(f"Đang hiển thị toàn bộ {len(df_xe)} xe.")
                 st.dataframe(
                     df_xe,
@@ -66,13 +71,11 @@ with tab1:
                     hide_index=True
                 )
             else:
-                # CHẾ ĐỘ 2: PHÂN TRANG 10 DÒNG
                 rows_per_page = 10
                 total_rows = len(df_xe)
                 total_pages = math.ceil(total_rows / rows_per_page)
                 
                 if total_pages > 0:
-                    # Khởi tạo và bảo vệ biến nhớ
                     if 'page_doixe' not in st.session_state:
                         st.session_state['page_doixe'] = 1
                         
@@ -81,7 +84,6 @@ with tab1:
                     elif st.session_state['page_doixe'] > total_pages:
                         st.session_state['page_doixe'] = total_pages
                         
-                    # Dàn 3 cột cho nút bấm
                     col1, col2, col3 = st.columns([1, 2, 1])
                     
                     with col1:
@@ -99,26 +101,18 @@ with tab1:
                     with col2:
                         st.markdown(f"<div style='text-align: center; margin-top: 5px;'>Trang {st.session_state['page_doixe']} / {total_pages}</div>", unsafe_allow_html=True)
 
-                    # Tính toán vị trí và cắt dữ liệu
                     start_idx = (st.session_state['page_doixe'] - 1) * rows_per_page
                     end_idx = start_idx + rows_per_page
                     df_page = df_xe.iloc[start_idx:end_idx]
                     
-                    # In bảng 10 dòng ra màn hình
                     st.dataframe(
                         df_page,
                         use_container_width=True,
                         hide_index=True
                     )
-            #gb = GridOptionsBuilder.from_dataframe(df_xe)
-            #gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=140)
-            #gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=10)
-            #AgGrid(df_xe, gridOptions=gb.build(), theme="streamlit", fit_columns_on_grid_load=False, width="100%")
         else:
             st.info("Chưa có dữ liệu xe hoạt động.")
     except Exception as e: st.error(f"Lỗi: {e}")
-
-
 
 # ==========================================
 # TAB 2: TRUNG TÂM CẢNH BÁO PHÁP LÝ TOÀN DIỆN
@@ -127,7 +121,6 @@ with tab2:
     st.markdown("### 🔔 Bảng Điều Khiển Pháp Lý (Phương tiện & Nhân sự)")
     today = pd.Timestamp(datetime.date.today())
     
-    # Hàm 1: Xét trạng thái cảnh báo (Màu sắc)
     def xet_canh_bao(ngay_han):
         if pd.isna(ngay_han): return "⚪ Chưa có"
         days_left = (pd.Timestamp(ngay_han) - today).days
@@ -135,27 +128,25 @@ with tab2:
         if days_left <= 30: return f"🟡 Sắp hết ({days_left} ngày)"
         return "🟢 An toàn"
 
-    # Hàm 2: Định dạng ngày tháng để hiển thị chi tiết
     def format_ngay(ngay_han):
         if pd.isna(ngay_han): return ""
         return pd.to_datetime(ngay_han).strftime('%d/%m/%Y')
 
     # --- KHU VỰC 1: CẢNH BÁO XE ---
     st.markdown("#### 🚛 1. Pháp lý phương tiện (Đăng kiểm, Bảo hiểm, Phù hiệu)")
-    df_xe = db.execute_query("SELECT bien_so_xe AS 'Biển Số', han_dang_kiem, han_bao_hiem_ds, han_phu_hieu FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'")
+    
+    # Sử dụng Cache
+    df_xe = get_cached_master_data(db, "SELECT bien_so_xe AS 'Biển Số', han_dang_kiem, han_bao_hiem_ds, han_phu_hieu FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'")
     
     if isinstance(df_xe, pd.DataFrame) and not df_xe.empty:
-        # Xây dựng cột Trạng thái
         df_xe['Trạng thái Đăng Kiểm'] = df_xe['han_dang_kiem'].apply(xet_canh_bao)
         df_xe['Trạng thái Bảo Hiểm'] = df_xe['han_bao_hiem_ds'].apply(xet_canh_bao)
         df_xe['Trạng thái Phù Hiệu'] = df_xe['han_phu_hieu'].apply(xet_canh_bao)
         
-        # Xây dựng cột Ngày tháng chi tiết
         df_xe['Hạn Đăng Kiểm'] = df_xe['han_dang_kiem'].apply(format_ngay)
         df_xe['Hạn Bảo Hiểm'] = df_xe['han_bao_hiem_ds'].apply(format_ngay)
         df_xe['Hạn Phù Hiệu'] = df_xe['han_phu_hieu'].apply(format_ngay)
         
-        # Lọc ra các xe gặp vấn đề (Có cờ 🔴 hoặc 🟡)
         df_xe_danger = df_xe[(df_xe['Trạng thái Đăng Kiểm'].str.contains('🔴|🟡')) | 
                              (df_xe['Trạng thái Bảo Hiểm'].str.contains('🔴|🟡')) | 
                              (df_xe['Trạng thái Phù Hiệu'].str.contains('🔴|🟡'))]
@@ -163,7 +154,6 @@ with tab2:
         if not df_xe_danger.empty:
             st.error(f"⚠️ Chú ý: Có **{len(df_xe_danger)}** xe đang gặp vấn đề về giấy tờ cần xử lý gấp!")
             
-            # Chọn lọc thứ tự cột hiển thị cho gọn gàng và logic
             cols_xe_hien_thi = [
                 'Biển Số', 
                 'Trạng thái Đăng Kiểm', 'Hạn Đăng Kiểm',
@@ -174,28 +164,22 @@ with tab2:
             
             st.dataframe(df_xe_display, use_container_width=True, hide_index=True)
             
-            # XUẤT EXCEL CẢNH BÁO XE
             excel_buffer_xe = io.BytesIO()
             with pd.ExcelWriter(excel_buffer_xe, engine='xlsxwriter') as writer:
                 df_xe_display.to_excel(writer, sheet_name='Canh_Bao_Xe', index=False)
                 worksheet = writer.sheets['Canh_Bao_Xe']
                 
-                # Format Header Excel nền Đỏ
                 header_format = writer.book.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#cc0000', 'border': 1})
                 for col_num, col_name in enumerate(df_xe_display.columns):
                     worksheet.write(0, col_num, col_name, header_format)
                 
-                # Tự động căn chỉnh độ rộng cột (Auto-fit)
                 for idx, col in enumerate(df_xe_display):
                     series = df_xe_display[col].astype(str)
                     max_len = max(series.map(len).max() if not series.empty else 0, len(str(col))) + 2
                     worksheet.set_column(idx, idx, min(max_len, 30))
-            # Bắt buộc phải có dòng này để con trỏ đọc file quay về vị trí đầu tiên (byte 0)
             excel_buffer_xe.seek(0)        
-            # Tạo 3 cột để chứa 3 nút bấm
-            col_btn1, col_btn2 = st.columns([1, 1])
             
-        
+            col_btn1, col_btn2 = st.columns([1, 1])
             with col_btn1:
                 st.download_button(
                     label="🚨 TẢI EXCEL ",
@@ -204,13 +188,11 @@ with tab2:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary"
                 )
-            # Thêm key='btn_gui_telegram_xe'
             with col_btn2:
                 if st.button("🚀 Gửi File lên Telegram", key='btn_gui_telegram_xe', type="primary", use_container_width=True):
-                    
                     with st.spinner("Đang kiểm tra và gửi..."):
                         success, message = kiem_tra_va_gui_bao_cao_telegram(
-                        df_xe_danger, 
+                          df_xe_danger, 
                           "XE", 
                           excel_buffer_xe
                         )
@@ -218,26 +200,6 @@ with tab2:
                             st.success("✅ Đã gửi danh sách tới hạn lên Telegram!")
                         else:
                             st.warning(f"Thông tin: {message}")
-            
-                # Nút Gửi Zalo (Dùng hàm send_zalo_message từ utils_core.py)
-                #if st.button("💬 GỬI ZALO (BÁO CÁO)", key='btn_gui_zalo_xe', type="secondary", use_container_width=True):
-                   # with st.spinner("Đang gửi tin nhắn Zalo..."):
-                        # Lấy thông tin tài xế cần gia hạn từ df_tx_danger
-                   #     so_luong = len(df_xe_danger)
-                   #     noi_dung_tom_tat = f"Co {so_luong} xe sap het han giay to."
-                        
-                        # Giả định số điện thoại của quản lý hoặc bộ phận nhân sự nhận thông báo
-                        # Bạn cần thay '09xxxxxxxx' bằng số điện thoại người nhận thực tế
-                    #    success = send_zalo_personal_message(
-                    #        phone="09xxxxxxxx", 
-                    #        khach_hang="XE", 
-                    #        lo_trinh=noi_dung_tom_tat
-                    #    )
-                        
-                    #    if success:
-                    #        st.success("✅ Đã gửi Zalo thành công!")
-                #else:
-                #       st.error("❌ Không thể gửi Zalo, vui lòng kiểm tra API.")
         else:
             st.success("✅ Toàn bộ xe đều an toàn pháp lý.")
 
@@ -245,7 +207,9 @@ with tab2:
 
     # --- KHU VỰC 2: CẢNH BÁO TÀI XẾ ---
     st.markdown("#### 🧑‍✈️ 2. Pháp lý nhân sự (GPLX & Thẻ tập huấn)")
-    df_tx = db.execute_query("SELECT ho_ten AS 'Tài Xế', so_dien_thoai AS 'SĐT', han_gplx, han_the_tap_huan FROM nhan_vien WHERE trang_thai = 'Dang_Lam_Viec' AND loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu')")
+    
+    # Sử dụng Cache
+    df_tx = get_cached_master_data(db, "SELECT ho_ten AS 'Tài Xế', so_dien_thoai AS 'SĐT', han_gplx, han_the_tap_huan FROM nhan_vien WHERE trang_thai = 'Dang_Lam_Viec' AND loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu')")
     
     if isinstance(df_tx, pd.DataFrame) and not df_tx.empty:
         df_tx['Trạng thái GPLX'] = df_tx['han_gplx'].apply(xet_canh_bao)
@@ -269,7 +233,6 @@ with tab2:
             
             st.dataframe(df_tx_display, use_container_width=True, hide_index=True)
             
-            # XUẤT EXCEL CẢNH BÁO TÀI XẾ
             excel_buffer_tx = io.BytesIO()
             with pd.ExcelWriter(excel_buffer_tx, engine='xlsxwriter') as writer:
                 df_tx_display.to_excel(writer, sheet_name='Canh_Bao_Tai_Xe', index=False)
@@ -283,11 +246,9 @@ with tab2:
                     series = df_tx_display[col].astype(str)
                     max_len = max(series.map(len).max() if not series.empty else 0, len(str(col))) + 2
                     worksheet_tx.set_column(idx, idx, min(max_len, 30))
-            # Bắt buộc phải có dòng này để con trỏ đọc file quay về vị trí đầu tiên (byte 0)
             excel_buffer_tx.seek(0)        
-            # Tạo 2 cột để chứa 2 nút bấm
+            
             col_btn4, col_btn5 = st.columns([1, 1])
-
             with col_btn4:
                     st.download_button(
                         label="🚨 TẢI FILE EXCEL ",
@@ -295,11 +256,10 @@ with tab2:
                         file_name=f"Canh_Bao_Giay_To_Tai_Xe_{datetime.date.today().strftime('%d%m%Y')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         type="primary",
-                        use_container_width=True # Giúp nút dàn đều ra cột
+                        use_container_width=True
                     )
 
             with col_btn5:
-                    # Nút gửi Telegram cùng hàng, cùng loại "primary"
                     if st.button("🚀 GỬI FILE LÊN TELEGRAM", key='btn_gui_telegram_tx', type="primary", use_container_width=True):
                         with st.spinner("Đang kiểm tra và gửi..."):
                             success, message = kiem_tra_va_gui_bao_cao_telegram(
@@ -314,29 +274,19 @@ with tab2:
             
         else:
             st.success("✅ Toàn bộ tài xế đều đầy đủ giấy phép hợp lệ.")
-    
 
-        
-
-             
 ###############################
 with tab3:
     try:
-        
-            
-
             st.markdown("### 🛠️ Hệ thống Cảnh báo Bảo dưỡng Phương tiện")
 
-            # 1. Kéo dữ liệu từ Database
+            # Không dùng Cache vì Odometer của phương tiện thay đổi liên tục
             df_bao_duong = get_canh_bao_bao_duong(db.pool)
 
             if df_bao_duong is not None and not df_bao_duong.empty:
-                
-                # --- 🌟 BƯỚC SỬA LỖI: ÉP KIỂU DỮ LIỆU VỀ SỐ (FLOAT) ---
                 df_bao_duong['km_da_chay'] = pd.to_numeric(df_bao_duong['km_da_chay'], errors='coerce').fillna(0.0)
                 df_bao_duong['dinh_muc_km'] = pd.to_numeric(df_bao_duong['dinh_muc_km'], errors='coerce').fillna(5000.0)
                 
-                # 2. Xử lý Logic Cảnh báo
                 df_bao_duong['dinh_muc_km'] = df_bao_duong['dinh_muc_km'].replace(0, 5000)
                 df_bao_duong['ty_le'] = (df_bao_duong['km_da_chay'] / df_bao_duong['dinh_muc_km']) * 100
                 
@@ -350,12 +300,10 @@ with tab3:
                 
                 st.divider()
                 
-                # 3. Trình bày Bảng dữ liệu
                 df_hien_thi = df_bao_duong[['bien_so_xe', 'ngay_bd_cuoi', 'km_da_chay', 'dinh_muc_km', 'ty_le']].copy()
                 df_hien_thi.columns = ['Biển Số Xe', 'Ngày BD Gần Nhất', 'KM Đã Chạy', 'Định Mức KM', 'Tỷ Lệ (%)']
                 df_hien_thi['Ngày BD Gần Nhất'] = df_hien_thi['Ngày BD Gần Nhất'].fillna("Chưa từng BD")
                 
-                # --- 🌟 BƯỚC SỬA LỖI: BẪY LỖI BÊN TRONG HÀM TÔ MÀU ---
                 def color_status(val):
                     try:
                         v = float(val)
@@ -383,7 +331,6 @@ with tab3:
                     hide_index=True
                 )
                 
-                # 4. Xuất File Excel
                 st.markdown("<br>", unsafe_allow_html=True)
                 buffer_export_bd = io.BytesIO()
                 with pd.ExcelWriter(buffer_export_bd, engine='xlsxwriter') as writer:
@@ -420,8 +367,9 @@ with tab3:
             # ==========================================
             st.markdown("### 📝 Lập Phiếu Ghi Nhận Bảo Dưỡng / Sửa Chữa")
 
+            # Sử dụng Cache
             sql_get_xe = "SELECT id, bien_so_xe FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'"
-            df_xe = db.execute_query(sql_get_xe)
+            df_xe = get_cached_master_data(db, sql_get_xe)
 
             if df_xe is not None and not df_xe.empty:
                 xe_dict = dict(zip(df_xe['id'], df_xe['bien_so_xe']))
@@ -468,11 +416,10 @@ with tab3:
                                 is_ok, msg = save_lich_su_bao_duong(db.pool, data_bd)
                             
                             if is_ok:
+                                clear_master_cache() # Gọi xóa cache để làm mới lại trạng thái bảo dưỡng và thông tin CSDL
                                 st.success(msg)
                                 import time; time.sleep(1)
                                 st.rerun() 
                             else:
                                 st.error(msg)
     except Exception as e: st.error(f"Lỗi: {e}")
-
-################## Tab báo cáo hiệu năng của xe ################################ 12/7/2026

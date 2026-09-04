@@ -5,7 +5,6 @@ import json
 import uuid
 import traceback
 from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
-# --- IMPORT THÊM HÀM get_phu_phi_theo_khach_hang TỪ BACKEND ---
 from declare_hq_manager import save_to_khai_transaction, delete_to_khai_transaction, get_don_gia_hq_tu_dong, get_phu_phi_theo_khach_hang
 from audit_logger import ghi_log_he_thong
 
@@ -16,6 +15,15 @@ current_user = st.session_state.get('username') or st.session_state.get('user') 
 if not db:
     st.error("⚠️ Lỗi kết nối Cơ sở dữ liệu.")
     st.stop()
+
+# --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_cached_master_data(query, params=None):
+    return db.execute_query(query, params)
+
+def clear_master_cache():
+    get_cached_master_data.clear()
+# ---------------------------------
 
 def get_idx(lst, val, default=0):
     try: return lst.index(val)
@@ -28,7 +36,6 @@ tab_khai_hq, tab_danh_sach, tab_container = st.tabs([
     "📋 KHAI BÁO TỜ KHAI MỚI", 
     "🔍 DANH SÁCH & QUẢN LÝ TỜ KHAI", 
     "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)"
-    
 ])
 
 # ==========================================
@@ -145,33 +152,7 @@ with tab_khai_hq:
         st.markdown("#### 📥 Nhập Liệu Tờ Khai Mới")
         st.info("💡 Hệ thống đã tích hợp Tự động điền giá DVHQ và cho phép chọn nhanh các Phụ phí phát sinh của Khách Hàng.")
         
-        #if "hq_selected_cd" not in st.session_state: st.session_state["hq_selected_cd"] = 0
         if "hq_auto_data" not in st.session_state: st.session_state["hq_auto_data"] = {}
-
-        #df_cd = db.execute_query("SELECT id, ngay_chuyen_di, dia_diem_giao_nhan FROM chuyen_di ORDER BY id DESC LIMIT 50")
-        #dict_cd = {0: "Không liên kết"}
-        #if isinstance(df_cd, pd.DataFrame) and not df_cd.empty:
-        #    dict_cd.update({r['id']: f"Mã {r['id']} - {r['dia_diem_giao_nhan']} ({r['ngay_chuyen_di']})" for _, r in df_cd.iterrows()})
-
-        #selected_cd_id = st.selectbox("🔗 Liên kết Chuyến xe Logistics để tự động điền thông tin", options=list(dict_cd.keys()), format_func=lambda x: dict_cd[x], key="select_lien_ket_chuyen_di")
-
-        #if selected_cd_id != st.session_state["hq_selected_cd"]:
-        #    st.session_state["hq_selected_cd"] = selected_cd_id
-        #    if selected_cd_id != 0:
-        #        sql_get_cd = "SELECT doanh_thu, khoi_luong_kg, ten_khach_hang, dia_diem_giao_nhan, loai_hinh_xe FROM chuyen_di WHERE id = %s"
-        #        df_info = db.execute_query(sql_get_cd, (selected_cd_id,))
-        #        if isinstance(df_info, pd.DataFrame) and not df_info.empty:
-        #            row_info = df_info.iloc[0]
-        #            st.session_state["hq_auto_data"] = {
-        #                'doanh_thu': float(row_info.get('doanh_thu') or 0.0),
-        #                'khoi_luong_kg': float(row_info.get('khoi_luong_kg') or 0.0),
-        #                'kho_cang_lay_hang': row_info.get('dia_diem_giao_nhan') or "",
-        #                'ten_doi_tac': row_info.get('ten_khach_hang') or "",
-        #                'loai_hinh_xe': row_info.get('loai_hinh_xe') or "Container" 
-        #            }
-        #        else: st.session_state["hq_auto_data"] = {}
-        #    else: st.session_state["hq_auto_data"] = {}
-        #    st.rerun()
 
         auto_data = st.session_state.get("hq_auto_data", {})
 
@@ -183,7 +164,8 @@ with tab_khai_hq:
         index= None,
         key="create_loai_tk")
         
-        df_kh = db.execute_query("SELECT id, ten_khach_hang, ma_so_thue, ma_khach_hang FROM khach_hang")
+        # Ứng dụng Cache lấy Danh mục Khách hàng
+        df_kh = get_cached_master_data("SELECT id, ten_khach_hang, ma_so_thue, ma_khach_hang FROM khach_hang")
         dict_kh = {None: "-- Vui lòng chọn khách hàng --"}
         if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
             for _, r in df_kh.iterrows():
@@ -198,30 +180,17 @@ with tab_khai_hq:
         ds_phu_phi_tong_hop = []
         
         if kh_id:
-            gia_hq_tu_dong = get_don_gia_hq_tu_dong(db.pool, kh_id, loai_options[loai_tk])
-            
-            # 1. Lấy phụ phí từ bảng phu_phi_khach_hang
-            #ds_pp_goc = get_phu_phi_theo_khach_hang(db.pool, kh_id)
-            #for p in ds_pp_goc:
-            #    ds_phu_phi_tong_hop.append({
-            #        'id': f"PP_{p['id']}", 
-            #        'ten_phu_phi': p['ten_phu_phi'], 
-            #        'don_gia_phu_phi': float(p['don_gia_phu_phi'])
-            #    })
+            gia_hq_tu_dong = get_don_gia_hq_tu_dong(db.pool, kh_id, loai_options[loai_tk] if loai_tk else "")
                 
-            # 2. Lấy phụ phí từ bảng bang_gia_hai_quan (trừ các khoản là "Phí tờ khai")
-            conn_bg = None
-            cursor_bg = None
-            try:
-                conn_bg = db.pool.get_connection()
-                cursor_bg = conn_bg.cursor(dictionary=True)
-                sql_bg = """
-                    SELECT id, nhom_dich_vu, phan_loai_chi_tiet, don_gia_hq 
-                    FROM bang_gia_hai_quan 
-                    WHERE khach_hang_id = %s AND nhom_dich_vu != 'Phí tờ khai'
-                """
-                cursor_bg.execute(sql_bg, (kh_id,))
-                for r in cursor_bg.fetchall():
+            # 2. Lấy phụ phí từ bảng bang_gia_hai_quan (trừ các khoản là "Phí tờ khai") qua Cache
+            sql_bg = """
+                SELECT id, nhom_dich_vu, phan_loai_chi_tiet, don_gia_hq 
+                FROM bang_gia_hai_quan 
+                WHERE khach_hang_id = %s AND nhom_dich_vu != 'Phí tờ khai'
+            """
+            df_bg = get_cached_master_data(sql_bg, (kh_id,))
+            if isinstance(df_bg, pd.DataFrame) and not df_bg.empty:
+                for _, r in df_bg.iterrows():
                     ten = r['nhom_dich_vu']
                     if r['phan_loai_chi_tiet']:
                         ten += f" ({r['phan_loai_chi_tiet']})"
@@ -230,11 +199,6 @@ with tab_khai_hq:
                         'ten_phu_phi': ten, 
                         'don_gia_phu_phi': float(r['don_gia_hq'])
                     })
-            except Exception as e:
-                st.warning(f"Lỗi truy xuất thêm phụ phí từ bảng giá: {e}")
-            finally:
-                if cursor_bg: cursor_bg.close()
-                if conn_bg: conn_bg.close()
                 
         dict_phu_phi = {p['id']: f"{p['ten_phu_phi']} (+{int(p['don_gia_phu_phi']):,} VNĐ)" for p in ds_phu_phi_tong_hop}
         # ---------------------------------------------------------------------
@@ -264,7 +228,6 @@ with tab_khai_hq:
             st.markdown("**💰 Khai Báo Chi Phí Chung (VNĐ)**")
             phi_dvhq_input = st.text_input("Phí Dịch Vụ Hải Quan (VNĐ)*", value=f"{gia_hq_tu_dong:,.0f}")
             
-            # --- BỘ CHỌN PHỤ PHÍ THÔNG MINH (ĐÃ GỘP TỪ 2 NGUỒN) ---
             st.caption("✨ Các phụ phí được chọn sẽ tự động cộng dồn vào **Phí Phát Sinh** khi Lưu tờ khai.")
             selected_phu_phi = st.multiselect(
                 "🏷️ Chọn Phụ Phí Đã Cấu Hình Cho Khách Này", 
@@ -293,8 +256,6 @@ with tab_khai_hq:
                     st.error("❌ Các giá trị phí không được là số âm.")
                     st.stop()
                 
-                #chuyen_di_ket_noi = selected_cd_id if selected_cd_id != 0 else None
-                
                 # --- XỬ LÝ NGẦM: TÍNH TỔNG PHÍ PHÁT SINH VÀ GHI CHÚ TỰ ĐỘNG ---
                 tong_tien_phu_phi = sum([float(p['don_gia_phu_phi']) for p in ds_phu_phi_tong_hop if p['id'] in selected_phu_phi])
                 ten_cac_phu_phi = [p['ten_phu_phi'] for p in ds_phu_phi_tong_hop if p['id'] in selected_phu_phi]
@@ -304,7 +265,6 @@ with tab_khai_hq:
                 ghi_chu_final = ghi_chu.strip()
                 if ten_cac_phu_phi:
                     ghi_chu_final += f" | Phụ phí: {', '.join(ten_cac_phu_phi)}"
-                # -------------------------------------------------------------
                 
                 tk_data = {
                     'so_to_khai': so_to_khai, 
@@ -312,7 +272,6 @@ with tab_khai_hq:
                     'so_van_don': so_van_don, 
                     'ngay_khai': ngay_khai.strftime('%Y-%m-%d'),
                     'khach_hang_id': kh_id, 
-                    #'chuyen_di_id': chuyen_di_ket_noi, 
                     'so_hoa_don_tm': so_hoa_don_tm,
                     'kho_cang_lay_hang': kho_cang_lay_hang,
                     'ten_doi_tac': ten_doi_tac,
@@ -320,9 +279,9 @@ with tab_khai_hq:
                     'so_kien': so_kien,
                     'tong_trong_luong_hang': tong_trong_luong_hang, 
                     'phan_luong': phan_luong, 
-                    'phi_khac': tong_phi_khac_final,       # Đã cộng dồn thông minh
+                    'phi_khac': tong_phi_khac_final,       
                     'phi_dich_vu_hq': parse_money_input(phi_dvhq_input),
-                    'ghi_chu': ghi_chu_final               # Đã nối tên chi tiết
+                    'ghi_chu': ghi_chu_final               
                 }
                 
                 ok, msg = save_to_khai_transaction(db.pool, tk_data, None, current_user)
@@ -361,6 +320,7 @@ with tab_danh_sach:
             WHERE tk.ngay_khai BETWEEN %s AND %s
             ORDER BY tk.ngay_khai DESC, tk.id DESC
         """
+        # Không dùng cache cho dữ liệu giao dịch động
         df_tk = db.execute_query(sql_ds, (ds_tu_ngay.strftime('%Y-%m-%d'), ds_den_ngay.strftime('%Y-%m-%d')))
         
         if isinstance(df_tk, pd.DataFrame) and not df_tk.empty:
@@ -406,13 +366,11 @@ with tab_danh_sach:
                                 'don_gia_phu_phi': float(p['don_gia_phu_phi'])
                             })
                             
-                        conn_bge = None
-                        cursor_bge = None
-                        try:
-                            conn_bge = db.pool.get_connection()
-                            cursor_bge = conn_bge.cursor(dictionary=True)
-                            cursor_bge.execute("SELECT id, nhom_dich_vu, phan_loai_chi_tiet, don_gia_hq FROM bang_gia_hai_quan WHERE khach_hang_id = %s AND nhom_dich_vu != 'Phí tờ khai'", (kh_id_edit,))
-                            for r in cursor_bge.fetchall():
+                        # Lấy phụ phí từ bảng giá hải quan qua Cache
+                        sql_bge = "SELECT id, nhom_dich_vu, phan_loai_chi_tiet, don_gia_hq FROM bang_gia_hai_quan WHERE khach_hang_id = %s AND nhom_dich_vu != 'Phí tờ khai'"
+                        df_bge = get_cached_master_data(sql_bge, (kh_id_edit,))
+                        if isinstance(df_bge, pd.DataFrame) and not df_bge.empty:
+                            for _, r in df_bge.iterrows():
                                 ten = r['nhom_dich_vu']
                                 if r['phan_loai_chi_tiet']:
                                     ten += f" ({r['phan_loai_chi_tiet']})"
@@ -421,11 +379,6 @@ with tab_danh_sach:
                                     'ten_phu_phi': ten, 
                                     'don_gia_phu_phi': float(r['don_gia_hq'])
                                 })
-                        except Exception as e:
-                            pass
-                        finally:
-                            if cursor_bge: cursor_bge.close()
-                            if conn_bge: conn_bge.close()
                             
                     dict_phu_phi_edit = {p['id']: f"{p['ten_phu_phi']} (+{int(p['don_gia_phu_phi']):,} VNĐ)" for p in ds_phu_phi_edit_tong_hop}
                     # ----------------------------------------
@@ -439,7 +392,7 @@ with tab_danh_sach:
                         e_ngay_khai = ec1.date_input("Ngày Khai", value=pd.to_datetime(tk_info['ngay_khai']).date())
                         e_phan_luong = ec2.selectbox("Phân Luồng", ["Xanh", "Vang", "Do"], index=get_idx(["Xanh", "Vang", "Do"], tk_info['phan_luong']))
                         
-                        df_kh = db.execute_query("SELECT id, ten_khach_hang, ma_so_thue, ma_khach_hang FROM khach_hang")
+                        df_kh = get_cached_master_data("SELECT id, ten_khach_hang, ma_so_thue, ma_khach_hang FROM khach_hang")
                         dict_kh = {None: "-- Vui lòng chọn khách hàng --"}
                         if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
                             for _, r in df_kh.iterrows():
@@ -486,7 +439,6 @@ with tab_danh_sach:
                                 st.error("❌ Số Tờ Khai và Số Vận Đơn không được để trống!")
                                 st.stop()
                                 
-                            # Tính tổng phí sửa đổi
                             e_tong_phu_phi_moi = sum([float(p['don_gia_phu_phi']) for p in ds_phu_phi_edit_tong_hop if p['id'] in e_selected_phu_phi])
                             e_ten_phu_phi_moi = [p['ten_phu_phi'] for p in ds_phu_phi_edit_tong_hop if p['id'] in e_selected_phu_phi]
                             
@@ -529,6 +481,7 @@ with tab_danh_sach:
         else:
             st.info("📭 Không có tờ khai hải quan nào trong khoảng thời gian này.")
     vung_thao_tac_quan_ly_to_khai()
+
 # ==========================================
 # CÁC TAB 3 VÀ 4 GIỮ NGUYÊN HOÀN TOÀN TỪ SOURCE CŨ
 # ==========================================
@@ -870,5 +823,3 @@ with tab_container:
             else:
                 st.warning("📭 Không tìm thấy dữ liệu container phù hợp với điều kiện tra cứu.")
     vung_thao_tac_quan_ly_container()
-################################################
-

@@ -7,7 +7,17 @@ from utils_core import tao_tieu_de_kem_nut_refresh
 from st_aggrid import AgGrid, GridOptionsBuilder
 from trip_manager import get_cong_no_khach_hang
 from declare_hq_manager import  xuat_excel_hai_quan_bao_tin, xuat_excel_hai_quan_continental
+
 db = st.session_state['db']
+
+# --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_cached_master_data(query, params=None):
+    return db.execute_query(query, params)
+
+def clear_master_cache():
+    get_cached_master_data.clear()
+# ---------------------------------
 
 # ==========================================
 # HÀM HỖ TRỢ XỬ LÝ TÊN SHEET EXCEL DUY NHẤT & AN TOÀN
@@ -47,7 +57,8 @@ def render_tab_cong_no_khach_hang1(db):
     st.markdown("### 💰 ĐỐI SOÁT CÔNG NỢ KHÁCH HÀNG")
     
     col1, col2, col3 = st.columns(3)
-    df_kh = db.execute_query("SELECT id, ten_khach_hang, ma_so_thue FROM khach_hang")
+    # Dùng cache cho danh mục Khách Hàng
+    df_kh = get_cached_master_data("SELECT id, ten_khach_hang, ma_so_thue FROM khach_hang")
     dict_kh = {}
     if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
          dict_kh = {row['id']: f"{row['ten_khach_hang']} (MST: {row['ma_so_thue']})" for _, row in df_kh.iterrows()}
@@ -157,7 +168,7 @@ def render_tab_cong_no_khach_hang(db):
         
     st.divider()
     
-    # 2. TRUY VẤN DỮ LIỆU CÔNG NỢ (Tuân thủ lấy khoi_luong_kg làm trọng tải và tính toán 0.15%)
+    # 2. TRUY VẤN DỮ LIỆU CÔNG NỢ (Không dùng Cache cho dữ liệu động)
     sql_kh_cong_no = """
         SELECT 
             COALESCE(kh.ten_khach_hang, cd.ten_khach_hang, 'Khách Lẻ / Khác') AS ten_khach_hang,
@@ -350,7 +361,7 @@ def render_tab_cong_no_nha_xe(db):
         
     st.divider()
     
-    # 2. TRUY VẤN DỮ LIỆU CÔNG NỢ NHÀ XE THUÊ NGOÀI (Giữ nguyên cấu trúc DB theo Source)
+    # 2. TRUY VẤN DỮ LIỆU CÔNG NỢ NHÀ XE THUÊ NGOÀI (Giữ nguyên cấu trúc DB theo Source, Không dùng cache)
     sql_nx = """
         SELECT 
             COALESCE(cd.ten_doi_tac_ngoai, 'Khác / Chưa rõ') AS ten_doi_tac,
@@ -452,7 +463,6 @@ Telephone: 0888039888/ 0988039888/ 0918694143                  Email: baoxnk@gma
             for nha_xe_name, df_group in df_nx.groupby('ten_doi_tac'):
                 # Sử dụng hàm get_unique_sheet_name để tự động xử lý ký tự đặc biệt, cắt gọn <=30 ký tự và chống trùng lặp không phân biệt hoa/thường
                 sheet_name = get_unique_sheet_name(nha_xe_name, existing_sheets_nx)
-                #sheet_name = str(nha_xe_name).replace('/', '-').replace('\\', '-').strip()[:30]
                 if not sheet_name:
                     sheet_name = "Nha_Xe_Khac"
                 
@@ -521,6 +531,7 @@ Telephone: 0888039888/ 0988039888/ 0918694143                  Email: baoxnk@gma
         )
     else:
         st.warning("📭 Không có dữ liệu chuyến xe thuê ngoài nào đã hoàn thành trong khoảng thời gian này.")
+
 # ==========================================
 # 1. KHU VỰC BỘ LỌC THÔNG MINH (NGÀY & TÀI XẾ)
 # ==========================================
@@ -534,8 +545,9 @@ with st.container():
     tu_ngay = c_date1.date_input("Từ ngày", value=start_of_month, format="DD/MM/YYYY")
     den_ngay = c_date2.date_input("Đến ngày", value=today, format="DD/MM/YYYY")
     
+    # Dùng cache lấy Danh sách Nhân viên (Tài xế)
     sql_tx_list = "SELECT id, ho_ten FROM nhan_vien WHERE loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu') ORDER BY ho_ten"
-    df_tx_filter = db.execute_query(sql_tx_list)
+    df_tx_filter = get_cached_master_data(sql_tx_list)
     
     tx_options = {0: "✨ Tất cả tài xế (Mặc định)"}
     if isinstance(df_tx_filter, pd.DataFrame) and not df_tx_filter.empty:
@@ -591,6 +603,7 @@ with tab_bc1:
                 {tx_clause}
                 ORDER BY cd.ngay_chuyen_di DESC, cd.id DESC
             """
+            # Không dùng cache cho dữ liệu báo cáo động
             df_result = db.execute_query(sql_raw_data, tuple(params_bc1))
 
             if isinstance(df_result, pd.DataFrame) and not df_result.empty:
@@ -732,7 +745,7 @@ with tab_out_cong_no_hq:
             WHERE tk.ngay_khai BETWEEN %s AND %s
             ORDER BY tk.ngay_khai ASC
         """
-        
+        # Không dùng cache cho dữ liệu báo cáo động
         df_preview = db.execute_query(sql_preview, (e_tu_ngay.strftime('%Y-%m-%d'), e_den_ngay.strftime('%Y-%m-%d')))
         
         if isinstance(df_preview, pd.DataFrame) and not df_preview.empty:

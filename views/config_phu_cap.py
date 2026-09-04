@@ -4,6 +4,15 @@ import io
 from hr_system_manager import update_phu_cap_matrix_transaction
 from utils_core import import_excel_phu_cap_transaction
 
+# --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_cached_master_data(_db_instance, query, params=None):
+    return _db_instance.execute_query(query, params)
+
+def clear_master_cache():
+    get_cached_master_data.clear()
+# ---------------------------------
+
 db = st.session_state.get('db')
 current_user = st.session_state.get('username') or st.session_state.get('user', 'Admin')
 
@@ -14,10 +23,11 @@ if not db:
 st.markdown("### 💰 BẢNG CẤU HÌNH PHỤ CẤP SẢN LƯỢNG TÀI XẾ")
 st.info("💡 Hướng dẫn: Click đúp vào ô số tiền để sửa trực tiếp (như dùng Excel). Nhấn nút LƯU ở dưới cùng để chốt dữ liệu.")
 
-# 🔄 NÚT LÀM MỚI DỮ LIỆU TỔNG THỂ
+# 🔄 NÚT LÀM MỚI DỮ LIỆU TỔNG THỂ (XÓA CACHE CHỦ ĐỘNG)
 col_rf1, col_rf2 = st.columns([6, 1])
 with col_rf2:
     if st.button("🔄 Làm mới dữ liệu", use_container_width=True):
+        clear_master_cache()
         st.rerun()
 
 tab1, tab2 = st.tabs([
@@ -29,9 +39,10 @@ with tab1:
     @st.fragment
     def vung_thao_tac_config_phu_cap():
         try:
-            df_tt = db.execute_query("SELECT id, ten_hien_thi FROM dm_tai_trong_phu_cap ORDER BY tai_trong_min ASC")
-            df_tc = db.execute_query("SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap ORDER BY id ASC")
-            df_mt = db.execute_query("SELECT tai_trong_id, tieu_chi_id, so_tien FROM ma_tran_phu_cap")
+            # Sử dụng Cache cho việc nạp ma trận phụ cấp
+            df_tt = get_cached_master_data(db, "SELECT id, ten_hien_thi FROM dm_tai_trong_phu_cap ORDER BY tai_trong_min ASC")
+            df_tc = get_cached_master_data(db, "SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap ORDER BY id ASC")
+            df_mt = get_cached_master_data(db, "SELECT tai_trong_id, tieu_chi_id, so_tien FROM ma_tran_phu_cap")
         except Exception as e:
             st.error(f"❌ Lỗi truy vấn dữ liệu từ Database: {str(e)}")
             return
@@ -82,6 +93,7 @@ with tab1:
                     try:
                         is_ok, msg = update_phu_cap_matrix_transaction(db.pool, df_edited, current_user)
                         if is_ok:
+                            clear_master_cache() # Xóa cache sau khi lưu thành công
                             st.success(msg)
                         else:
                             st.error(f"Lỗi: {msg}")
@@ -111,6 +123,7 @@ with tab1:
                                     (new_tieu_chi.strip(), new_km_min, new_km_max)
                                 )
                                 conn.commit()
+                                clear_master_cache() # Làm mới cache khi thêm dữ liệu gốc
                                 st.success("✅ Thêm tiêu chí thành công!")
                                 import time
                                 time.sleep(1.2)
@@ -141,6 +154,7 @@ with tab1:
                                     (new_tt_name.strip(), new_min, new_max)
                                 )
                                 conn.commit()
+                                clear_master_cache() # Làm mới cache khi thêm dữ liệu gốc
                                 st.success("✅ Thêm mức tải trọng thành công!")
                                 import time
                                 time.sleep(1.2)
@@ -162,7 +176,8 @@ with tab1:
                 with col_edit1:
                     st.markdown("**1. Sửa Tiêu chí Phụ cấp**")
                     try:
-                        df_tc_edit = db.execute_query("SELECT id, ten_tieu_chi, km_min, km_max FROM dm_tieu_chi_phu_cap ORDER BY ten_tieu_chi ASC")
+                        # Sử dụng Cache cho danh sách sửa
+                        df_tc_edit = get_cached_master_data(db, "SELECT id, ten_tieu_chi, km_min, km_max FROM dm_tieu_chi_phu_cap ORDER BY ten_tieu_chi ASC")
                     except Exception:
                         df_tc_edit = pd.DataFrame()
                     
@@ -207,6 +222,7 @@ with tab1:
                                             """, ('QUAN_LY_PHU_CAP', edit_tc_id, current_user, 'SUA_TIEU_CHI', chi_tiet))
                                             
                                             conn.commit()
+                                            clear_master_cache() # Xóa cache sau khi sửa
                                             st.success("✅ Cập nhật tiêu chí thành công!")
                                             for k in ["edit_tc_sel", "edit_tc_name", "edit_km_min", "edit_km_max"]:
                                                 if k in st.session_state: del st.session_state[k]
@@ -230,7 +246,8 @@ with tab1:
                 with col_edit2:
                     st.markdown("**2. Sửa Mức Tải Trọng**")
                     try:
-                        df_tt_edit = db.execute_query("SELECT id, ten_hien_thi, tai_trong_min, tai_trong_max FROM dm_tai_trong_phu_cap ORDER BY tai_trong_min ASC")
+                        # Sử dụng Cache cho danh sách sửa
+                        df_tt_edit = get_cached_master_data(db, "SELECT id, ten_hien_thi, tai_trong_min, tai_trong_max FROM dm_tai_trong_phu_cap ORDER BY tai_trong_min ASC")
                     except Exception:
                         df_tt_edit = pd.DataFrame()
                     
@@ -270,6 +287,7 @@ with tab1:
                                             """, ('QUAN_LY_PHU_CAP', edit_tt_id, current_user, 'SUA_TAI_TRONG', chi_tiet))
                                             
                                             conn.commit()
+                                            clear_master_cache() # Xóa cache sau khi sửa
                                             st.success("✅ Cập nhật mức tải trọng thành công!")
                                             for k in ["edit_tt_sel", "edit_tt_name", "edit_tt_min", "edit_tt_max"]:
                                                 if k in st.session_state: del st.session_state[k]
@@ -297,7 +315,8 @@ with tab1:
                 with col_del1:
                     st.markdown("**1. Xóa Tiêu chí**")
                     try:
-                        df_tc_del = db.execute_query("SELECT id, ten_tieu_chi, km_min, km_max FROM dm_tieu_chi_phu_cap ORDER BY ten_tieu_chi ASC")
+                        # Sử dụng Cache cho việc hiển thị danh sách xóa
+                        df_tc_del = get_cached_master_data(db, "SELECT id, ten_tieu_chi, km_min, km_max FROM dm_tieu_chi_phu_cap ORDER BY ten_tieu_chi ASC")
                     except Exception:
                         df_tc_del = pd.DataFrame()
                         
@@ -328,6 +347,7 @@ with tab1:
                                     """, ('QUAN_LY_PHU_CAP', del_tc_id, current_user, 'XOA_TIEU_CHI', chi_tiet))
                                     
                                     conn.commit()
+                                    clear_master_cache() # Xóa cache sau khi xóa dữ liệu
                                     st.success("✅ Đã xóa tiêu chí và dọn dẹp ma trận thành công!")
                                     if "del_tc_sel" in st.session_state: del st.session_state["del_tc_sel"]
                                     import time
@@ -349,7 +369,8 @@ with tab1:
                 with col_del2:
                     st.markdown("**2. Xóa Mức Tải Trọng**")
                     try:
-                        df_tt_del = db.execute_query("SELECT id, ten_hien_thi FROM dm_tai_trong_phu_cap ORDER BY tai_trong_min ASC")
+                        # Sử dụng Cache cho việc hiển thị danh sách xóa
+                        df_tt_del = get_cached_master_data(db, "SELECT id, ten_hien_thi FROM dm_tai_trong_phu_cap ORDER BY tai_trong_min ASC")
                     except Exception:
                         df_tt_del = pd.DataFrame()
                         
@@ -376,6 +397,7 @@ with tab1:
                                     """, ('QUAN_LY_PHU_CAP', del_tt_id, current_user, 'XOA_TAI_TRONG', chi_tiet))
                                     
                                     conn.commit()
+                                    clear_master_cache() # Xóa cache sau khi xóa dữ liệu
                                     st.success("✅ Đã xóa mức tải trọng và dọn dẹp ma trận thành công!")
                                     if "del_tt_sel" in st.session_state: del st.session_state["del_tt_sel"]
                                     import time
@@ -426,6 +448,7 @@ with tab2:
                     progress_text.text("🎉 Hoàn tất quá trình đồng bộ!")
                     
                     if success:
+                        clear_master_cache() # Import thành công phải cập nhật lại cache toàn bộ bảng
                         st.success(f"✅ {msg}")
                         st.balloons()
                     else:

@@ -1,10 +1,9 @@
 import streamlit as st
 import pandas as pd
 import datetime
-import io,os,requests
-import time
+import io, time
 from map_service import MapService
-from trip_manager import save_trip_full_process, tao_khach_hang_nhanh,settle_trip_transaction,delete_trip_safe,update_trip_transaction,update_trip_full_process,group_trips_transaction
+from trip_manager import save_trip_full_process, tao_khach_hang_nhanh, group_trips_transaction, update_trip_full_process, delete_trip_safe
 from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 from dotenv import load_dotenv
 load_dotenv()
@@ -15,171 +14,93 @@ def get_map_service(): return MapService()
 map_srv = get_map_service()
 db = st.session_state['db']
 
-hide_enter_submit_css = """
-<style>
-    div[data-testid="InputInstructions"] { display: none !important; visibility: hidden !important; }
-</style>
-"""
+# --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_cached_master_data(query, params=None):
+    return db.execute_query(query, params)
+
+def clear_master_cache():
+    get_cached_master_data.clear()
+# ---------------------------------
+
+hide_enter_submit_css = "<style>div[data-testid='InputInstructions'] { display: none !important; visibility: hidden !important; }</style>"
 st.markdown(hide_enter_submit_css, unsafe_allow_html=True)
 
-STATUS_MAP = {
-    "Tạo Mới": "Tao_Moi",
-    "Đang Đi": "Dang_Di",
-    "Quyết Toán": "Quyet_Toan",
-    "Hoàn Thành": "Hoan_Thanh",
-    "Hủy Chuyến": "Huy_Chuyen"
-}
+STATUS_MAP = {"Tạo Mới": "Tao_Moi", "Đang Đi": "Dang_Di", "Quyết Toán": "Quyet_Toan", "Hoàn Thành": "Hoan_Thanh", "Hủy Chuyến": "Huy_Chuyen"}
 
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>📝 PHÂN HỆ QUẢN LÝ VÀ ĐIỀU PHỐI CHUYẾN ĐI NÂNG CAO</h3>", unsafe_allow_html=True)
-# ==========================================
-# 1. KHU VỰC BỘ LỌC THÔNG MINH (NGÀY & TÀI XẾ)
-# ==========================================
+
 with st.container():
     st.markdown("##### 🔍 Bộ lọc điều kiện thống kê")
     c_date1, c_date2, c_driver = st.columns([1, 1, 2])
-    
     today = datetime.date.today()
-    start_of_month = today.replace(day=1)
-    
-    tu_ngay = c_date1.date_input("Từ ngày", value=start_of_month, format="DD/MM/YYYY")
+    tu_ngay = c_date1.date_input("Từ ngày", value=today.replace(day=1), format="DD/MM/YYYY")
     den_ngay = c_date2.date_input("Đến ngày", value=today, format="DD/MM/YYYY")
     
-    sql_tx_list = "SELECT id, ho_ten FROM nhan_vien WHERE loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu') ORDER BY ho_ten"
-    df_tx_filter = db.execute_query(sql_tx_list)
-    
+    # Ứng dụng Cache
+    df_tx_filter = get_cached_master_data("SELECT id, ho_ten FROM nhan_vien WHERE loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu') ORDER BY ho_ten")
     tx_options = {0: "✨ Tất cả tài xế (Mặc định)"}
     if isinstance(df_tx_filter, pd.DataFrame) and not df_tx_filter.empty:
-        for _, r in df_tx_filter.iterrows():
-            tx_options[r['id']] = r['ho_ten']
-            
+        for _, r in df_tx_filter.iterrows(): tx_options[r['id']] = r['ho_ten']
     tai_xe_duoc_chon = c_driver.selectbox("Chọn Tài xế thống kê", options=list(tx_options.keys()), format_func=lambda x: tx_options[x], index=0)
 
 st.divider()
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📋 Danh sách chuyến", "➕ Tạo/Sửa chuyến thủ công", "➕ Tạo chuyến theo file", "📊 Chuyến đi trong ngày", "📊 Chuyến theo ngày chọn", "⚠️ Cảnh báo Xe tồn đọng"])
 
-tab1, tab2, tab3, tab4, tab5,tab6 = st.tabs([
-    "📋 Danh sách chuyến", 
-    "➕ Tạo/Sửa chuyến thủ công",
-    "➕ Tạo chuyến theo file",
-    "📊 Chuyến đi trong ngày",
-    "📊 Chuyến theo ngày chọn",
-    "⚠️ Cảnh báo Xe tồn đọng / Quá hạn"
-])
-
-# Lấy dữ liệu danh mục
-sql_xe_trong = "SELECT id, bien_so_xe,loai_xe, tai_trong_thiet_ke, tai_xe_co_dinh_id FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'"
-df_xe_full = db.execute_query(sql_xe_trong)
+# Ứng dụng Cache lấy toàn bộ Danh mục dùng chung
+df_xe_full = get_cached_master_data("SELECT id, bien_so_xe,loai_xe, tai_trong_thiet_ke, tai_xe_co_dinh_id FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'")
 xe_map = {int(r['id']): r for _, r in df_xe_full.iterrows()} if isinstance(df_xe_full, pd.DataFrame) and not df_xe_full.empty else {}
 
-df_tx_full = db.execute_query("SELECT id, ho_ten FROM nhan_vien WHERE loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu') AND trang_thai='Dang_Lam_Viec'")
+df_tx_full = get_cached_master_data("SELECT id, ho_ten FROM nhan_vien WHERE loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu') AND trang_thai='Dang_Lam_Viec'")
 tx_opts = {int(r['id']): str(r['ho_ten']) for _, r in df_tx_full.iterrows()} if isinstance(df_tx_full, pd.DataFrame) and not df_tx_full.empty else {}
 
-df_kh_full = db.execute_query("SELECT id, ma_khach_hang, ten_khach_hang, ma_so_thue FROM khach_hang")
+df_kh_full = get_cached_master_data("SELECT id, ma_khach_hang, ten_khach_hang, ma_so_thue, dia_chi FROM khach_hang")
 kh_opts = {"NEW": "➕ [Tạo mới] Đăng ký khách hàng ngay tại đây..."} 
+kh_diachi_map = {}
 if isinstance(df_kh_full, pd.DataFrame) and not df_kh_full.empty:
     for _, r in df_kh_full.iterrows():
         mst = r['ma_so_thue'] if pd.notna(r['ma_so_thue']) and r['ma_so_thue'] != "" else (r['ma_khach_hang'] if pd.notna(r['ma_khach_hang']) else "KHÔNG CÓ MST")
         kh_opts[int(r['id'])] = f"MST: {mst} — {r['ten_khach_hang']}"
+        kh_diachi_map[int(r['id'])] = str(r['dia_chi']) if pd.notna(r.get('dia_chi')) else ""
 
-# ==========================================
-# TAB 1: DANH SÁCH CHUYẾN ĐI & NGHIỆP VỤ GHÉP CHUYẾN
-# ==========================================
 with tab1:
     tao_tieu_de_kem_nut_refresh("📋 Danh sách chuyến đi trong ngày", "ref_tab1")
     @st.fragment
     def vung_thao_tac_hien_thi_chuyen_di():
-        # ---------------------------------------------------------
-        # GIAO DIỆN ĐIỀU VẬN: GHÉP CHUYẾN / CHUYẾN TIẾP NỐI
-        # ---------------------------------------------------------
         with st.expander("🔗 NGHIỆP VỤ GHÉP CHUYẾN / CHUYẾN TIẾP NỐI (Dành cho Điều Phối)", expanded=True):
-            st.markdown("💡 **Hướng dẫn:** Bôi đen (chọn) các chuyến đi của **cùng một xe** theo đúng thứ tự lấy hàng. Hệ thống sẽ gom nhóm lại thành 1 Manifest và tự động áp dụng giá tiếp nối/tiện chuyến khi kế toán quyết toán.")
-            
-            # Truy vấn các chuyến chưa hoàn thành, chưa gộp, và là xe nội bộ
-            # Đã xóa ký tự "cd." bị dư thừa ở dòng SELECT
+            st.markdown("💡 **Hướng dẫn:** Bôi đen (chọn) các chuyến đi của **cùng một xe** theo đúng thứ tự lấy hàng.")
             sql_ghep = """
-                SELECT cd.id, cd.ngay_chuyen_di, cd.dia_diem_giao_nhan,
-                COALESCE(kh.ten_khach_hang, cd.ten_khach_hang) as ten_khach,
-                x.bien_so_xe, cd.xe_id
-                FROM chuyen_di cd
-                JOIN xe x ON cd.xe_id = x.id
-                LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id
-                WHERE cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') 
-                AND cd.is_gop_chuyen = 0 
-                AND cd.is_thue_ngoai = 0
-                ORDER BY cd.xe_id, cd.id ASC
+                SELECT cd.id, cd.ngay_chuyen_di, cd.dia_diem_giao_nhan, COALESCE(kh.ten_khach_hang, cd.ten_khach_hang) as ten_khach, x.bien_so_xe, cd.xe_id
+                FROM chuyen_di cd JOIN xe x ON cd.xe_id = x.id LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id
+                WHERE cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') AND cd.is_gop_chuyen = 0 AND cd.is_thue_ngoai = 0 ORDER BY cd.xe_id, cd.id ASC
             """
             df_ghep = db.execute_query(sql_ghep)
-            
             if isinstance(df_ghep, pd.DataFrame) and not df_ghep.empty:
-                ghep_opts = {}
-                for _, r in df_ghep.iterrows():
-                    ghep_opts[r['id']] = f"🚛 Xe: {r['bien_so_xe']} | Mã chuyến: {r['id']} | Khách: {r['ten_khach']} | Lộ trình: {r['dia_diem_giao_nhan']}"
-                
-                chuyen_duoc_chon = st.multiselect(
-                    "📌 Click để chọn các chuyến đi cần ghép:",
-                    options=list(ghep_opts.keys()),
-                    format_func=lambda x: ghep_opts[x],
-                    placeholder="Chọn ít nhất 2 chuyến..."
-                )
-                
+                ghep_opts = {r['id']: f"🚛 Xe: {r['bien_so_xe']} | Mã chuyến: {r['id']} | Khách: {r['ten_khach']} | Lộ trình: {r['dia_diem_giao_nhan']}" for _, r in df_ghep.iterrows()}
+                chuyen_duoc_chon = st.multiselect("📌 Click để chọn các chuyến đi cần ghép:", options=list(ghep_opts.keys()), format_func=lambda x: ghep_opts[x])
                 if st.button("🔗 XÁC NHẬN GHÉP CHUYẾN", type="primary"):
-                    if len(chuyen_duoc_chon) < 2:
-                        st.warning("⚠️ Vui lòng chọn ít nhất 2 chuyến đi để thực hiện nghiệp vụ này.")
+                    if len(chuyen_duoc_chon) < 2: st.warning("⚠️ Chọn ít nhất 2 chuyến.")
+                    elif len(df_ghep[df_ghep['id'].isin(chuyen_duoc_chon)]['xe_id'].unique()) > 1: st.error("❌ Các chuyến không cùng xe!")
                     else:
-                        # Ràng buộc Frontend: Kiểm tra các chuyến chọn có cùng xe_id không
-                        xe_ids = df_ghep[df_ghep['id'].isin(chuyen_duoc_chon)]['xe_id'].unique()
-                        if len(xe_ids) > 1:
-                            st.error("❌ Lỗi Điều Phối: Các chuyến đi được chọn KHÔNG thuộc cùng một xe. Vui lòng kiểm tra lại!")
-                        else:
-                            with st.spinner("Hệ thống đang thiết lập Mã Chuyến Ghép (Manifest)..."):
-                                # Gọi hàm Backend (Tuân thủ Transaction & Audit Log)
-                                success, msg = group_trips_transaction(db.pool, chuyen_duoc_chon, st.session_state.username)
-                                if success:
-                                    st.success(msg)
-                                    time.sleep(1.5)
-                                    st.rerun()
-                                else:
-                                    st.error(f"Lỗi: {msg}")
-            else:
-                st.info("📭 Hiện tại không có chuyến đi nội bộ nào (Trạng thái Mới/Đang đi) khả dụng để ghép.")
-        
+                        success, msg = group_trips_transaction(db.pool, chuyen_duoc_chon, st.session_state.username)
+                        st.success(msg) if success else st.error(f"Lỗi: {msg}")
+                        if success: time.sleep(1.5); st.rerun()
+            else: st.info("📭 Không có chuyến đi nội bộ khả dụng để ghép.")
         st.divider()
-
-        # ---------------------------------------------------------
-        # HIỂN THỊ LƯỚI DỮ LIỆU CHUYẾN ĐI (BỔ SUNG HIỂN THỊ MÃ GHÉP)
-        # ---------------------------------------------------------
         try:
-            ngay_hom_nay = datetime.date.today().strftime('%Y-%m-%d')
-            # Cập nhật SQL: Thêm hiển thị ma_chuyen_ghep và stt_chuyen_ghep để trực quan hóa
             sql_list = """
-                SELECT 
-                    cd.ma_chuyen_ghep AS 'Mã Nhóm',
-                    cd.stt_chuyen_ghep AS 'STT',
-                    cd.id AS 'Mã chuyến đi', 
-                    cd.ngay_chuyen_di AS 'Ngày', 
-                    COALESCE(kh.ten_khach_hang, cd.ten_khach_hang) AS 'Khách hàng',
-                    COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) AS 'Biển Số', 
-                    cd.khoi_luong_kg AS 'Trọng tải (kg)',
-                    cd.dia_diem_giao_nhan AS 'Lộ trình', 
-                    cd.trang_thai_chuyen AS 'Trạng thái'
-                FROM chuyen_di cd 
-                LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id
-                LEFT JOIN xe x ON cd.xe_id = x.id
-                WHERE cd.ngay_chuyen_di = %s
-                ORDER BY cd.ma_chuyen_ghep DESC, cd.stt_chuyen_ghep ASC, cd.id DESC
+                SELECT cd.ma_chuyen_ghep AS 'Mã Nhóm', cd.stt_chuyen_ghep AS 'STT', cd.id AS 'Mã chuyến đi', cd.ngay_chuyen_di AS 'Ngày', 
+                COALESCE(kh.ten_khach_hang, cd.ten_khach_hang) AS 'Khách hàng', COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) AS 'Biển Số', 
+                cd.khoi_luong_kg AS 'Trọng tải (kg)', cd.dia_diem_giao_nhan AS 'Lộ trình', cd.trang_thai_chuyen AS 'Trạng thái'
+                FROM chuyen_di cd LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id LEFT JOIN xe x ON cd.xe_id = x.id
+                WHERE cd.ngay_chuyen_di = %s ORDER BY cd.ma_chuyen_ghep DESC, cd.stt_chuyen_ghep ASC, cd.id DESC
             """
-            df_chuyen = db.execute_query(sql_list, (ngay_hom_nay,))
-            if isinstance(df_chuyen, pd.DataFrame) and not df_chuyen.empty:
-                st.dataframe(df_chuyen, use_container_width=True, hide_index=True)
-            else:
-                st.info("Chưa có dữ liệu chuyến đi nào trong ngày.")
-        except Exception as e:
-            st.error(f"Lỗi truy xuất danh sách: {e}")
-
+            df_chuyen = db.execute_query(sql_list, (datetime.date.today().strftime('%Y-%m-%d'),))
+            st.dataframe(df_chuyen, use_container_width=True, hide_index=True) if isinstance(df_chuyen, pd.DataFrame) and not df_chuyen.empty else st.info("Chưa có dữ liệu.")
+        except Exception as e: st.error(f"Lỗi: {e}")
     vung_thao_tac_hien_thi_chuyen_di()
 
-# ==========================================
-# TAB 2: ĐĂNG KÝ, SỬA & XÓA CHUYẾN ĐI THỦ CÔNG
-# ==========================================
+
 # ==========================================
 # TAB 2: ĐĂNG KÝ, SỬA & XÓA CHUYẾN ĐI THỦ CÔNG
 # ==========================================
@@ -219,6 +140,7 @@ with tab2:
                 WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') 
                 ORDER BY id DESC
             """
+            # Dữ liệu động, KHÔNG dùng cache
             df_trips_del = db.execute_query(sql_delete_list)
             if isinstance(df_trips_del, pd.DataFrame) and not df_trips_del.empty:
                 trip_del_options = {r['id']: f"Mã chuyến {r['id']} | Ngày: {r['ngay_chuyen_di']} | Khách: {r['ten_khach_hang']} | Trạng thái: {r['trang_thai_chuyen']}" for _, r in df_trips_del.iterrows()}
@@ -261,6 +183,7 @@ with tab2:
                     WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') 
                     ORDER BY id DESC
                 """
+                # Dữ liệu động, KHÔNG dùng cache
                 df_trips = db.execute_query(sql_edit_list)
                 if isinstance(df_trips, pd.DataFrame) and not df_trips.empty:
                     trip_options = {r['id']: f"Mã chuyến {r['id']} | Ngày: {r['ngay_chuyen_di']} | Khách: {r['ten_khach_hang']}" for _, r in df_trips.iterrows()}
@@ -303,7 +226,8 @@ with tab2:
             # ====================================================================
             # PHẦN 1: THÔNG TIN KHÁCH HÀNG
             # ====================================================================
-            df_kh_full = db.execute_query("SELECT id, ma_khach_hang, ten_khach_hang, so_dien_thoai, dia_chi, ma_so_thue FROM khach_hang")
+            # Ứng dụng CACHE cho Danh mục Khách hàng
+            df_kh_full = get_cached_master_data("SELECT id, ma_khach_hang, ten_khach_hang, so_dien_thoai, dia_chi, ma_so_thue FROM khach_hang")
             kh_opts = {None: "-- Vui lòng chọn Khách hàng --", "NEW": "➕ [Tạo mới] Đăng ký khách hàng ngay tại đây..."}
             kh_diachi_map = {}
             
@@ -415,6 +339,7 @@ with tab2:
                                     GROUP BY x.id, x.tai_xe_co_dinh_id, x.tai_trong_thiet_ke, x.dung_tich_cbm, x.loai_xe
                                     ORDER BY x.tai_trong_thiet_ke ASC, x.dung_tich_cbm ASC
                                 """
+                                # Trạng thái xe thay đổi liên tục -> KHÔNG DÙNG CACHE
                                 df_xe_ranh = db.execute_query(sql_xe_ranh)
                                 found_xe = None
                                 if isinstance(df_xe_ranh, pd.DataFrame) and not df_xe_ranh.empty:
@@ -439,6 +364,7 @@ with tab2:
                     is_ghep_chuyen = st.checkbox("🔗 Hiển thị cả xe đang chạy (Dành cho nghiệp vụ Ghép chuyến)", key=f"check_ghep_{trip_suffix}")
                     
                     sql_busy = "SELECT DISTINCT xe_id FROM chuyen_di WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') AND xe_id IS NOT NULL"
+                    # Xe bận thay đổi liên tục -> KHÔNG DÙNG CACHE
                     df_busy = db.execute_query(sql_busy)
                     busy_xe_ids = df_busy['xe_id'].tolist() if isinstance(df_busy, pd.DataFrame) and not df_busy.empty else []
 
@@ -529,6 +455,7 @@ with tab2:
                         LEFT JOIN nhan_vien nv ON ctx.tai_xe_id = nv.id
                         WHERE cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') AND cd.is_thue_ngoai = 0
                     """
+                    # Thông tin xe đang chạy thay đổi liên tục -> KHÔNG DÙNG CACHE
                     df_xe_ban = db.execute_query(sql_xe_ban)
                     if isinstance(df_xe_ban, pd.DataFrame) and not df_xe_ban.empty:
                         st.dataframe(df_xe_ban, use_container_width=True, hide_index=True, height=265)
@@ -555,7 +482,8 @@ with tab2:
                 flag_hang_ve = 1 if is_hang_ve_ui else 0
                 # Truy vấn SQL kèm theo điều kiện is_hang_tra_ve để chống nhiễu dữ liệu
                 sql_rates = "SELECT DISTINCT diem_di, diem_den FROM rate_cards WHERE khach_hang_id = %s AND is_hang_tra_ve = %s ORDER BY diem_di"
-                df_rates = db.execute_query(sql_rates, (khach_id_filter, flag_hang_ve))
+                # Ứng dụng CACHE cho Lộ trình (Bảng giá) của Khách hàng
+                df_rates = get_cached_master_data(sql_rates, (khach_id_filter, flag_hang_ve))
                 if isinstance(df_rates, pd.DataFrame) and not df_rates.empty:
                     for _, r in df_rates.iterrows():
                         lt_key = f"{r['diem_di']} ➡️ {r['diem_den']}"
@@ -727,7 +655,9 @@ with tab2:
                         st.stop()
                     else:
                         success_kh, k_res = tao_khach_hang_nhanh(db.pool, new_ten_kh, new_sdt_kh, new_zalo_id, new_mst_kh, new_diachi_kh)
-                        if success_kh: khach_id_final, ten_kh_val = int(k_res) if k_res else None, new_ten_kh
+                        if success_kh: 
+                            khach_id_final, ten_kh_val = int(k_res) if k_res else None, new_ten_kh
+                            clear_master_cache() # Thêm dòng này để xóa bộ nhớ đệm khách hàng
                         else: 
                             st.error(f"❌ Lỗi tạo khách hàng: {k_res}")
                             st.stop()
@@ -787,7 +717,7 @@ with tab2:
                     ma_chuyen_gui = result if mode_action == "➕ Tạo chuyến mới" else edit_trip_id_cast
                     if loai_hinh_xe == "🚀 Chạy Xe Công Ty":
                             bien_so_gui = xe_map.get(int(c_xe_sel), {}).get('bien_so_xe', '') if c_xe_sel else ''
-                            df_tx = db.execute_query("SELECT ho_ten, so_dien_thoai, cccd FROM nhan_vien WHERE id=%s", (int(tx_id_assign),))
+                            df_tx = get_cached_master_data("SELECT ho_ten, so_dien_thoai, cccd FROM nhan_vien WHERE id=%s", (int(tx_id_assign),))
                             if isinstance(df_tx, pd.DataFrame) and not df_tx.empty:
                                 ten_tx_gui = str(df_tx.iloc[0]['ho_ten'] or '')
                                 sdt_tx_gui = str(df_tx.iloc[0]['so_dien_thoai'] or '')
@@ -828,7 +758,6 @@ with tab2:
             st.divider()
 
     vung_thao_tac_chuyen_di()
-#######################
 # Tạo file auto book theo file
 ###################################
 with tab3:
@@ -858,7 +787,7 @@ with tab3:
             
             # 2. Truy vấn dữ liệu Khách hàng từ Database
             sql_kh_export = "SELECT ma_khach_hang, ten_khach_hang, ma_so_thue, so_dien_thoai, dia_chi FROM khach_hang"
-            df_kh_export = db.execute_query(sql_kh_export)
+            df_kh_export = get_cached_master_data(sql_kh_export)
             
             if not isinstance(df_kh_export, pd.DataFrame) or df_kh_export.empty:
                 df_kh_export = pd.DataFrame(columns=["Mã Khách Hàng", "Tên Khách Hàng", "Mã Số Thuế", "Số Điện Thoại", "Địa Chỉ"])
@@ -912,7 +841,7 @@ with tab3:
                     df_orders.columns = [str(c).strip().upper() for c in df_orders.columns] 
                     df_orders['NGAY_CHAY_CHUAN'] = pd.to_datetime(df_orders['NGAY_CHAY'], dayfirst=True, errors='coerce')
                     
-                    df_kh = db.execute_query("SELECT id, ma_khach_hang, ten_khach_hang, ma_so_thue FROM khach_hang")
+                    df_kh = get_cached_master_data("SELECT id, ma_khach_hang, ten_khach_hang, ma_so_thue FROM khach_hang")
                     
                     kh_dict_mst = {}
                     kh_dict_ma = {}
@@ -1249,7 +1178,7 @@ with tab5:
         st.markdown("##### 🔍 Chọn điều kiện tra cứu")
         
         sql_tx_list = "SELECT id, ho_ten FROM nhan_vien WHERE loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu') ORDER BY ho_ten"
-        df_tx_filter = db.execute_query(sql_tx_list)
+        df_tx_filter = get_cached_master_data(sql_tx_list)
         
         tx_options = {0: "✨ Tất cả Tài xế"}
         if isinstance(df_tx_filter, pd.DataFrame) and not df_tx_filter.empty:

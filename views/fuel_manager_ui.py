@@ -4,6 +4,15 @@ from io import BytesIO
 from fleet_manager import save_do_xang_transaction, update_do_xang_transaction
 from utils_core import tao_tieu_de_kem_nut_refresh, doc_anh_cay_xang
 
+# --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_cached_master_data(_db_instance, query, params=None):
+    return _db_instance.execute_query(query, params)
+
+def clear_master_cache():
+    get_cached_master_data.clear()
+# ---------------------------------
+
 def render_fuel_management_tab(db, current_user):
     """
     Hàm hiển thị giao diện Quản lý Nhiên Liệu & Hiệu Suất 
@@ -17,8 +26,8 @@ def render_fuel_management_tab(db, current_user):
     if "fuel_edit_reset_key" not in st.session_state:
         st.session_state["fuel_edit_reset_key"] = 0
 
-    # 1. LẤY DANH SÁCH XE TỪ DATABASE
-    df_xe = db.execute_query("SELECT id, bien_so_xe, tong_km_hien_tai, dinh_muc_nhien_lieu FROM xe WHERE trang_thai='Dang_Hoat_Dong'")
+    # 1. LẤY DANH SÁCH XE TỪ DATABASE (SỬ DỤNG CACHE)
+    df_xe = get_cached_master_data(db, "SELECT id, bien_so_xe, tong_km_hien_tai, dinh_muc_nhien_lieu FROM xe WHERE trang_thai='Dang_Hoat_Dong'")
     if not isinstance(df_xe, pd.DataFrame) or df_xe.empty:
         st.warning("⚠️ Hiện tại không có dữ liệu xe hoạt động trong hệ thống.")
         return
@@ -112,6 +121,7 @@ def render_fuel_management_tab(db, current_user):
                         with st.spinner("Đang lưu lịch sử và cập nhật ODO xe..."):
                             is_ok, msg = save_do_xang_transaction(db.pool, data_xang, current_user)
                             if is_ok:
+                                clear_master_cache() # Làm mới bộ đệm vì ODO của xe đã bị thay đổi
                                 for k in ['ai_fuel_lit', 'ai_fuel_tien', 'ai_fuel_odo']:
                                     if k in st.session_state: 
                                         del st.session_state[k]
@@ -182,6 +192,7 @@ def render_fuel_management_tab(db, current_user):
                         with st.spinner("Đang cập nhật lại hệ thống..."):
                             is_ok, msg = update_do_xang_transaction(db.pool, bill_edit_id, data_sua, current_user)
                             if is_ok:
+                                clear_master_cache() # Làm mới bộ đệm vì có thể hiệu chỉnh ODO
                                 # Tăng biến đếm reset form chỉnh sửa để làm trống form và ẩn lựa chọn cũ
                                 st.session_state["fuel_edit_reset_key"] += 1
                                 st.success(msg)

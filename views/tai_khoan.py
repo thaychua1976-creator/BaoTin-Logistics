@@ -6,6 +6,15 @@ import bcrypt
 
 db = st.session_state['db']
 
+# --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_cached_master_data(_db_instance, query, params=None):
+    return _db_instance.execute_query(query, params)
+
+def clear_master_cache():
+    get_cached_master_data.clear()
+# ---------------------------------
+
 # ==========================================
 # CSS ẨN HƯỚNG DẪN "PRESS ENTER TO SUBMIT"
 # ==========================================
@@ -25,10 +34,10 @@ st.markdown("<h3 style='text-align: center; color: #0b5394;'>🔐 PHÂN HỆ QU�
 
 # --- MỚI: HÀM LẤY DANH SÁCH NHÂN VIÊN (CẬP NHẬT THEO CỘT LOẠI NHÂN VIÊN) ---
 def get_danh_sach_nhan_vien(database):
-    # Lấy thêm cột loai_nhan_vien từ Database
+    # Lấy thêm cột loai_nhan_vien từ Database (Sử dụng Cache)
     sql = "SELECT id, ho_ten, loai_nhan_vien FROM nhan_vien" 
     try:
-        df = database.execute_query(sql)
+        df = get_cached_master_data(database, sql)
         if isinstance(df, pd.DataFrame) and not df.empty:
             
             # Tạo một từ điển nhỏ để dịch thuật ngữ Enum sang tiếng Việt hiển thị cho đẹp
@@ -87,7 +96,8 @@ with tab1:
             LEFT JOIN nhan_vien nv ON u.nhan_vien_id = nv.id
             ORDER BY u.id DESC
         """
-        df_users = db.execute_query(sql_users)
+        # Sử dụng Cache cho danh sách tài khoản
+        df_users = get_cached_master_data(db, sql_users)
         
         if isinstance(df_users, pd.DataFrame) and not df_users.empty:
             col_opt1, col_opt2 = st.columns([1, 7])
@@ -165,6 +175,7 @@ with tab2:
                 st.error("⚠️ Phân quyền 'Tài xế' bắt buộc phải được liên kết với một Hồ sơ Nhân viên!")
             else:
                 try:
+                    # Kiểm tra trùng lặp có thể dùng truy vấn trực tiếp (không cache) để chính xác 100%
                     chk_exist = db.execute_query("SELECT id FROM users WHERE username = %s", (new_user.strip(),))
                     if isinstance(chk_exist, pd.DataFrame) and not chk_exist.empty:
                         st.error("❌ Tên đăng nhập này đã tồn tại trên hệ thống! Vui lòng chọn tên khác.")
@@ -186,6 +197,7 @@ with tab2:
                         success, result = handle_user_transaction_with_audit(db.pool, "TAO_MOI", user_data, current_user)
                         
                         if success:
+                            clear_master_cache() # Xóa cache sau khi tạo tài khoản
                             st.success(f"🎉 Đã khởi tạo tài khoản thành công! (ID: {result})")
                             st.session_state["reset_add_user"] += 1
                             time.sleep(1)
@@ -202,8 +214,8 @@ with tab3:
     try:
         if "reset_edit_user" not in st.session_state: st.session_state["reset_edit_user"] = 0
         
-        # --- ĐÃ SỬA: Query thêm nhan_vien_id ---
-        df_all_us = db.execute_query("SELECT id, username, ho_ten, role, password, trang_thai, nhan_vien_id FROM users")
+        # --- ĐÃ SỬA: Query thêm nhan_vien_id (Sử dụng Cache) ---
+        df_all_us = get_cached_master_data(db, "SELECT id, username, ho_ten, role, password, trang_thai, nhan_vien_id FROM users")
         
         if isinstance(df_all_us, pd.DataFrame) and not df_all_us.empty:
             user_opts = {row['id']: f"{row['ho_ten']} ({row['username']}) - Quyền: {row['role']}" for _, row in df_all_us.iterrows()}
@@ -280,6 +292,7 @@ with tab3:
                         
                                                 
                             if success:
+                                clear_master_cache() # Xóa cache sau khi sửa tài khoản
                                 st.success(f"🎉 Đã cập nhật thành công tài khoản {us_data['username']}!")
                                 st.session_state["reset_edit_user"] += 1
                                 time.sleep(1)
@@ -293,6 +306,7 @@ with tab3:
                         success, result = handle_user_transaction_with_audit(db.pool, "XOA", user_data, current_user)
                         
                         if success:
+                            clear_master_cache() # Xóa cache sau khi xóa tài khoản
                             st.warning(f"🗑️ Đã xóa bỏ hoàn toàn tài khoản {us_data['username']} khỏi hệ thống!")
                             st.session_state["reset_edit_user"] += 1
                             time.sleep(1)

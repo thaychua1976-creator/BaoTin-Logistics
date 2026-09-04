@@ -16,12 +16,22 @@ from utils_core import (
 
 db = st.session_state.get('db')
 
-# Lấy chính xác username từ phiên đăng nhập thực tế của người dùng[cite: 3]
+# Lấy chính xác username từ phiên đăng nhập thực tế của người dùng
 current_user = st.session_state.get('username') or st.session_state.get('user') or st.session_state.get('logged_in_user', 'Admin')
 
 if not db:
     st.error("⚠️ Lỗi kết nối Cơ sở dữ liệu.")
     st.stop()
+
+# --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_cached_master_data(query, params=None):
+    db_instance = st.session_state['db']
+    return db_instance.execute_query(query, params)
+
+def clear_master_cache():
+    get_cached_master_data.clear()
+# ---------------------------------
 
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>💸 QUẢN LÝ BIỂU CƯỚC & PHỤ PHÍ KHÁCH HÀNG (RATE CARDS & SURCHARGES)</h3>", unsafe_allow_html=True)
 st.divider()
@@ -41,8 +51,8 @@ tab1, tab2, tab3, tab4 = st.tabs([
 with tab1:
     st.markdown("#### 📋 Quản lý Biểu cước Vận chuyển (Rate Cards)")
     
-    # Lấy danh sách khách hàng làm bộ lọc
-    df_kh = db.execute_query("SELECT id, ten_khach_hang FROM khach_hang ORDER BY ten_khach_hang ASC")
+    # Ứng dụng Cache lấy danh sách khách hàng
+    df_kh = get_cached_master_data("SELECT id, ten_khach_hang FROM khach_hang ORDER BY ten_khach_hang ASC")
     kh_opts = {"ALL": "🌟 TẤT CẢ CÔNG TY / KHÁCH HÀNG"}
     if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
         for _, row in df_kh.iterrows():
@@ -69,20 +79,22 @@ with tab1:
             JOIN khach_hang kh ON r.khach_hang_id = kh.id
         """
         
+        # Ứng dụng Cache gọi Bảng giá
         if chon_kh_id == "ALL":
             st.warning("⚠️ Chế độ xem toàn bộ: Giao diện web chỉ hiển thị 500 dòng mới nhất để đảm bảo tốc độ. Hãy dùng nút 'Xuất Excel' bên dưới để lấy toàn bộ dữ liệu.")
-            df_rates_ui = db.execute_query(sql_base + " ORDER BY r.id DESC LIMIT 500")
-            df_rates_export = db.execute_query(sql_base + " ORDER BY r.id DESC")
+            df_rates_ui = get_cached_master_data(sql_base + " ORDER BY r.id DESC LIMIT 500")
+            df_rates_export = get_cached_master_data(sql_base + " ORDER BY r.id DESC")
             file_export_name = f"Bang_Gia_TatCa_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
         else:
-            df_rates_ui = db.execute_query(sql_base + " WHERE r.khach_hang_id = %s ORDER BY r.id DESC", (chon_kh_id,))
+            df_rates_ui = get_cached_master_data(sql_base + " WHERE r.khach_hang_id = %s ORDER BY r.id DESC", (chon_kh_id,))
             df_rates_export = df_rates_ui 
             clean_name = "".join([c if c.isalnum() else "_" for c in kh_opts[chon_kh_id]])
             file_export_name = f"Bang_Gia_{clean_name}_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
 
-        # 🔧 FIX LỖI STREAMLIT API EXCEPTION TẠI ĐÂY
         if "mode_rate_t1_val" not in st.session_state:
             st.session_state["mode_rate_t1_val"] = "👀 Xem danh sách & Xuất Excel"
+        if "rate_reset_counter" not in st.session_state:
+            st.session_state["rate_reset_counter"] = 0
             
         opt_t1 = ["👀 Xem danh sách & Xuất Excel", "➕ Thêm mới tuyến đường", "✏️ Sửa trực tiếp tuyến đường", "🗑️ Xóa tuyến đường"]
         idx_t1 = opt_t1.index(st.session_state["mode_rate_t1_val"]) if st.session_state["mode_rate_t1_val"] in opt_t1 else 0
@@ -91,7 +103,8 @@ with tab1:
             "📌 Chọn hành động:", 
             opt_t1, 
             horizontal=True, 
-            index=idx_t1
+            index=idx_t1,
+            key=f"radio_mode_t1_{st.session_state['rate_reset_counter']}" 
         )
         st.session_state["mode_rate_t1_val"] = mode_thao_tac
         
@@ -145,10 +158,11 @@ with tab1:
                         }
                         success, message = create_single_rate_card_transaction(db.pool, data_add, current_user)
                         if success:
+                            clear_master_cache() # Cập nhật xong xóa Cache
                             st.success(message)
                             time.sleep(1)
-                            # Trả về trạng thái mặc định bằng biến val thay vì gọi trực tiếp key của widget
                             st.session_state['mode_rate_t1_val'] = "👀 Xem danh sách & Xuất Excel"
+                            st.session_state['rate_reset_counter'] += 1  
                             st.rerun()
                         else:
                             st.error(message)
@@ -231,6 +245,7 @@ with tab1:
                                 }
                                 success, message = update_single_rate_card_transaction(db.pool, selected_rate_id, data_edit, current_user)
                                 if success:
+                                    clear_master_cache() # Cập nhật xong xóa Cache
                                     st.success(message)
                                     time.sleep(1)
                                     st.session_state['mode_rate_t1_val'] = "👀 Xem danh sách & Xuất Excel"
@@ -251,6 +266,7 @@ with tab1:
                         if st.button("🗑️ Xác Nhận Xóa Vĩnh Viễn", type="primary"):
                             success, message = delete_single_rate_card_transaction(db.pool, selected_rate_id, current_user)
                             if success:
+                                clear_master_cache() # Xóa thành công thì dọn dẹp Cache
                                 st.success(message)
                                 time.sleep(1)
                                 st.session_state['mode_rate_t1_val'] = "👀 Xem danh sách & Xuất Excel"
@@ -292,6 +308,7 @@ with tab2:
                     is_ok, msg = import_and_update_bang_gia_transaction(db.pool, df_up_rate, df_up_pp, current_user)
                     
                     if is_ok:
+                        clear_master_cache() # Import thành công thì xóa Cache toàn bộ Bảng giá & Phụ phí
                         st.success("✅ CẬP NHẬT THÀNH CÔNG VÀO CƠ SỞ DỮ LIỆU!")
                         st.markdown(msg)
                         st.info("🔄 Giao diện sẽ tự động làm mới sau 5 giây để hiển thị dữ liệu mới...")
@@ -312,7 +329,8 @@ with tab2:
 with tab3:
     st.markdown("#### 🏷️ Quản lý Phụ phí Khách hàng (Surcharges)")
     
-    df_kh_pp = db.execute_query("SELECT id, ten_khach_hang FROM khach_hang ORDER BY ten_khach_hang ASC")
+    # Ứng dụng Cache lấy Khách hàng cho Tab 3
+    df_kh_pp = get_cached_master_data("SELECT id, ten_khach_hang FROM khach_hang ORDER BY ten_khach_hang ASC")
     kh_pp_opts = {"ALL": "🌟 TẤT CẢ CÔNG TY / KHÁCH HÀNG"}
     if isinstance(df_kh_pp, pd.DataFrame) and not df_kh_pp.empty:
         for _, row in df_kh_pp.iterrows():
@@ -338,20 +356,23 @@ with tab3:
             JOIN khach_hang kh ON p.khach_hang_id = kh.id
         """
         
+        # Ứng dụng Cache gọi bảng Phụ phí
         if chon_kh_pp_id == "ALL":
             st.warning("⚠️ Chế độ xem toàn bộ: Giao diện web chỉ hiển thị 500 dòng mới nhất để chống giật lag. Hãy dùng nút 'Xuất Excel' để lấy toàn bộ dữ liệu.")
-            df_pp_ui = db.execute_query(sql_pp_base + " ORDER BY p.id DESC LIMIT 500")
-            df_pp_export = db.execute_query(sql_pp_base + " ORDER BY p.id DESC")
+            df_pp_ui = get_cached_master_data(sql_pp_base + " ORDER BY p.id DESC LIMIT 500")
+            df_pp_export = get_cached_master_data(sql_pp_base + " ORDER BY p.id DESC")
             file_pp_name = f"Phu_Phi_TatCa_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
         else:
-            df_pp_ui = db.execute_query(sql_pp_base + " WHERE p.khach_hang_id = %s ORDER BY p.id DESC", (chon_kh_pp_id,))
+            df_pp_ui = get_cached_master_data(sql_pp_base + " WHERE p.khach_hang_id = %s ORDER BY p.id DESC", (chon_kh_pp_id,))
             df_pp_export = df_pp_ui
             clean_name = "".join([c if c.isalnum() else "_" for c in kh_pp_opts[chon_kh_pp_id]])
             file_pp_name = f"Phu_Phi_{clean_name}_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
 
-        # 🔧 FIX LỖI STREAMLIT API EXCEPTION TẠI ĐÂY
         if "mode_pp_t3_val" not in st.session_state:
             st.session_state["mode_pp_t3_val"] = "👀 Xem danh sách & Xuất Excel"
+        if "rate_reset_counter" not in st.session_state:
+            st.session_state["rate_reset_counter"] = 0
+
             
         opt_t3 = ["👀 Xem danh sách & Xuất Excel", "➕ Thêm mới phụ phí", "✏️ Sửa trực tiếp phụ phí", "🗑️ Xóa phụ phí"]
         idx_t3 = opt_t3.index(st.session_state["mode_pp_t3_val"]) if st.session_state["mode_pp_t3_val"] in opt_t3 else 0
@@ -360,7 +381,8 @@ with tab3:
             "📌 Chọn hành động:", 
             opt_t3, 
             horizontal=True, 
-            index=idx_t3
+            index=idx_t3,
+            key=f"radio_mode_t3_{st.session_state['rate_reset_counter']}" 
         )
         st.session_state["mode_pp_t3_val"] = mode_pp_act
         
@@ -431,9 +453,11 @@ with tab3:
                                 if 'conn' in locals(): conn.close()
 
                         if success:
+                            clear_master_cache() # Dọn dẹp cache
                             st.success(message)
                             time.sleep(1)
                             st.session_state['mode_pp_t3_val'] = "👀 Xem danh sách & Xuất Excel"
+                            st.session_state['rate_reset_counter'] += 1  
                             st.rerun()
                         else:
                             st.error(message)
@@ -521,6 +545,7 @@ with tab3:
                                 }
                                 success, message = update_single_phu_phi_transaction(db.pool, selected_pp_id, data_edit_pp, current_user)
                                 if success:
+                                    clear_master_cache() # Dọn dẹp cache
                                     st.success(message)
                                     time.sleep(1)
                                     st.session_state['mode_pp_t3_val'] = "👀 Xem danh sách & Xuất Excel"
@@ -546,6 +571,7 @@ with tab3:
                         if st.button("🗑️ Xác Nhận Xóa Vĩnh Viễn Phụ Phí", type="primary"):
                             success, message = delete_single_phu_phi_transaction(db.pool, selected_pp_id, current_user)
                             if success:
+                                clear_master_cache() # Dọn dẹp cache
                                 st.success(message)
                                 time.sleep(1)
                                 st.session_state['mode_pp_t3_val'] = "👀 Xem danh sách & Xuất Excel"
@@ -578,6 +604,7 @@ with tab4:
                     
                     is_ok, msg = import_and_update_phu_phi_transaction(db.pool, df_up_pp, current_user)
                     if is_ok:
+                        clear_master_cache() # Dọn dẹp Cache phụ phí sau khi upload
                         st.success(f"✅ KẾT QUẢ: {msg}")
                         st.info("🔄 Giao diện sẽ làm mới sau 3 giây...")
                         time.sleep(3) 
