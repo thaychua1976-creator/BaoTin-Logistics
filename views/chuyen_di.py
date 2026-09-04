@@ -761,14 +761,14 @@ with tab2:
                     st.rerun()
                 st.divider()
 
-            # Đếm ngược 6 giây, nếu người dùng không bấm nút thì tự động dọn dẹp
-            for i in range(6, 0, -1):
+            # Đếm ngược 30 giây, nếu người dùng không bấm nút thì tự động dọn dẹp
+            for i in range(30, 0, -1):
                 # Kiểm tra lại xem biến còn tồn tại không (nếu user đã bấm nút thì biến bị del rồi)
                 if "tn_tai_xe" not in st.session_state:
                     break
                 time.sleep(1)
             
-            # Sau khi hết vòng lặp 6 giây, nếu biến vẫn còn thì tự động đóng
+            # Sau khi hết vòng lặp 30 giây, nếu biến vẫn còn thì tự động đóng
             if "tn_tai_xe" in st.session_state:
                 del st.session_state["tn_tai_xe"]
                 del st.session_state["tn_khach"]

@@ -53,8 +53,11 @@ with tab1:
         
         if isinstance(df_nv_list, pd.DataFrame) and not df_nv_list.empty:
             df_nv_list['Trạng thái'] = df_nv_list['Tình trạng'].apply(lambda x: "🟢 Đang làm việc" if x == "Dang_Lam_Viec" else "🔴 Đã nghỉ việc")
-            df_nv_list['Hạn Bằng'] = pd.to_datetime(df_nv_list['Hạn Bằng']).dt.strftime('%d-%m-%Y').fillna("---")
-            df_nv_list['Hạn Tập Huấn'] = pd.to_datetime(df_nv_list['Hạn Tập Huấn']).dt.strftime('%d-%m-%Y').fillna("---")
+            
+            # Cập nhật format ngày tháng hiển thị sang dd/mm/yyyy
+            df_nv_list['Hạn Bằng'] = pd.to_datetime(df_nv_list['Hạn Bằng']).dt.strftime('%d/%m/%Y').fillna("---")
+            df_nv_list['Hạn Tập Huấn'] = pd.to_datetime(df_nv_list['Hạn Tập Huấn']).dt.strftime('%d/%m/%Y').fillna("---")
+            
             df_nv_list = df_nv_list.drop(columns=['Tình trạng'])
             
             # --- BẮT ĐẦU XỬ LÝ PHÂN TRANG VÀ HIỂN THỊ TẤT CẢ ---
@@ -132,8 +135,9 @@ with tab2:
         hang_gplx = c6.selectbox("Hạng Bằng", ["A1","D","D2","C","CE", "E", "FC", "FD", "B2", "Khác"], index=0)
         
         c7, c8 = st.columns(2)
-        han_gplx = c7.date_input("Ngày Hết Hạn Bằng Lái", value=datetime.date.today() + datetime.timedelta(days=365),format="DD/MM/YYYY")
-        han_tth = c8.date_input("Ngày Hết Hạn Thẻ Tập Huấn", value=datetime.date.today() + datetime.timedelta(days=365),format="DD/MM/YYYY")
+        # Tab 2 đã có sẵn format="DD/MM/YYYY"
+        han_gplx = c7.date_input("Ngày Hết Hạn Bằng Lái", value=datetime.date.today() + datetime.timedelta(days=365), format="DD/MM/YYYY")
+        han_tth = c8.date_input("Ngày Hết Hạn Thẻ Tập Huấn", value=datetime.date.today() + datetime.timedelta(days=365), format="DD/MM/YYYY")
         
         dict_chuc_vu = {
             "Tai_Chinh": "Tài xế chính",
@@ -152,6 +156,7 @@ with tab2:
             if not ma_nv or not ten_nv or not sdt_nv:
                 st.error("⚠️ Vui lòng điền đầy đủ Mã, Họ tên và Số điện thoại!")
             else:
+                # Format lại thành %Y-%m-%d để lưu vào database
                 han_gplx_db = han_gplx.strftime('%Y-%m-%d')
                 han_tth_db = han_tth.strftime('%Y-%m-%d')
                 nv_data = (ma_nv, ten_nv, sdt_nv, cccd, gplx, hang_gplx, han_gplx_db, han_tth_db, loai_nv)
@@ -194,13 +199,15 @@ with tab3:
                 edit_hang = c_edit6.selectbox("Hạng Bằng", opts_hang, index=opts_hang.index(nv_data['hang_gplx']) if nv_data['hang_gplx'] in opts_hang else 0)
                 
                 c_edit7, c_edit8 = st.columns(2)
-                edit_han_gplx = c_edit7.date_input("Hạn Bằng", value=nv_data['han_gplx'] if pd.notna(nv_data['han_gplx']) else datetime.date.today())
-                edit_han_tth = c_edit8.date_input("Hạn Thẻ Tập Huấn", value=nv_data['han_the_tap_huan'] if pd.notna(nv_data['han_the_tap_huan']) else datetime.date.today())
+                # Cập nhật format="DD/MM/YYYY" cho giao diện Tab 3
+                edit_han_gplx = c_edit7.date_input("Hạn Bằng", value=nv_data['han_gplx'] if pd.notna(nv_data['han_gplx']) else datetime.date.today(), format="DD/MM/YYYY")
+                edit_han_tth = c_edit8.date_input("Hạn Thẻ Tập Huấn", value=nv_data['han_the_tap_huan'] if pd.notna(nv_data['han_the_tap_huan']) else datetime.date.today(), format="DD/MM/YYYY")
                 
                 edit_loai = st.selectbox("Chức vụ", ["Tai_Chinh", "Tai_Phu", "Van_Phong","Dieu_Hanh"], index=["Tai_Chinh", "Tai_Phu", "Van_Phong","Dieu_Hanh"].index(nv_data['loai_nhan_vien']))
                 
                 col_btn1, col_btn2 = st.columns(2)
                 if col_btn1.form_submit_button("🔄 Lưu thay đổi", type="primary"):
+                    # Format lại thành %Y-%m-%d để lưu vào database
                     edit_han_gplx_db = edit_han_gplx.strftime('%Y-%m-%d')
                     edit_han_tth_db = edit_han_tth.strftime('%Y-%m-%d')
                     update_data = (edit_ma, edit_ten, edit_sdt, edit_cccd, edit_gplx, edit_hang, edit_han_gplx_db, edit_han_tth_db, edit_loai)
