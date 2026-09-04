@@ -703,7 +703,7 @@ with tab2:
                         'hinh_thuc_thanh_toan_ngoai': str(ngoai_thanh_toan)
                     })
                 
-                with st.spinner("Đang lưu lệnh vào hệ thống..."):
+                with st.spinner("Hệ thống đang xử lý vui lòng đợi lưu và hiển thị nội dung gửi tài xế và khách hàng..."):
                     if mode_action == "➕ Tạo chuyến mới":
                         success, result = save_trip_full_process(db.pool, data_chuyen_di, tx_id_assign_final)
                         msg_success = f"✅ Lên lệnh điều xe thành công! Mã chuyến: {result}"
@@ -744,17 +744,36 @@ with tab2:
                     st.error(f"❌ Lỗi Database: {result}")
 
         if "tn_tai_xe" in st.session_state and "tn_khach" in st.session_state:
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.success("✅ Hệ thống đã lên lệnh thành công! Vui lòng copy thông tin dưới đây để gửi đi:")
-                
-            c_msg1, c_msg2 = st.columns(2)
-            c_msg1.text_area("📱 Gửi cho Tài xế:", value=st.session_state["tn_tai_xe"], height=160, key="copy_tx")
-            c_msg2.text_area("📱 Gửi cho Khách hàng:", value=st.session_state["tn_khach"], height=160, key="copy_kh")
-                
-            if st.button("✅ Đã gửi xong / Đóng thông báo", type="primary", use_container_width=True):
+            # Tạo một empty container để chứa toàn bộ khối thông báo
+            msg_container = st.empty()
+            
+            with msg_container.container():
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.success("✅ Hệ thống đã lên lệnh thành công! Copy thông tin dưới đây để gửi đi, sẽ tự đóng trong 6s:")
+                    
+                c_msg1, c_msg2 = st.columns(2)
+                c_msg1.text_area("📱 Gửi cho Tài xế:", value=st.session_state["tn_tai_xe"], height=160, key="copy_tx")
+                c_msg2.text_area("📱 Gửi cho Khách hàng:", value=st.session_state["tn_khach"], height=160, key="copy_kh")
+                    
+                if st.button("✅ Đã gửi xong / Đóng thông báo", type="primary", use_container_width=True, key="btn_dong_msg"):
+                    del st.session_state["tn_tai_xe"]
+                    del st.session_state["tn_khach"]
+                    st.rerun()
+                st.divider()
+
+            # Đếm ngược 6 giây, nếu người dùng không bấm nút thì tự động dọn dẹp
+            for i in range(6, 0, -1):
+                # Kiểm tra lại xem biến còn tồn tại không (nếu user đã bấm nút thì biến bị del rồi)
+                if "tn_tai_xe" not in st.session_state:
+                    break
+                time.sleep(1)
+            
+            # Sau khi hết vòng lặp 6 giây, nếu biến vẫn còn thì tự động đóng
+            if "tn_tai_xe" in st.session_state:
                 del st.session_state["tn_tai_xe"]
                 del st.session_state["tn_khach"]
-                st.rerun()
+                msg_container.empty() # Xóa khối thông báo khỏi UI
+                st.rerun() # Refresh lại form
             st.divider()
 
     vung_thao_tac_chuyen_di()
@@ -785,7 +804,7 @@ with tab3:
                 "GHI_CHU": "Hàng nguyên chuyến"
             }])
             
-            # 2. Truy vấn dữ liệu Khách hàng từ Database
+            # 2. Truy vấn dữ liệu Khách hàng từ Database (Sử dụng Cache)
             sql_kh_export = "SELECT ma_khach_hang, ten_khach_hang, ma_so_thue, so_dien_thoai, dia_chi FROM khach_hang"
             df_kh_export = get_cached_master_data(sql_kh_export)
             
@@ -828,10 +847,8 @@ with tab3:
         # Đưa file_uploader ra ngoài form để bắt sự kiện thay đổi trạng thái (rerun) ngay lập tức
         file_order = st.file_uploader("Chọn file Excel danh sách đơn hàng (.xlsx)", type=["xlsx", "xls"])
         
-        # Kiểm tra file đã được tải lên chưa, nếu chưa thì disable nút
         is_disabled = file_order is None
         
-        # Dùng st.button thay cho st.form_submit_button
         submit_order = st.button("🚀 Kiểm tra MST & Chạy thuật toán tự động", type="primary", use_container_width=True, disabled=is_disabled)
         
         if submit_order:
@@ -841,6 +858,7 @@ with tab3:
                     df_orders.columns = [str(c).strip().upper() for c in df_orders.columns] 
                     df_orders['NGAY_CHAY_CHUAN'] = pd.to_datetime(df_orders['NGAY_CHAY'], dayfirst=True, errors='coerce')
                     
+                    # Sử dụng Cache cho danh sách đối chiếu Khách hàng
                     df_kh = get_cached_master_data("SELECT id, ma_khach_hang, ten_khach_hang, ma_so_thue FROM khach_hang")
                     
                     kh_dict_mst = {}
@@ -908,6 +926,7 @@ with tab3:
                     df_valid_orders = pd.DataFrame(valid_orders)
                     
                     if not df_valid_orders.empty and not missing_customers:
+                        # KHÔNG DÙNG CACHE: Trạng thái xe bận rảnh thay đổi liên tục theo từng giây
                         sql_xe_ranh = """
                             SELECT x.id, x.bien_so_xe, x.tai_xe_co_dinh_id, x.tai_trong_thiet_ke, x.dung_tich_cbm, 
                                 nv.ho_ten as ten_tai_xe, nv.so_dien_thoai as sdt_tai_xe, nv.cccd as cccd_tai_xe
@@ -1016,7 +1035,6 @@ with tab3:
                 ten_group = "".join([c for c in bien_so if c.isalnum()]).upper()
                 ghi_chu_row = str(row.get('Ghi Chú', ''))
                 
-                # Format cột 1: Thông tin cho Tài xế
                 msg_tai_xe = (
                     f"🚛 LỆNH ĐIỀU XE BẢO TÍN\n"
                     f"- Lộ trình: {row['Lộ Trình']}\n"
@@ -1027,7 +1045,6 @@ with tab3:
                     f"- Ghi chú: {ghi_chu_row}"
                 )
                 
-                # Format cột 2: Thông tin cho Khách hàng
                 msg_khach_hang = (
                     f"📦 THÔNG TIN TÀI XẾ VẬN CHUYỂN\n"
                     f"- Tên tài xế: {row['Tài Xế Phụ Trách']}\n"
@@ -1048,19 +1065,12 @@ with tab3:
             df_zalo_export = pd.DataFrame(danh_sach_zalo)
             buffer_export = io.BytesIO()
             
-            # Cấu hình xlsxwriter để bật tự động xuống hàng (Wrap text)
             with pd.ExcelWriter(buffer_export, engine='xlsxwriter') as writer:
                 df_zalo_export.to_excel(writer, index=False, sheet_name="Lenh_Dieu_Xe_ZaloThuCong")
-                
                 workbook = writer.book
                 worksheet = writer.sheets["Lenh_Dieu_Xe_ZaloThuCong"]
-                
-                # Tạo định dạng tự động Wrap Text và căn lề trên
                 wrap_format = workbook.add_format({'text_wrap': True, 'valign': 'top'})
-                
-                # Áp dụng độ rộng và Wrap Text cho Cột B và C (Chứa nội dung Zalo)
                 worksheet.set_column('B:C', 60, wrap_format)
-                # Đặt độ rộng vừa phải cho cột Tên Group (Cột A)
                 worksheet.set_column('A:A', 20)
                 
             st.divider()
