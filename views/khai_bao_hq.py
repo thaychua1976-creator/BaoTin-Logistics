@@ -369,52 +369,49 @@ with tab_khai_hq:
             ghi_chu = st.text_input("Ghi chú bổ sung")
             
             if st.form_submit_button("💾 LƯU TỜ KHAI HẢI QUAN", type="primary"):
-                try:
-                    if not kh_id:
-                        st.error("❌ Vui lòng chọn khách hàng hợp lệ từ danh sách!")
-                        st.stop()
-                    if not so_van_don.strip() or not so_to_khai.strip():
-                        st.error("❌ Số Tờ khai và Vận đơn không được để trống!")
-                        st.stop()      
-                    
-                    tong_tien_phu_phi = sum([float(p['don_gia_phu_phi']) for p in ds_phu_phi_tong_hop if p['id'] in selected_phu_phi])
-                    ten_cac_phu_phi = [p['ten_phu_phi'] for p in ds_phu_phi_tong_hop if p['id'] in selected_phu_phi]
-                    
-                    ghi_chu_final = ghi_chu.strip()
-                    if ten_cac_phu_phi: ghi_chu_final += f" | Phụ phí: {', '.join(ten_cac_phu_phi)}"
-                    
-                    tk_data = {
-                        'so_to_khai': so_to_khai, 'loai_to_khai': loai_tk, 'so_van_don': so_van_don, 
-                        'ngay_khai': ngay_khai.strftime('%Y-%m-%d'), 'khach_hang_id': kh_id, 
-                        'so_hoa_don_tm': so_hoa_don_tm, 'kho_cang_lay_hang': kho_cang_lay_hang,
-                        'ten_doi_tac': ten_doi_tac, 'ma_loai_hinh': ma_loai_hinh, 
-                        'so_kien': so_kien, 'tong_trong_luong_hang': tong_trong_luong_hang, 
-                        'phan_luong': phan_luong, 'phi_khac': parse_money_input(phi_khac_nhap_tay) + tong_tien_phu_phi,       
-                        'phi_dich_vu_hq': parse_money_input(phi_dvhq_input), 'ghi_chu': ghi_chu_final               
-                    }
-                    
-                    # Khi tạo mới tờ khai, nếu không có danh sách chi tiết phí động riêng, ta truyền list rỗng [] hoặc gom nhóm từ multiselect phụ phí
-                    chi_tiet_phi_list_moi = []
-                    for p_id in selected_phu_phi:
-                        # Lấy thông tin phụ phí từ dict_phu_phi tương ứng
-                        p_item = next((p for p in ds_phu_phi_tong_hop if p['id'] == p_id), None)
-                        if p_item:
-                            chi_tiet_phi_list_moi.append({
-                                'ten_loai_phi': p_item['ten_phu_phi'],
-                                'so_tien': p_item['don_gia_phu_phi'],
-                                'ghi_chu': 'Phụ phí tự động từ cấu hình giá'
-                            })
+                        try:
+                            if not kh_id:
+                                st.error("❌ Vui lòng chọn khách hàng hợp lệ từ danh sách!")
+                                st.stop()
+                            if not so_van_don.strip() or not so_to_khai.strip():
+                                st.error("❌ Số Tờ khai và Vận đơn không được để trống!")
+                                st.stop()      
+                            
+                            tong_tien_phu_phi = sum([float(p['don_gia_phu_phi']) for p in ds_phu_phi_tong_hop if p['id'] in selected_phu_phi])
+                            ten_cac_phu_phi = [p['ten_phu_phi'] for p in ds_phu_phi_tong_hop if p['id'] in selected_phu_phi]
+                            
+                            ghi_chu_final = ghi_chu.strip()
+                            if ten_cac_phu_phi: ghi_chu_final += f" | Phụ phí: {', '.join(ten_cac_phu_phi)}"
+                            
+                            tk_data = {
+                                'so_to_khai': so_to_khai, 'loai_to_khai': loai_tk, 'so_van_don': so_van_don, 
+                                'ngay_khai': ngay_khai.strftime('%Y-%m-%d'), 'khach_hang_id': kh_id, 
+                                'so_hoa_don_tm': so_hoa_don_tm, 'kho_cang_lay_hang': kho_cang_lay_hang,
+                                'ten_doi_tac': ten_doi_tac, 'ma_loai_hinh': ma_loai_hinh, 
+                                'so_kien': so_kien, 'tong_trong_luong_hang': tong_trong_luong_hang, 
+                                'phan_luong': phan_luong, 'phi_khac': parse_money_input(phi_khac_nhap_tay) + tong_tien_phu_phi,       
+                                'phi_dich_vu_hq': parse_money_input(phi_dvhq_input), 'ghi_chu': ghi_chu_final               
+                            }
+                            
+                            chi_tiet_phi_list_moi = []
+                            for p_id in selected_phu_phi:
+                                p_item = next((p for p in ds_phu_phi_tong_hop if p['id'] == p_id), None)
+                                if p_item:
+                                    chi_tiet_phi_list_moi.append({
+                                        'ten_loai_phi': p_item['ten_phu_phi'],
+                                        'so_tien': p_item['don_gia_phu_phi'],
+                                        'ghi_chu': 'Phụ phí tự động từ cấu hình giá'
+                                    })
 
-                    ok, msg = save_to_khai_transaction(
-                        db_pool=db.pool, 
-                        tk_data=tk_data, 
-                        chi_tiet_phi_list=chi_tiet_phi_list_moi, 
-                        tk_id=None, 
-                        current_user=current_user
-                    )
-                    # Yêu cầu gọi qua hàm parse_money_input và lưu audit transaction[cite: 5]
-                    #ok, msg = save_to_khai_transaction(db.pool, tk_data, None,None, current_user)
-                    if ok: 
+                            ok, msg = save_to_khai_transaction(
+                                db_pool=db.pool, 
+                                tk_data=tk_data, 
+                                chi_tiet_phi_list=chi_tiet_phi_list_moi, 
+                                tk_id=None, 
+                                current_user=current_user
+                            )
+                            
+                            if ok: 
                                 # Lưu thông báo thành công vào session để giữ lại khi làm mới hoặc hiển thị trực tiếp
                                 st.success("✅ Đã tạo tờ khai mới thành công!")
                                 
@@ -427,10 +424,10 @@ with tab_khai_hq:
                                     
                                 time.sleep(1.2)
                                 st.rerun()
-                    else: 
+                            else: 
                                 st.error(f"Lỗi: {msg}")
-                except Exception as ex:
-                    st.error(f"❌ Có lỗi xảy ra trong quá trình lưu dữ liệu: {str(ex)}")
+                        except Exception as ex:
+                            st.error(f"❌ Có lỗi xảy ra trong quá trình lưu dữ liệu: {str(ex)}")
     vung_thao_tac_khai_hq()
 # ==========================================
 # TAB 2: DANH SÁCH & QUẢN LÝ TỜ KHAI
@@ -448,10 +445,9 @@ with tab_danh_sach:
             SELECT tk.id, tk.so_to_khai, tk.so_van_don, tk.loai_to_khai, tk.ngay_khai, kh.ten_khach_hang, 
                 tk.ten_doi_tac, tk.tong_trong_luong_hang, tk.so_hoa_don_tm, tk.kho_cang_lay_hang, tk.ma_loai_hinh, 
                 tk.so_kien, tk.phan_luong, tk.phi_khac, tk.phi_dich_vu_hq,
-                tk.ghi_chu, tk.khach_hang_id, tk.chuyen_di_id, cd.loai_hinh_xe
+                tk.ghi_chu, tk.khach_hang_id
             FROM to_khai_hai_quan tk
             LEFT JOIN khach_hang kh ON tk.khach_hang_id = kh.id
-            LEFT JOIN chuyen_di cd ON tk.chuyen_di_id = cd.id
             WHERE tk.ngay_khai BETWEEN %s AND %s
             ORDER BY tk.ngay_khai DESC, tk.id DESC
         """
@@ -488,8 +484,18 @@ with tab_danh_sach:
                     loai_options = {"Nhap_Khau": "Hàng Nhập Khẩu", "Xuat_Khau": "Hàng Xuất Khẩu", "Noi_Dia": "Nhập Nội Địa", "DHL": "Hàng DHL","Lẻ": "Hàng_Lẻ"}
                     e_loai_tk = st.selectbox("Loại Tờ Khai*", options=list(loai_options.keys()), index=get_idx(list(loai_options.keys()), tk_info['loai_to_khai']), format_func=lambda x: loai_options[x], key=f"edit_loai_tk_{selected_tk_id}")
 
-                    # --- LẤY DANH SÁCH PHỤ PHÍ CHO TAB SỬA (KẾT HỢP TỪ 2 BẢNG) ---
-                    kh_id_edit = tk_info['khach_hang_id']
+                    # 1. Đưa field Khách Hàng ra NGOÀI form để kích hoạt Rerun khi thay đổi
+                    df_kh = get_cached_master_data("SELECT id, ten_khach_hang, ma_so_thue, ma_khach_hang FROM khach_hang")
+                    dict_kh = {None: "-- Vui lòng chọn khách hàng --"}
+                    if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
+                        for _, r in df_kh.iterrows():
+                            mst = r['ma_so_thue'] if pd.notna(r['ma_so_thue']) and r['ma_so_thue'] != "" else (r['ma_khach_hang'] if pd.notna(r['ma_khach_hang']) else "KHÔNG CÓ MST")
+                            dict_kh[int(r['id'])] = f"MST: {mst} — {r['ten_khach_hang']}"
+                    
+                    e_kh_id = st.selectbox("Khách Hàng*", options=list(dict_kh.keys()), index=get_idx(list(dict_kh.keys()), tk_info['khach_hang_id']), format_func=lambda x: dict_kh[x], key=f"edit_khach_hang_{selected_tk_id}")
+
+                    # 2. LẤY DANH SÁCH PHỤ PHÍ CHO TAB SỬA (Lấy theo e_kh_id vừa chọn)
+                    kh_id_edit = e_kh_id
                     ds_phu_phi_edit_tong_hop = []
                     
                     if kh_id_edit:
@@ -501,7 +507,7 @@ with tab_danh_sach:
                                 'don_gia_phu_phi': float(p['don_gia_phu_phi'])
                             })
                             
-                        # Lấy phụ phí từ bảng giá hải quan qua Cache
+                        # Lấy phụ phí từ bảng giá hải quan
                         sql_bge = "SELECT id, nhom_dich_vu, phan_loai_chi_tiet, don_gia_hq FROM bang_gia_hai_quan WHERE khach_hang_id = %s AND nhom_dich_vu != 'Phí tờ khai'"
                         df_bge = get_cached_master_data(sql_bge, (kh_id_edit,))
                         if isinstance(df_bge, pd.DataFrame) and not df_bge.empty:
@@ -516,7 +522,6 @@ with tab_danh_sach:
                                 })
                             
                     dict_phu_phi_edit = {p['id']: f"{p['ten_phu_phi']} (+{int(p['don_gia_phu_phi']):,} VNĐ)" for p in ds_phu_phi_edit_tong_hop}
-                    # ----------------------------------------
 
                     with st.form(f"form_edit_hai_quan_{selected_tk_id}", clear_on_submit=False):
                         ec_tk1, ec_tk2 = st.columns(2)
@@ -527,23 +532,6 @@ with tab_danh_sach:
                         e_ngay_khai = ec1.date_input("Ngày Khai", value=pd.to_datetime(tk_info['ngay_khai']).date())
                         e_phan_luong = ec2.selectbox("Phân Luồng", ["Xanh", "Vang", "Do"], index=get_idx(["Xanh", "Vang", "Do"], tk_info['phan_luong']))
                         
-                        df_kh = get_cached_master_data("SELECT id, ten_khach_hang, ma_so_thue, ma_khach_hang FROM khach_hang")
-                        dict_kh = {None: "-- Vui lòng chọn khách hàng --"}
-                        if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
-                            for _, r in df_kh.iterrows():
-                                mst = r['ma_so_thue'] if pd.notna(r['ma_so_thue']) and r['ma_so_thue'] != "" else (r['ma_khach_hang'] if pd.notna(r['ma_khach_hang']) else "KHÔNG CÓ MST")
-                                dict_kh[int(r['id'])] = f"MST: {mst} — {r['ten_khach_hang']}"
-                        
-                        e_kh_id = st.selectbox("Khách Hàng*", options=list(dict_kh.keys()), index=get_idx(list(dict_kh.keys()), tk_info['khach_hang_id']), format_func=lambda x: dict_kh[x])
-                        
-                        #df_cd = db.execute_query("SELECT id, ngay_chuyen_di, dia_diem_giao_nhan FROM chuyen_di ORDER BY id DESC LIMIT 50")
-                        #dict_cd = {0: "Không liên kết"}
-                        #if isinstance(df_cd, pd.DataFrame) and not df_cd.empty:
-                        #    dict_cd.update({r['id']: f"Mã {r['id']} - {r['dia_diem_giao_nhan']} ({r['ngay_chuyen_di']})" for _, r in df_cd.iterrows()})
-                        
-                        #e_chuyen_di_id = st.selectbox("Chuyến Xe Liên Kết", options=list(dict_cd.keys()), index=get_idx(list(dict_cd.keys()), tk_info['chuyen_di_id'] or 0), format_func=lambda x: dict_cd[x])
-                        #e_chuyen_di_id = None if e_chuyen_di_id == 0 else e_chuyen_di_id
-
                         ec3, ec4, ec5 = st.columns(3)
                         e_so_hoa_don = ec3.text_input("Số Hóa Đơn TM", value=tk_info['so_hoa_don_tm'] or "")
                         e_kho_cang_lay_hang = ec4.text_input("Kho cảng lấy hàng", value=tk_info['kho_cang_lay_hang'] or "")
