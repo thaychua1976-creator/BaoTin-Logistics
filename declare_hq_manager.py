@@ -8,8 +8,9 @@ from audit_logger import ghi_log_he_thong
 
 
 def save_to_khai_transaction(db_pool, tk_data, chi_tiet_phi_list, tk_id, current_user):
+
     """
-    Lưu trữ Tờ khai Hải quan kèm theo danh sách chi tiết phí phát sinh (Luồng đỏ, sửa tờ khai, xin seal...). 
+    Lưu trữ Tờ khai Hải quan kèm theo danh sách chi tiết phí phát sinh (Luồng đỏ, sửa tờ khai, xin seal...).: phí khác 
     Đảm bảo tuân thủ Transaction, rowcount & Audit Log. Không bao gồm xử lý C/O (tách form riêng).
     """
     conn = None
@@ -26,13 +27,13 @@ def save_to_khai_transaction(db_pool, tk_data, chi_tiet_phi_list, tk_id, current
         if tk_id:
             # --- CẬP NHẬT TỜ KHAI ---
             sql = """UPDATE to_khai_hai_quan 
-                     SET so_to_khai=%s, so_van_don=%s, loai_to_khai=%s, ngay_khai=%s, khach_hang_id=%s, chuyen_di_id=%s, 
+                     SET so_to_khai=%s, so_van_don=%s, loai_to_khai=%s, ngay_khai=%s, khach_hang_id=%s, 
                          so_hoa_don_tm=%s, kho_cang_lay_hang=%s, ten_doi_tac=%s, ma_loai_hinh=%s, so_kien=%s, tong_trong_luong_hang=%s,
                          phan_luong=%s, phi_khac=%s, phi_dich_vu_hq=%s, ghi_chu=%s 
                      WHERE id=%s"""
             val = (
                 tk_data['so_to_khai'], tk_data.get('so_van_don'), tk_data['loai_to_khai'], tk_data['ngay_khai'], 
-                tk_data['khach_hang_id'], tk_data.get('chuyen_di_id'), tk_data.get('so_hoa_don_tm'), 
+                tk_data['khach_hang_id'], tk_data.get('so_hoa_don_tm'), 
                 tk_data.get('kho_cang_lay_hang'), tk_data.get('ten_doi_tac'), tk_data.get('ma_loai_hinh'), 
                 tk_data.get('so_kien'), tk_data.get('tong_trong_luong_hang', 0), tk_data['phan_luong'],
                 phi_khac_val, phi_dv_hq_val, tk_data.get('ghi_chu'), tk_id
@@ -51,13 +52,13 @@ def save_to_khai_transaction(db_pool, tk_data, chi_tiet_phi_list, tk_id, current
         else:
             # --- THÊM MỚI TỜ KHAI ---
             sql = """INSERT INTO to_khai_hai_quan 
-                     (so_to_khai, so_van_don, loai_to_khai, ngay_khai, khach_hang_id, chuyen_di_id, 
+                     (so_to_khai, so_van_don, loai_to_khai, ngay_khai, khach_hang_id,  
                       so_hoa_don_tm, kho_cang_lay_hang, ten_doi_tac, ma_loai_hinh, so_kien, tong_trong_luong_hang, 
                       phan_luong, phi_khac, phi_dich_vu_hq, ghi_chu) 
-                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
             val = (
                 tk_data['so_to_khai'], tk_data.get('so_van_don'), tk_data['loai_to_khai'], tk_data['ngay_khai'], 
-                tk_data['khach_hang_id'], tk_data.get('chuyen_di_id'), tk_data.get('so_hoa_don_tm'), 
+                tk_data['khach_hang_id'], tk_data.get('so_hoa_don_tm'), 
                 tk_data.get('kho_cang_lay_hang'), tk_data.get('ten_doi_tac'), tk_data.get('ma_loai_hinh'), 
                 tk_data.get('so_kien'), tk_data.get('tong_trong_luong_hang', 0), tk_data['phan_luong'],
                 phi_khac_val, phi_dv_hq_val, tk_data.get('ghi_chu')
@@ -252,11 +253,6 @@ def delete_bang_gia_hai_quan_transaction(db_pool, bg_id, current_user):
         if conn: conn.close()
 ################################################
 
-
-
-import io
-import pandas as pd
-from datetime import datetime
 
 def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
     # 1. Truy vấn chi tiết tờ khai (Chỉ lấy khách hàng ICHIHIRO,ZEHENXING)

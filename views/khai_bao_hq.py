@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 import datetime, time
-import json
+import pypdf
+import json,re
 import uuid
 import traceback
 from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
@@ -150,153 +151,287 @@ with tab_khai_hq:
     @st.fragment
     def vung_thao_tac_khai_hq():
         st.markdown("#### 📥 Nhập Liệu Tờ Khai Mới")
-        st.info("💡 Hệ thống đã tích hợp Tự động điền giá DVHQ và cho phép chọn nhanh các Phụ phí phát sinh của Khách Hàng.")
+        st.info("💡 Hệ thống tự động đọc file Excel (.xls, .xlsx) hoặc PDF để trích xuất: Đơn vị XNK (Tự động điền vào Khách hàng & Tên đối tác), Số lượng hàng, Luồng, Hóa đơn TM.")
         
-        if "hq_auto_data" not in st.session_state: st.session_state["hq_auto_data"] = {}
+        if "hq_auto_data" not in st.session_state: 
+            st.session_state["hq_auto_data"] = {
+                "so_to_khai": "", "so_van_don": "", "extracted_ten_khach_hang": "", "ma_so_thue": "",
+                "tong_trong_luong_hang": 0.0, "so_kien": "", "ngay_khai": datetime.date.today(),
+                "loai_to_khai": "Xuat_Khau", "so_hoa_don_tm": "", "kho_cang_lay_hang": "",
+                "ten_doi_tac": "", "ma_loai_hinh": "", "phan_luong": ""
+            }
+
+        try:
+            uploaded_file = st.file_uploader("📂 Chọn file Excel / PDF tờ khai hải quan", type=["pdf", "txt", "xls", "xlsx"], key="upload_file_to_khai_hq")
+            if uploaded_file is not None:
+                file_sig = f"{uploaded_file.name}_{uploaded_file.size}"
+                if st.session_state.get("last_uploaded_sig") != file_sig:
+                    auto_data = st.session_state["hq_auto_data"]
+                    
+                    # --- XỬ LÝ FILE EXCEL (.xls, .xlsx) ---
+                    if uploaded_file.name.lower().endswith(('.xls', '.xlsx')):
+                        df = pd.read_excel(uploaded_file, sheet_name=0)
+                        current_section = ""
+                        for i, r in df.iterrows():
+                            vals = [str(v).strip() for v in r.values if pd.notnull(v) and str(v).strip()]
+                            if not vals: continue
+                            text_line = " | ".join(vals)
+                            
+                            if "xuất khẩu" in text_line.lower():
+                                auto_data["loai_to_khai"] = "Xuat_Khau"
+                            elif "nhập khẩu" in text_line.lower() and "tờ khai" in text_line.lower():
+                                auto_data["loai_to_khai"] = "Nhap_Khau"
+                                
+                            if "Người xuất khẩu" in text_line:
+                                current_section = "Nguoi_Xuat_Khau"
+                            elif "Người nhập khẩu" in text_line:
+                                current_section = "Nguoi_Nhap_Khau"
+                                
+                            for idx, val in enumerate(vals):
+                                if val == "Số tờ khai" and idx + 1 < len(vals):
+                                    auto_data["so_to_khai"] = vals[idx+1]
+                                elif val == "Số vận đơn" and idx + 1 < len(vals):
+                                    auto_data["so_van_don"] = vals[idx+1]
+                                elif val == "Mã loại hình" and idx + 1 < len(vals):
+                                    auto_data["ma_loai_hinh"] = vals[idx+1].split()[0]
+                                elif val == "Ngày đăng ký" and idx + 1 < len(vals):
+                                    try:
+                                        date_str = vals[idx+1].split()[0]
+                                        auto_data['ngay_khai'] = datetime.datetime.strptime(date_str, '%d/%m/%Y').date()
+                                    except ValueError: pass
+                                elif val == "Mã phân loại kiểm tra" and idx + 1 < len(vals):
+                                    pl = vals[idx+1]
+                                    if pl == "1": auto_data["phan_luong"] = "Xanh"
+                                    elif pl == "2": auto_data["phan_luong"] = "Vang"
+                                    elif pl == "3": auto_data["phan_luong"] = "Do"
+                                elif val == "Tổng trọng lượng hàng (Gross)" and idx + 1 < len(vals):
+                                    try:
+                                        auto_data["tong_trong_luong_hang"] = float(vals[idx+1].replace(",", "."))
+                                    except: pass
+                                elif val == "Số lượng" and i < 50 and idx + 1 < len(vals):
+                                    so_kien_val = vals[idx+1]
+                                    if idx + 2 < len(vals): so_kien_val += " " + vals[idx+2]
+                                    auto_data["so_kien"] = so_kien_val
+                                elif val == "Số hóa đơn" and idx + 1 < len(vals):
+                                    filtered_invoice = [v for v in vals[idx+1:] if v != '-' and v != 'A' and v != 'B' and len(v) > 2]
+                                    if filtered_invoice:
+                                        auto_data["so_hoa_don_tm"] = filtered_invoice[-1]
+                                
+                                if val == "Mã" and idx + 1 < len(vals) and i < 40:
+                                    if (auto_data.get("loai_to_khai") == "Xuat_Khau" and current_section == "Nguoi_Xuat_Khau") or \
+                                       (auto_data.get("loai_to_khai") == "Nhap_Khau" and current_section == "Nguoi_Nhap_Khau"):
+                                        auto_data["ma_so_thue"] = vals[idx+1]
+                                if val == "Tên" and idx + 1 < len(vals) and i < 40:
+                                    if (auto_data.get("loai_to_khai") == "Xuat_Khau" and current_section == "Nguoi_Xuat_Khau") or \
+                                       (auto_data.get("loai_to_khai") == "Nhap_Khau" and current_section == "Nguoi_Nhap_Khau"):
+                                        auto_data["extracted_ten_khach_hang"] = vals[idx+1]
+                                        # Tự động gán tên khách hàng vào textbox Tên Đối Tác
+                                        auto_data["ten_doi_tac"] = vals[idx+1]
+                                        
+                        st.success(f"✅ Đã trích xuất dữ liệu Excel. Đơn vị XNK: **{auto_data.get('extracted_ten_khach_hang')}**")
+                        
+                    # --- XỬ LÝ FILE PDF (.pdf) ---
+                    else:
+                        reader = pypdf.PdfReader(uploaded_file)
+                        text = ""
+                        for page in reader.pages:
+                            text += page.extract_text() + "\n"
+                        
+                        m_stk = re.search(r'Số tờ khai[:\s]*(\d+)', text, re.IGNORECASE)
+                        if m_stk: auto_data['so_to_khai'] = m_stk.group(1).strip()
+                            
+                        m_sql = re.search(r'Số quản lý hàng hóa[:\s]*(\d+)', text, re.IGNORECASE)
+                        if m_sql: auto_data['so_van_don'] = m_sql.group(1).strip()
+                            
+                        m_ten_xnk = re.search(r'Đơn vị XNK[:\s]*([^\n\r]+)', text, re.IGNORECASE)
+                        if m_ten_xnk:
+                            auto_data['extracted_ten_khach_hang'] = m_ten_xnk.group(1).strip()
+                            # Tự động gán tên khách hàng vào textbox Tên Đối Tác
+                            auto_data['ten_doi_tac'] = auto_data['extracted_ten_khach_hang']
+                            st.success(f"✅ Đã trích xuất Đơn vị XNK: **{auto_data['extracted_ten_khach_hang']}**")
+                                
+                        m_kien = re.search(r'1\s*\|\s*([\d\.,]+\s*[A-Za-z]+)', text) 
+                        if not m_kien:
+                            m_kien = re.search(r'(\d+\s*(?:CARTON|KIỆN|PALLET|PCS|BAO|THÙNG|CUỘN|CHIẾC|SET))', text, re.IGNORECASE)
+                        if m_kien: auto_data['so_kien'] = m_kien.group(1).strip()
+                        
+                        m_wt = re.search(r'TỔNG TRỌNG\s*LƯỢNG HÀNG\s*[-–—]*\s*([\d\.]+)\s*Kilogam', text, re.IGNORECASE)
+                        if not m_wt: m_wt = re.search(r'([\d\.]+)\s*Kilogam', text, re.IGNORECASE)
+                        if m_wt: auto_data['tong_trong_luong_hang'] = float(m_wt.group(1))
+                            
+                        m_date = re.search(r'Ngày tờ khai[:\s]*(\d{2}/\d{2}/\d{4})', text, re.IGNORECASE)
+                        if m_date:
+                            try: auto_data['ngay_khai'] = datetime.datetime.strptime(m_date.group(1), '%d/%m/%Y').date()
+                            except ValueError: pass
+                                
+                        if "xuất khẩu" in text.lower(): auto_data['loai_to_khai'] = "Xuat_Khau"
+                        elif "nhập khẩu" in text.lower(): auto_data['loai_to_khai'] = "Nhap_Khau"
+
+                        m_luong = re.search(r'Luồng[:\s]*([^\n\r]+)', text, re.IGNORECASE)
+                        if m_luong:
+                            luong_text = m_luong.group(1).strip().lower()
+                            if 'xanh' in luong_text: auto_data['phan_luong'] = "Xanh"
+                            elif 'vàng' in luong_text or 'vang' in luong_text: auto_data['phan_luong'] = "Vang"
+                            elif 'đỏ' in luong_text or 'do' in luong_text: auto_data['phan_luong'] = "Do"
+                            
+                    st.session_state["last_uploaded_sig"] = file_sig
+        except Exception as e:
+            st.error(f"❌ Có lỗi xảy ra khi đọc file: {str(e)}")
 
         auto_data = st.session_state.get("hq_auto_data", {})
 
         c_out1, c_out2 = st.columns(2)
-        loai_options = {"Nhap_Khau": "Hàng Nhập Khẩu", "Xuat_Khau": "Hàng Xuất Khẩu", "Noi_Dia": "Nhập Nội Địa", "DHL": "Hàng DHL","Lẻ": "Hàng_Lẻ"}
-        loai_tk = c_out1.selectbox("Loại Tờ Khai*",
-        options=list(loai_options.keys()), 
-        format_func=lambda x: loai_options[x],
-        index= None,
-        key="create_loai_tk")
+        loai_options = {"Nhap_Khau": "Hàng Nhập Khẩu", "Xuat_Khau": "Hàng Xuất Khẩu", "Noi_Dia": "Nhập Nội Địa", "DHL": "Hàng DHL", "Lẻ": "Hàng_Lẻ"}
+        loai_keys = list(loai_options.keys())
+        default_loai_idx = get_idx(loai_keys, auto_data.get('loai_to_khai')) if auto_data.get('loai_to_khai') in loai_keys else 0
         
-        # Ứng dụng Cache lấy Danh mục Khách hàng
+        loai_tk = c_out1.selectbox("Loại Tờ Khai*", options=loai_keys, format_func=lambda x: loai_options[x], index=default_loai_idx)
+        
         df_kh = get_cached_master_data("SELECT id, ten_khach_hang, ma_so_thue, ma_khach_hang FROM khach_hang")
         dict_kh = {None: "-- Vui lòng chọn khách hàng --"}
-        if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
-            for _, r in df_kh.iterrows():
-                mst = r['ma_so_thue'] if pd.notna(r['ma_so_thue']) and r['ma_so_thue'] != "" else (r['ma_khach_hang'] if pd.notna(r['ma_khach_hang']) else "KHÔNG CÓ MST")
-                dict_kh[int(r['id'])] = f"MST: {mst} — {r['ten_khach_hang']}"
+        kh_keys_list = [None]
         
-        kh_keys = list(dict_kh.keys())
-        kh_id = c_out2.selectbox("Khách Hàng*", options=kh_keys, index=0, format_func=lambda x: dict_kh[x], key="create_khach_hang_id")
+        extracted_name = str(auto_data.get('extracted_ten_khach_hang', '')).strip().lower()
+        extracted_mst = str(auto_data.get('ma_so_thue', '')).replace(" ", "").replace("-", "")
+        default_kh_idx = 0
+        
+        if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
+            for idx, r in df_kh.iterrows():
+                kid = int(r['id'])
+                ten_kh_db = str(r['ten_khach_hang'])
+                mst = r['ma_so_thue'] if pd.notna(r['ma_so_thue']) and r['ma_so_thue'] != "" else (r['ma_khach_hang'] if pd.notna(r['ma_khach_hang']) else "KHÔNG CÓ MST")
+                
+                dict_kh[kid] = f"MST: {mst} — {ten_kh_db}"
+                kh_keys_list.append(kid)
+                
+                db_mst_clean = mst.replace(" ", "").replace("-", "")
+                if extracted_mst and extracted_mst != "" and extracted_mst in db_mst_clean:
+                    default_kh_idx = len(kh_keys_list) - 1
+                elif extracted_name and (extracted_name in ten_kh_db.lower() or ten_kh_db.lower() in extracted_name):
+                    default_kh_idx = len(kh_keys_list) - 1
 
-        # --- TỰ ĐỘNG LẤY GIÁ DVHQ VÀ DANH SÁCH PHỤ PHÍ (KẾT HỢP TỪ 2 BẢNG) ---
+        kh_id = c_out2.selectbox("Khách Hàng*", options=kh_keys_list, index=default_kh_idx, format_func=lambda x: dict_kh[x])
+
+        if auto_data.get('extracted_ten_khach_hang'):
+            st.caption(f"📄 Khách hàng đề xuất từ file: **{auto_data.get('extracted_ten_khach_hang')}**")
+
         gia_hq_tu_dong = 0.0
         ds_phu_phi_tong_hop = []
         
         if kh_id:
             gia_hq_tu_dong = get_don_gia_hq_tu_dong(db.pool, kh_id, loai_options[loai_tk] if loai_tk else "")
                 
-            # 2. Lấy phụ phí từ bảng bang_gia_hai_quan (trừ các khoản là "Phí tờ khai") qua Cache
-            sql_bg = """
-                SELECT id, nhom_dich_vu, phan_loai_chi_tiet, don_gia_hq 
-                FROM bang_gia_hai_quan 
-                WHERE khach_hang_id = %s AND nhom_dich_vu != 'Phí tờ khai'
-            """
+            sql_bg = "SELECT id, nhom_dich_vu, phan_loai_chi_tiet, don_gia_hq FROM bang_gia_hai_quan WHERE khach_hang_id = %s AND nhom_dich_vu != 'Phí tờ khai'"
             df_bg = get_cached_master_data(sql_bg, (kh_id,))
             if isinstance(df_bg, pd.DataFrame) and not df_bg.empty:
                 for _, r in df_bg.iterrows():
                     ten = r['nhom_dich_vu']
-                    if r['phan_loai_chi_tiet']:
-                        ten += f" ({r['phan_loai_chi_tiet']})"
-                    ds_phu_phi_tong_hop.append({
-                        'id': f"BG_{r['id']}", 
-                        'ten_phu_phi': ten, 
-                        'don_gia_phu_phi': float(r['don_gia_hq'])
-                    })
+                    if r['phan_loai_chi_tiet']: ten += f" ({r['phan_loai_chi_tiet']})"
+                    ds_phu_phi_tong_hop.append({'id': f"BG_{r['id']}", 'ten_phu_phi': ten, 'don_gia_phu_phi': float(r['don_gia_hq'])})
                 
         dict_phu_phi = {p['id']: f"{p['ten_phu_phi']} (+{int(p['don_gia_phu_phi']):,} VNĐ)" for p in ds_phu_phi_tong_hop}
-        # ---------------------------------------------------------------------
 
         if "form_tao_tokhai_key" not in st.session_state:
             st.session_state["form_tao_tokhai_key"] = "form_tao_moi_tokhai_batch_1"
 
         with st.form(key=st.session_state["form_tao_tokhai_key"], clear_on_submit=False):
             c1, c2 = st.columns(2)    
-            so_to_khai = c1.text_input("Số Tờ Khai HQ*")
-            so_van_don = c2.text_input("Số Vận Đơn (B/L / AWB)") 
+            so_to_khai = c1.text_input("Số Tờ Khai HQ*", value=auto_data.get('so_to_khai', ''))
+            so_van_don = c2.text_input("Số Vận Đơn (B/L / AWB)", value=auto_data.get('so_van_don', '')) 
 
             c3, c4 = st.columns(2)
-            ngay_khai = c3.date_input("Ngày Khai", value=datetime.date.today())
-            phan_luong = c4.selectbox("Phân Luồng", ["", "Xanh", "Vang", "Do"])
+            ngay_khai = c3.date_input("Ngày Khai", value=auto_data.get('ngay_khai', datetime.date.today()), format="DD/MM/YYYY")
+            
+            luong_list = ["", "Xanh", "Vang", "Do"]
+            default_luong_idx = get_idx(luong_list, auto_data.get('phan_luong')) if auto_data.get('phan_luong') else 0
+            phan_luong = c4.selectbox("Phân Luồng", luong_list, index=default_luong_idx)
             
             c5, c6, c7, c8 = st.columns(4)
-            so_hoa_don_tm = c5.text_input("Số Hóa Đơn TM")
+            so_hoa_don_tm = c5.text_input("Số Hóa Đơn TM", value=auto_data.get('so_hoa_don_tm', ''))
             kho_cang_lay_hang = c6.text_input("Kho cảng lấy hàng", value=auto_data.get('kho_cang_lay_hang', ''))
+            
+            # Tên đối tác sẽ tự nhận giá trị khách hàng vừa trích xuất được
             ten_doi_tac = c7.text_input("Tên Đối Tác", value=auto_data.get('ten_doi_tac', ''))
-            ma_loai_hinh = c8.text_input("Mã Loại Hình (VD: E11, E42)")
+            ma_loai_hinh = c8.text_input("Mã Loại Hình (VD: E11, E42)", value=auto_data.get('ma_loai_hinh', ''))
             
             c9, c10 = st.columns(2)
-            so_kien = c9.text_input("Số Kiện")
-            tong_trong_luong_hang = c10.number_input("Tổng trọng lượng (KG)", min_value=0.0, value=auto_data.get('khoi_luong_kg', 0.0), step=0.1)
+            so_kien = c9.text_input("Số Kiện", value=auto_data.get('so_kien', ''))
+            tong_trong_luong_hang = c10.number_input("Tổng trọng lượng (KG)", min_value=0.0, value=float(auto_data.get('tong_trong_luong_hang') or 0.0), step=0.1)
             
             st.markdown("**💰 Khai Báo Chi Phí Chung (VNĐ)**")
             phi_dvhq_input = st.text_input("Phí Dịch Vụ Hải Quan (VNĐ)*", value=f"{gia_hq_tu_dong:,.0f}")
             
-            st.caption("✨ Các phụ phí được chọn sẽ tự động cộng dồn vào **Phí Phát Sinh** khi Lưu tờ khai.")
-            selected_phu_phi = st.multiselect(
-                "🏷️ Chọn Phụ Phí Đã Cấu Hình Cho Khách Này", 
-                options=list(dict_phu_phi.keys()), 
-                format_func=lambda x: dict_phu_phi[x],
-                help="Hệ thống tự động cộng dồn số tiền vào Phí Phát Sinh và ghi chú chi tiết."
-            )
+            selected_phu_phi = st.multiselect("🏷️ Chọn Phụ Phí Đã Cấu Hình Cho Khách Này", options=list(dict_phu_phi.keys()), format_func=lambda x: dict_phu_phi[x])
 
             cp1, cp2 = st.columns(2)
-            default_doanh_thu = f"{int(auto_data.get('doanh_thu', 0)):,}" if auto_data.get('doanh_thu', 0) > 0 else "0"
-            is_disabled_vc = loai_tk in ["Noi_Dia", "DHL"]
-            val_vc = "0" if is_disabled_vc else default_doanh_thu
-            
-            phi_van_chuyen_lien_ket = cp1.text_input("Phí Vận Chuyển (Lấy từ Chuyến)", value=val_vc, disabled=is_disabled_vc)
+            phi_van_chuyen_lien_ket = cp1.text_input("Phí Vận Chuyển (Lấy từ Chuyến)", value="0", disabled=(loai_tk in ["Noi_Dia", "DHL"]))
             phi_khac_nhap_tay = cp2.text_input("Phí Phát Sinh Khác (Gõ tay thêm nếu có)", value="0")
             ghi_chu = st.text_input("Ghi chú bổ sung")
             
             if st.form_submit_button("💾 LƯU TỜ KHAI HẢI QUAN", type="primary"):
-                if not kh_id:
-                    st.error("❌ Vui lòng chọn khách hàng, không được để trống!")
-                    st.stop()
-                if not so_van_don.strip() or not so_hoa_don_tm.strip() or not so_to_khai.strip():
-                    st.error("❌ Số Tờ khai, Vận đơn và Hóa đơn TM không được để trống!")
-                    st.stop()      
-                if tong_trong_luong_hang < 0 or parse_money_input(phi_khac_nhap_tay) < 0 or parse_money_input(phi_dvhq_input) < 0:
-                    st.error("❌ Các giá trị phí không được là số âm.")
-                    st.stop()
-                
-                # --- XỬ LÝ NGẦM: TÍNH TỔNG PHÍ PHÁT SINH VÀ GHI CHÚ TỰ ĐỘNG ---
-                tong_tien_phu_phi = sum([float(p['don_gia_phu_phi']) for p in ds_phu_phi_tong_hop if p['id'] in selected_phu_phi])
-                ten_cac_phu_phi = [p['ten_phu_phi'] for p in ds_phu_phi_tong_hop if p['id'] in selected_phu_phi]
-                
-                tong_phi_khac_final = parse_money_input(phi_khac_nhap_tay) + tong_tien_phu_phi
-                
-                ghi_chu_final = ghi_chu.strip()
-                if ten_cac_phu_phi:
-                    ghi_chu_final += f" | Phụ phí: {', '.join(ten_cac_phu_phi)}"
-                
-                tk_data = {
-                    'so_to_khai': so_to_khai, 
-                    'loai_to_khai': loai_tk,
-                    'so_van_don': so_van_don, 
-                    'ngay_khai': ngay_khai.strftime('%Y-%m-%d'),
-                    'khach_hang_id': kh_id, 
-                    'so_hoa_don_tm': so_hoa_don_tm,
-                    'kho_cang_lay_hang': kho_cang_lay_hang,
-                    'ten_doi_tac': ten_doi_tac,
-                    'ma_loai_hinh': ma_loai_hinh, 
-                    'so_kien': so_kien,
-                    'tong_trong_luong_hang': tong_trong_luong_hang, 
-                    'phan_luong': phan_luong, 
-                    'phi_khac': tong_phi_khac_final,       
-                    'phi_dich_vu_hq': parse_money_input(phi_dvhq_input),
-                    'ghi_chu': ghi_chu_final               
-                }
-                
-                ok, msg = save_to_khai_transaction(db.pool, tk_data, None, current_user)
-                if ok: 
-                    st.success("✅ Đã tạo tờ khai mới thành công!")
-                    st.session_state["form_tao_tokhai_key"] = f"form_tao_moi_tokhai_batch_{uuid.uuid4()}"
-                    st.session_state["hq_auto_data"] = {}
-                    st.session_state["hq_selected_cd"] = 0
-                    if "create_khach_hang_id" in st.session_state: del st.session_state["create_khach_hang_id"]
-                    time.sleep(1)
-                    st.rerun()
-                else: 
-                    st.error(f"Lỗi: {msg}")
-    vung_thao_tac_khai_hq()
+                try:
+                    if not kh_id:
+                        st.error("❌ Vui lòng chọn khách hàng hợp lệ từ danh sách!")
+                        st.stop()
+                    if not so_van_don.strip() or not so_to_khai.strip():
+                        st.error("❌ Số Tờ khai và Vận đơn không được để trống!")
+                        st.stop()      
+                    
+                    tong_tien_phu_phi = sum([float(p['don_gia_phu_phi']) for p in ds_phu_phi_tong_hop if p['id'] in selected_phu_phi])
+                    ten_cac_phu_phi = [p['ten_phu_phi'] for p in ds_phu_phi_tong_hop if p['id'] in selected_phu_phi]
+                    
+                    ghi_chu_final = ghi_chu.strip()
+                    if ten_cac_phu_phi: ghi_chu_final += f" | Phụ phí: {', '.join(ten_cac_phu_phi)}"
+                    
+                    tk_data = {
+                        'so_to_khai': so_to_khai, 'loai_to_khai': loai_tk, 'so_van_don': so_van_don, 
+                        'ngay_khai': ngay_khai.strftime('%Y-%m-%d'), 'khach_hang_id': kh_id, 
+                        'so_hoa_don_tm': so_hoa_don_tm, 'kho_cang_lay_hang': kho_cang_lay_hang,
+                        'ten_doi_tac': ten_doi_tac, 'ma_loai_hinh': ma_loai_hinh, 
+                        'so_kien': so_kien, 'tong_trong_luong_hang': tong_trong_luong_hang, 
+                        'phan_luong': phan_luong, 'phi_khac': parse_money_input(phi_khac_nhap_tay) + tong_tien_phu_phi,       
+                        'phi_dich_vu_hq': parse_money_input(phi_dvhq_input), 'ghi_chu': ghi_chu_final               
+                    }
+                    
+                    # Khi tạo mới tờ khai, nếu không có danh sách chi tiết phí động riêng, ta truyền list rỗng [] hoặc gom nhóm từ multiselect phụ phí
+                    chi_tiet_phi_list_moi = []
+                    for p_id in selected_phu_phi:
+                        # Lấy thông tin phụ phí từ dict_phu_phi tương ứng
+                        p_item = next((p for p in ds_phu_phi_tong_hop if p['id'] == p_id), None)
+                        if p_item:
+                            chi_tiet_phi_list_moi.append({
+                                'ten_loai_phi': p_item['ten_phu_phi'],
+                                'so_tien': p_item['don_gia_phu_phi'],
+                                'ghi_chu': 'Phụ phí tự động từ cấu hình giá'
+                            })
 
+                    ok, msg = save_to_khai_transaction(
+                        db_pool=db.pool, 
+                        tk_data=tk_data, 
+                        chi_tiet_phi_list=chi_tiet_phi_list_moi, 
+                        tk_id=None, 
+                        current_user=current_user
+                    )
+                    # Yêu cầu gọi qua hàm parse_money_input và lưu audit transaction[cite: 5]
+                    #ok, msg = save_to_khai_transaction(db.pool, tk_data, None,None, current_user)
+                    if ok: 
+                                # Lưu thông báo thành công vào session để giữ lại khi làm mới hoặc hiển thị trực tiếp
+                                st.success("✅ Đã tạo tờ khai mới thành công!")
+                                
+                                # Reset toàn bộ session state liên quan đến form và file upload
+                                st.session_state["form_tao_tokhai_key"] = f"form_tao_moi_tokhai_batch_{uuid.uuid4()}"
+                                st.session_state["file_uploader_hq_key"] = f"upload_file_to_khai_hq_{uuid.uuid4()}"
+                                st.session_state["hq_auto_data"] = {}
+                                if "last_uploaded_sig" in st.session_state: 
+                                    del st.session_state["last_uploaded_sig"]
+                                    
+                                time.sleep(1.2)
+                                st.rerun()
+                    else: 
+                                st.error(f"Lỗi: {msg}")
+                except Exception as ex:
+                    st.error(f"❌ Có lỗi xảy ra trong quá trình lưu dữ liệu: {str(ex)}")
+    vung_thao_tac_khai_hq()
 # ==========================================
 # TAB 2: DANH SÁCH & QUẢN LÝ TỜ KHAI
 # ==========================================
@@ -401,13 +536,13 @@ with tab_danh_sach:
                         
                         e_kh_id = st.selectbox("Khách Hàng*", options=list(dict_kh.keys()), index=get_idx(list(dict_kh.keys()), tk_info['khach_hang_id']), format_func=lambda x: dict_kh[x])
                         
-                        df_cd = db.execute_query("SELECT id, ngay_chuyen_di, dia_diem_giao_nhan FROM chuyen_di ORDER BY id DESC LIMIT 50")
-                        dict_cd = {0: "Không liên kết"}
-                        if isinstance(df_cd, pd.DataFrame) and not df_cd.empty:
-                            dict_cd.update({r['id']: f"Mã {r['id']} - {r['dia_diem_giao_nhan']} ({r['ngay_chuyen_di']})" for _, r in df_cd.iterrows()})
+                        #df_cd = db.execute_query("SELECT id, ngay_chuyen_di, dia_diem_giao_nhan FROM chuyen_di ORDER BY id DESC LIMIT 50")
+                        #dict_cd = {0: "Không liên kết"}
+                        #if isinstance(df_cd, pd.DataFrame) and not df_cd.empty:
+                        #    dict_cd.update({r['id']: f"Mã {r['id']} - {r['dia_diem_giao_nhan']} ({r['ngay_chuyen_di']})" for _, r in df_cd.iterrows()})
                         
-                        e_chuyen_di_id = st.selectbox("Chuyến Xe Liên Kết", options=list(dict_cd.keys()), index=get_idx(list(dict_cd.keys()), tk_info['chuyen_di_id'] or 0), format_func=lambda x: dict_cd[x])
-                        e_chuyen_di_id = None if e_chuyen_di_id == 0 else e_chuyen_di_id
+                        #e_chuyen_di_id = st.selectbox("Chuyến Xe Liên Kết", options=list(dict_cd.keys()), index=get_idx(list(dict_cd.keys()), tk_info['chuyen_di_id'] or 0), format_func=lambda x: dict_cd[x])
+                        #e_chuyen_di_id = None if e_chuyen_di_id == 0 else e_chuyen_di_id
 
                         ec3, ec4, ec5 = st.columns(3)
                         e_so_hoa_don = ec3.text_input("Số Hóa Đơn TM", value=tk_info['so_hoa_don_tm'] or "")
@@ -454,7 +589,6 @@ with tab_danh_sach:
                                 'loai_to_khai': e_loai_tk, 
                                 'ngay_khai': e_ngay_khai.strftime('%Y-%m-%d'),
                                 'khach_hang_id': e_kh_id, 
-                                'chuyen_di_id': e_chuyen_di_id, 
                                 'so_hoa_don_tm': e_so_hoa_don, 
                                 'kho_cang_lay_hang': e_kho_cang_lay_hang,
                                 'ten_doi_tac': e_ten_doi_tac,
@@ -467,7 +601,25 @@ with tab_danh_sach:
                                 'ghi_chu': e_ghi_chu_final
                             }
                             
-                            ok, msg = save_to_khai_transaction(db.pool, tk_data, selected_tk_id, current_user)
+                            #ok, msg = save_to_khai_transaction(db.pool, tk_data, selected_tk_id, current_user)
+                            # Khi sửa tờ khai, tổng hợp các phụ phí được chọn thêm vào danh sách chi tiết phí
+                            chi_tiet_phi_list_sua = []
+                            for p_id in e_selected_phu_phi:
+                                p_item = next((p for p in ds_phu_phi_edit_tong_hop if p['id'] == p_id), None)
+                                if p_item:
+                                    chi_tiet_phi_list_sua.append({
+                                        'ten_loai_phi': p_item['ten_phu_phi'],
+                                        'so_tien': p_item['don_gia_phu_phi'],
+                                        'ghi_chu': 'Phụ phí bổ sung khi cập nhật tờ khai'
+                                    })
+
+                            ok, msg = save_to_khai_transaction(
+                                db_pool=db.pool, 
+                                tk_data=tk_data, 
+                                chi_tiet_phi_list=chi_tiet_phi_list_sua, 
+                                tk_id=selected_tk_id, 
+                                current_user=current_user
+                            )
                             
                             if ok: 
                                 st.success("✅ Cập nhật thông tin tờ khai thành công!")

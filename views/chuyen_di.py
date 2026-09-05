@@ -65,6 +65,7 @@ if isinstance(df_kh_full, pd.DataFrame) and not df_kh_full.empty:
 
 with tab1:
     tao_tieu_de_kem_nut_refresh("📋 Danh sách chuyến đi trong ngày", "ref_tab1")
+    
     @st.fragment
     def vung_thao_tac_hien_thi_chuyen_di():
         with st.expander("🔗 NGHIỆP VỤ GHÉP CHUYẾN / CHUYẾN TIẾP NỐI (Dành cho Điều Phối)", expanded=True):
@@ -77,16 +78,26 @@ with tab1:
             df_ghep = db.execute_query(sql_ghep)
             if isinstance(df_ghep, pd.DataFrame) and not df_ghep.empty:
                 ghep_opts = {r['id']: f"🚛 Xe: {r['bien_so_xe']} | Mã chuyến: {r['id']} | Khách: {r['ten_khach']} | Lộ trình: {r['dia_diem_giao_nhan']}" for _, r in df_ghep.iterrows()}
-                chuyen_duoc_chon = st.multiselect("📌 Click để chọn các chuyến đi cần ghép:", options=list(ghep_opts.keys()), format_func=lambda x: ghep_opts[x])
-                if st.button("🔗 XÁC NHẬN GHÉP CHUYẾN", type="primary"):
-                    if len(chuyen_duoc_chon) < 2: st.warning("⚠️ Chọn ít nhất 2 chuyến.")
-                    elif len(df_ghep[df_ghep['id'].isin(chuyen_duoc_chon)]['xe_id'].unique()) > 1: st.error("❌ Các chuyến không cùng xe!")
+                chuyen_duoc_chon = st.multiselect("📌 Click để chọn các chuyến đi cần ghép:", options=list(ghep_opts.keys()), format_func=lambda x: ghep_opts[x], key="multiselect_ghep_chuyen_tab1")
+                
+                if st.button("🔗 XÁC NHẬN GHÉP CHUYẾN", type="primary", key="btn_xac_nhan_ghep_tab1"):
+                    if len(chuyen_duoc_chon) < 2: 
+                        st.warning("⚠️ Chọn ít nhất 2 chuyến.")
+                    elif len(df_ghep[df_ghep['id'].isin(chuyen_duoc_chon)]['xe_id'].unique()) > 1: 
+                        st.error("❌ Các chuyến không cùng xe!")
                     else:
-                        success, msg = group_trips_transaction(db.pool, chuyen_duoc_chon, st.session_state.username)
-                        st.success(msg) if success else st.error(f"Lỗi: {msg}")
-                        if success: time.sleep(1.5); st.rerun()
-            else: st.info("📭 Không có chuyến đi nội bộ khả dụng để ghép.")
+                        success, msg = group_trips_transaction(db.pool, chuyen_duoc_chon, st.session_state.get('username', 'Admin'))
+                        if success:
+                            st.success(msg)
+                            time.sleep(1.2)
+                            st.rerun()
+                        else: 
+                            st.error(f"Lỗi: {msg}")
+            else: 
+                st.info("📭 Không có chuyến đi nội bộ khả dụng để ghép.")
+                
         st.divider()
+        
         try:
             sql_list = """
                 SELECT cd.ma_chuyen_ghep AS 'Mã Nhóm', cd.stt_chuyen_ghep AS 'STT', cd.id AS 'Mã chuyến đi', cd.ngay_chuyen_di AS 'Ngày', 
@@ -96,8 +107,15 @@ with tab1:
                 WHERE cd.ngay_chuyen_di = %s ORDER BY cd.ma_chuyen_ghep DESC, cd.stt_chuyen_ghep ASC, cd.id DESC
             """
             df_chuyen = db.execute_query(sql_list, (datetime.date.today().strftime('%Y-%m-%d'),))
-            st.dataframe(df_chuyen, use_container_width=True, hide_index=True) if isinstance(df_chuyen, pd.DataFrame) and not df_chuyen.empty else st.info("Chưa có dữ liệu.")
-        except Exception as e: st.error(f"Lỗi: {e}")
+            
+            if isinstance(df_chuyen, pd.DataFrame) and not df_chuyen.empty:
+                st.dataframe(df_chuyen, use_container_width=True, hide_index=True)
+            else: 
+                st.info("Chưa có dữ liệu chuyến đi trong ngày hôm nay.")
+                
+        except Exception as e: 
+            st.error(f"Lỗi tải danh sách chuyến: {e}")
+            
     vung_thao_tac_hien_thi_chuyen_di()
 
 
