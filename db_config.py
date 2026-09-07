@@ -4,13 +4,18 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 import os
+import time
 
 # Tải các biến từ file .env vào hệ thống
 load_dotenv()
 
 class Database:
     def __init__(self):
-        # 1. Cấu hình thông số kết nối MySQL chuẩn bị cho Pool
+        # Tối ưu 1: Lazy Initialization - Chưa khởi tạo Pool ngay lập tức để giảm tải lúc khởi động App
+        self.pool = None
+        
+    def _init_pool(self):
+        """Hàm nội bộ để khởi tạo Pool khi thực sự cần thiết."""
         db_config = {
             "host": os.getenv("DB_HOST"),
             "port": int(os.getenv("DB_PORT", 25060)),
@@ -19,26 +24,31 @@ class Database:
             "database": os.getenv("DB_NAME"),
             "ssl_ca": "ca.pem",
             "ssl_disabled": False,
-            # 🚀 FIX LỖI 1: Bật tính năng dọn dẹp kết nối rác khi lấy/trả vào Pool
             "pool_reset_session": True 
         }
         
-        # 2. Khởi tạo Bể chứa kết nối (Connection Pool)
         try:
+            # Tối ưu 2: Thêm timestamp vào pool_name để tránh lỗi trùng Pool Name khi Streamlit hot-reload
+            pool_name = f"baotin_tms_pool_{int(time.time())}"
             self.pool = pooling.MySQLConnectionPool(
-                pool_name="baotin_tms_pool",
+                pool_name=pool_name,
                 pool_size=10,
                 **db_config
             )
         except mysql.connector.Error as err:
             st.error(f"❌ Lỗi khởi tạo Pool: {err}")
 
-    # Để file chuyen_di.py có thể mượn kết nối làm Transaction
     def get_connection(self):
         try:
+            # Nếu Pool chưa được khởi tạo, lúc này mới tạo
+            if self.pool is None:
+                self._init_pool()
+                
             conn = self.pool.get_connection()
-            # 🚀 FIX LỖI 2: Ping kiểm tra máy chủ. Nếu Aiven đã ngắt kết nối, tự động nối lại (thử 3 lần, cách nhau 1 giây)
-            conn.ping(reconnect=True, attempts=3, delay=1)
+            
+            # 🚀 TỐI ƯU 3: Bỏ delay=1. Nếu có delay, mỗi lần lấy kết nối app có thể bị treo 1s.
+            # Chỉ cần attempts=1, delay=0 là đủ để tự động nối lại nếu bị đứt.
+            conn.ping(reconnect=True, attempts=1, delay=0)
             return conn
         except mysql.connector.Error as err:
             st.error(f"❌ Mất kết nối hoàn toàn đến Aiven MySQL: {err}")
@@ -49,8 +59,9 @@ class Database:
         cursor = None
         try:
             conn = self.get_connection()
-            if not conn: # Bổ sung dòng này
+            if not conn:
                 return "Lỗi: Không thể kết nối đến máy chủ cơ sở dữ liệu."
+            
             is_select = query.strip().upper().startswith("SELECT")
             
             if is_select:
@@ -68,17 +79,15 @@ class Database:
         except Exception as e:
             return str(e)
             
-        # Luôn trả kết nối về Pool dù code chạy đúng hay bị lỗi
         finally:
             if cursor:
                 cursor.close()
+            # Luôn trả kết nối về Pool an toàn
             if conn and conn.is_connected():
                 conn.close()
-    ######################
     
     def get_recent_trips_for_edit(self):
-        """Lấy danh sách chuyến đi chưa hoàn thành hoặc gần đây để sửa khong có ngày chỉ có tao mới"""
-        df = pd.DataFrame()
+        """Lấy danh sách chuyến đi chưa hoàn thành hoặc gần đây để sửa (không có ngày chỉ có tạo mới)"""
         try:
             sql = """
                 SELECT 
@@ -96,9 +105,8 @@ class Database:
                 LIMIT 50;
             """
             df = self.execute_query(sql)
-            if df is None:
+            if df is None or (isinstance(df, str) and "Lỗi" in df):
                 return pd.DataFrame()
             return df
         except Exception as e:
             return pd.DataFrame()
-    ####

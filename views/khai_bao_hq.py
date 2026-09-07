@@ -404,7 +404,15 @@ with tab_khai_hq:
                 
                 c9, c10 = st.columns(2)
                 so_kien = c9.text_input("Số Kiện", value=auto_data.get('so_kien', ''))
-                tong_trong_luong_hang = c10.number_input("Tổng trọng lượng (KG)", min_value=0.0, value=float(auto_data.get('tong_trong_luong_hang') or 0.0), step=0.1)
+                val_trong_luong = float(auto_data.get('tong_trong_luong_hang') or 0.0)
+                tong_trong_luong_hang = c10.number_input(
+                    "Tổng trọng lượng (KG)", 
+                    min_value=0.0, 
+                    value=val_trong_luong if val_trong_luong > 0 else None, 
+                    placeholder="0", 
+                    step=0.1,
+                    format="%g"  # Thêm dòng này để cắt đuôi .0
+                )
                 
                 st.markdown("**💰 Khai Báo Chi Phí Chung (VNĐ)**")
                 phi_dvhq_id = st.selectbox("Phí Dịch Vụ Hải Quan*", 
@@ -417,9 +425,10 @@ with tab_khai_hq:
                 selected_phu_phi = st.multiselect("🏷️ Chọn Phụ Phí Đã Cấu Hình Cho Khách Này", options=list(dict_phu_phi.keys()), format_func=lambda x: dict_phu_phi[x])
 
                 cp1, cp2 = st.columns(2)
-                phi_van_chuyen_lien_ket = cp1.text_input("Phí Vận Chuyển (Lấy từ Chuyến)", value="0", disabled=(loai_tk in ["Noi_Dia", "DHL"]))
-                phi_khac_nhap_tay = cp2.text_input("Phí Phát Sinh Khác (Gõ tay thêm nếu có)", value="0")
+                phi_van_chuyen_lien_ket = cp1.text_input("Phí Vận Chuyển (Lấy từ Chuyến)", value="", placeholder="0", disabled=(loai_tk in ["Noi_Dia", "DHL"]))
+                phi_khac_nhap_tay = cp2.text_input("Phí Phát Sinh Khác (Gõ tay thêm nếu có)", value="", placeholder="0")
                 ghi_chu = st.text_input("Ghi chú bổ sung")
+                
                 
                 if st.form_submit_button("💾 LƯU TỜ KHAI HẢI QUAN", type="primary"):
                             try:
@@ -446,8 +455,8 @@ with tab_khai_hq:
                                     'ngay_khai': ngay_khai.strftime('%Y-%m-%d'), 'khach_hang_id': kh_id, 
                                     'so_hoa_don_tm': so_hoa_don_tm, 'kho_cang_lay_hang': kho_cang_lay_hang,
                                     'ten_doi_tac': ten_doi_tac, 'ma_loai_hinh': ma_loai_hinh, 
-                                    'so_kien': so_kien, 'tong_trong_luong_hang': tong_trong_luong_hang, 
-                                    'phan_luong': phan_luong, 'phi_khac': parse_money_input(phi_khac_nhap_tay) + tong_tien_phu_phi,       
+                                    'so_kien': so_kien, 'tong_trong_luong_hang': tong_trong_luong_hang or "0", 
+                                    'phan_luong': phan_luong, 'phi_khac': parse_money_input(phi_khac_nhap_tay or "0") + tong_tien_phu_phi,       
                                     'phi_dich_vu_hq': phi_dvhq_val, 'ghi_chu': ghi_chu_final               
                                 }
                                 
@@ -604,10 +613,18 @@ with tab_danh_sach:
                             e_ma_loai_hinh = st.text_input("Mã Loại Hình", value=tk_info['ma_loai_hinh'] or "")
                             
                             e_so_kien = st.text_input("Số Kiện", value=tk_info['so_kien'] or "")
-                            e_trong_luong = st.number_input("Tổng trọng lượng (KG)", value=float(tk_info['tong_trong_luong_hang'] or 0.0), step=0.1)
+                            val_e_trong_luong = float(tk_info['tong_trong_luong_hang'] or 0.0)
+                            e_trong_luong = st.number_input(
+                                "Tổng trọng lượng (KG)", 
+                                min_value=0.0, 
+                                value=val_e_trong_luong if val_e_trong_luong > 0 else None, 
+                                placeholder="0", 
+                                step=0.1,
+                                format="%g"  # Thêm dòng này để cắt đuôi .0
+                            )
                             
                             st.markdown("**💰 Khai Báo Chi Phí (VNĐ)**")
-                            def fmt(val): return f"{int(float(val)):,}" if pd.notna(val) else "0"
+                            def fmt(val): return f"{int(float(val)):,}" if pd.notna(val) and float(val) > 0 else ""
                             
                             ep1, ep2, ep3 = st.columns(3)
                             is_disabled_edit_vc = e_loai_tk in ["Noi_Dia", "DHL"]
@@ -616,9 +633,18 @@ with tab_danh_sach:
                             e_phi_dvhq = ep3.text_input("Phí DV Hải Quan", value=fmt(tk_info.get('phi_dich_vu_hq', 0)))
                             
                             st.caption("🏷️ Bổ sung thêm phụ phí cho tờ khai này (Sẽ được cộng vào Tổng Phí Phát Sinh đang hiển thị bên dưới)")
-                            e_selected_phu_phi = st.multiselect("Phụ phí bổ sung:", options=list(dict_phu_phi_edit.keys()), format_func=lambda x: dict_phu_phi_edit[x])
+                            if not dict_phu_phi_edit:
+                                st.info("💡 Khách hàng này hiện chưa được thiết lập phụ phí.")
+                                e_selected_phu_phi = [] 
+                            else:
+                                e_selected_phu_phi = st.multiselect(
+                                    "Phụ phí bổ sung:", 
+                                    options=list(dict_phu_phi_edit.keys()), 
+                                    format_func=lambda x: dict_phu_phi_edit[x],
+                                    key=f"edit_phu_phi_{selected_tk_id}"  # <-- Bổ sung Key định danh duy nhất
+                                )
                             
-                            e_phi_khac = ep2.text_input("Tổng Phí Phát Sinh Hàng Lẻ/Khác (Chưa tính phí chọn ở trên)", value=fmt(tk_info['phi_khac']))
+                            e_phi_khac = ep2.text_input("Tổng Phí Phát Sinh Hàng Lẻ/Khác", value=fmt(tk_info['phi_khac']), placeholder="0")
 
                             e_ghi_chu = st.text_input("Ghi chú bổ sung", value=tk_info['ghi_chu'] or "")
                             
@@ -647,10 +673,10 @@ with tab_danh_sach:
                                     'ten_doi_tac': e_ten_doi_tac,
                                     'ma_loai_hinh': e_ma_loai_hinh, 
                                     'so_kien': e_so_kien,
-                                    'tong_trong_luong_hang': e_trong_luong, 
+                                    'tong_trong_luong_hang': e_trong_luong or "0", 
                                     'phan_luong': e_phan_luong, 
                                     'phi_khac': e_phi_khac_final, 
-                                    'phi_dich_vu_hq': parse_money_input(e_phi_dvhq), 
+                                    'phi_dich_vu_hq': parse_money_input(e_phi_dvhq) , 
                                     'ghi_chu': e_ghi_chu_final
                                 }
                                 
@@ -732,35 +758,36 @@ with tab_container:
                         index=None, 
                         format_func=lambda x: "-- Vui lòng chọn loại container --" if x is None else x
                     )
-                    phi_dv_hq_input = sc4.text_input("Phí DV Hải Quan (Cho mỗi cont trong lô)", value="0")
+                    phi_dv_hq_input = sc4.text_input("Phí DV Hải Quan (Cho mỗi cont trong lô)", value="", placeholder="0")
                     
                     st.markdown("**💰 Khai Báo Phí Nâng / Hạ Theo Lô Container**")
                     p1, p2, p3, p4 = st.columns(4)
-                    phi_on_input = p1.text_input("Phí Nâng ON (VNĐ)", value="0")
+                    phi_on_input = p1.text_input("Phí Nâng ON (VNĐ)", value="", placeholder="0")
                     inv_on_input = p2.text_input("Số HĐ Nâng ON", value="")
-                    phi_off_input = p3.text_input("Phí Hạ OFF (VNĐ)", value="0")
+                    phi_off_input = p3.text_input("Phí Hạ OFF (VNĐ)", value="", placeholder="0")
                     inv_off_input = p4.text_input("Số HĐ Hạ OFF", value="")
+                    
                     p5, p6, p7, p8 = st.columns(4)
-                    phi_bot_input = p5.text_input("Phí BOT", value="0")
-                    phi_lay_mau_input = p6.text_input("Phí Lấy Mẫu", value="0")
-                    phi_kiem_dich_input = p7.text_input("Phí Kiểm Dịch", value="0")
+                    phi_bot_input = p5.text_input("Phí BOT", value="", placeholder="0")
+                    phi_lay_mau_input = p6.text_input("Phí Lấy Mẫu", value="", placeholder="0")
+                    phi_kiem_dich_input = p7.text_input("Phí Kiểm Dịch", value="", placeholder="0")
                     inv_kiem_dich_input = p8.text_input("Số HĐ Kiểm Dịch", value="")
                         
                     p9, p10, p11, p12 = st.columns(4)
-                    phi_luu_bai_input = p9.text_input("Phí Lưu Bãi", value="0")
+                    phi_luu_bai_input = p9.text_input("Phí Lưu Bãi", value="", placeholder="0")
                     inv_luu_bai_input = p10.text_input("Số HĐ Lưu Bãi", value="")
-                    phi_do_input = p11.text_input("Phí D/O", value="0")
+                    phi_do_input = p11.text_input("Phí D/O", value="", placeholder="0")
                     inv_do_input = p12.text_input("Số HĐ D/O", value="")
                         
                     p13, p14, p15, p16 = st.columns(4)
-                    phi_handling_input = p13.text_input("Phí Handling", value="0")
+                    phi_handling_input = p13.text_input("Phí Handling", value="", placeholder="0")
                     inv_handling_input = p14.text_input("Số HĐ Handling", value="")
-                    phi_khu_trung_input = p15.text_input("Phí Khử Trùng", value="0")
+                    phi_khu_trung_input = p15.text_input("Phí Khử Trùng", value="", placeholder="0")
                     inv_khu_trung_input = p16.text_input("Số HĐ Khử Trùng", value="")
 
                     p17, p18,p19 = st.columns(3) 
-                    phi_van_chuyen_input = p17.text_input("Phí vận chuyển (Cho mỗi cont trong lô)", value="0")
-                    phi_thong_quan_input = p18.text_input("Phí thông quan (Cho mỗi cont trong lô)", value="0")
+                    phi_van_chuyen_input = p17.text_input("Phí vận chuyển (Cho mỗi cont trong lô)", value="", placeholder="0")
+                    phi_thong_quan_input = p18.text_input("Phí thông quan (Cho mỗi cont trong lô)", value="", placeholder="0")
                     ghi_chu_input= p19.text_input("Ghi chú", value="")
 
                     raw_container_text = st.text_area(
@@ -811,25 +838,25 @@ with tab_container:
                                         "loai_cont": loai_cont_default,
                                         "chuyen_di_id": cd_id_pass, 
                                         "to_khai_id": tk_id_pass,   
-                                        "phi_to_khai": phi_dv_hq_input, 
-                                        "phi_nang_ha_on": phi_on_input,
+                                        "phi_to_khai": phi_dv_hq_input or "0", 
+                                        "phi_nang_ha_on": phi_on_input or "0",
                                         "so_hoa_don_lift_on": inv_on_input.strip(),
-                                        "phi_nang_ha_off": phi_off_input,
+                                        "phi_nang_ha_off": phi_off_input or "0",
                                         "so_hoa_don_lift_off": inv_off_input.strip(),
-                                        "phi_bot": phi_bot_input,
-                                        "phi_lay_mau": phi_lay_mau_input,
-                                        "phi_kiem_dich": phi_kiem_dich_input,
+                                        "phi_bot": phi_bot_input or "0",
+                                        "phi_lay_mau": phi_lay_mau_input or "0",
+                                        "phi_kiem_dich": phi_kiem_dich_input or "0",
                                         "so_hoa_don_kiem_dich": inv_kiem_dich_input.strip(),
-                                        "phi_luu_bai": phi_luu_bai_input,
+                                        "phi_luu_bai": phi_luu_bai_input or "0",
                                         "so_hoa_don_luu_bai": inv_luu_bai_input.strip(),
-                                        "phi_do": phi_do_input,
+                                        "phi_do": phi_do_input or "0",
                                         "so_hoa_don_do": inv_do_input.strip(),
-                                        "phi_handling": phi_handling_input,
+                                        "phi_handling": phi_handling_input or "0",
                                         "so_hoa_don_handling": inv_handling_input.strip(),
-                                        "phi_khu_trung": phi_khu_trung_input,
+                                        "phi_khu_trung": phi_khu_trung_input or "0",
                                         "so_hoa_don_khu_trung": inv_khu_trung_input.strip(),
-                                        "phi_van_chuyen": phi_van_chuyen_input,
-                                        "phi_thong_quan": phi_thong_quan_input,
+                                        "phi_van_chuyen": phi_van_chuyen_input or "0",
+                                        "phi_thong_quan": phi_thong_quan_input or "0",
                                         "ghi_chu": ghi_chu_input.strip()
                                     })
                             
