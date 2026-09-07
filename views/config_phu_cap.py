@@ -171,77 +171,80 @@ with tab1:
         with st.expander("✏️ Sửa Tiêu chí hoặc Mức tải trọng", expanded=False):
             @st.fragment
             def vung_thao_tac_edit_tieu_chi():
-                col_edit1, col_edit2 = st.columns(2)
-                
-                with col_edit1:
-                    st.markdown("**1. Sửa Tiêu chí Phụ cấp**")
-                    try:
-                        # Sử dụng Cache cho danh sách sửa
-                        df_tc_edit = get_cached_master_data(db, "SELECT id, ten_tieu_chi, km_min, km_max FROM dm_tieu_chi_phu_cap ORDER BY ten_tieu_chi ASC")
-                    except Exception:
-                        df_tc_edit = pd.DataFrame()
+                try:    
+                    col_edit1, col_edit2 = st.columns(2)
                     
-                    if isinstance(df_tc_edit, pd.DataFrame) and not df_tc_edit.empty:
-                        tc_edit_dict = {int(r['id']): r for _, r in df_tc_edit.iterrows()}
+                    with col_edit1:
+                        st.markdown("**1. Sửa Tiêu chí Phụ cấp**")
+                        try:
+                            # Sử dụng Cache cho danh sách sửa
+                            df_tc_edit = get_cached_master_data(db, "SELECT id, ten_tieu_chi, km_min, km_max FROM dm_tieu_chi_phu_cap ORDER BY ten_tieu_chi ASC")
+                        except Exception:
+                            df_tc_edit = pd.DataFrame()
                         
-                        tc_format = {
-                            k: f"{v['ten_tieu_chi']} ({float(v.get('km_min') or 0):.1f} - {float(v.get('km_max') or 0):.1f} km)"
-                            for k, v in tc_edit_dict.items()
-                        }
-                        
-                        edit_tc_id = st.selectbox("Chọn tiêu chí cần sửa", options=list(tc_edit_dict.keys()),
-                                                  format_func=lambda x: tc_format[x], key="edit_tc_sel", index= None,placeholder="-- Vui lòng chọn tiêu chí --")
-                        
-                        if edit_tc_id:
-                            curr_tc = tc_edit_dict[edit_tc_id]
-                            edit_tc_name = st.text_input("Tên Tiêu chí mới*", value=curr_tc['ten_tieu_chi'], key="edit_tc_name")
+                        if isinstance(df_tc_edit, pd.DataFrame) and not df_tc_edit.empty:
+                            tc_edit_dict = {int(r['id']): r for _, r in df_tc_edit.iterrows()}
                             
-                            c_km1, c_km2 = st.columns(2)
-                            edit_km_min = c_km1.number_input("Cự ly Min mới (km)", value=float(curr_tc.get('km_min') or 0.0), step=1.0, key="edit_km_min")
-                            edit_km_max = c_km2.number_input("Cự ly Max mới (km)", value=float(curr_tc.get('km_max') or 0.0), step=1.0, key="edit_km_max")
+                            tc_format = {
+                                k: f"{v['ten_tieu_chi']} ({float(v.get('km_min') or 0):.1f} - {float(v.get('km_max') or 0):.1f} km)"
+                                for k, v in tc_edit_dict.items()
+                            }
                             
-                            if st.button("✏️ Cập nhật Tiêu Chí", type="primary"):
-                                if edit_tc_name.strip():
-                                    conn = db.pool.get_connection()
-                                    try:
-                                        conn.autocommit = False
-                                        cursor = conn.cursor()
-                                        
-                                        cursor.execute(
-                                            "UPDATE dm_tieu_chi_phu_cap SET ten_tieu_chi = %s, km_min = %s, km_max = %s WHERE id = %s",
-                                            (edit_tc_name.strip(), edit_km_min, edit_km_max, edit_tc_id)
-                                        )
-                                        
-                                        if cursor.rowcount >= 0:
-                                            import json
-                                            chi_tiet = json.dumps({"id_sua": edit_tc_id, "ten_cu": curr_tc['ten_tieu_chi'], "ten_moi": edit_tc_name.strip()}, ensure_ascii=False)
+                            edit_tc_id = st.selectbox("Chọn tiêu chí cần sửa", options=list(tc_edit_dict.keys()),
+                                                    format_func=lambda x: tc_format[x], key="edit_tc_sel", index= None,placeholder="-- Vui lòng chọn tiêu chí --")
+                            
+                            if edit_tc_id:
+                                curr_tc = tc_edit_dict[edit_tc_id]
+                                edit_tc_name = st.text_input("Tên Tiêu chí mới*", value=curr_tc['ten_tieu_chi'], key="edit_tc_name")
+                                
+                                c_km1, c_km2 = st.columns(2)
+                                edit_km_min = c_km1.number_input("Cự ly Min mới (km)", value=float(curr_tc.get('km_min') or 0.0), step=1.0, key="edit_km_min")
+                                edit_km_max = c_km2.number_input("Cự ly Max mới (km)", value=float(curr_tc.get('km_max') or 0.0), step=1.0, key="edit_km_max")
+                                
+                                if st.button("✏️ Cập nhật Tiêu Chí", type="primary"):
+                                    if edit_tc_name.strip():
+                                        conn = db.pool.get_connection()
+                                        try:
+                                            conn.autocommit = False
+                                            cursor = conn.cursor()
                                             
-                                            cursor.execute("""
-                                                INSERT INTO audit_logs (phan_he, record_id, nguoi_thuc_hien, hanh_dong, chi_tiet) 
-                                                VALUES (%s, %s, %s, %s, %s)
-                                            """, ('QUAN_LY_PHU_CAP', edit_tc_id, current_user, 'SUA_TIEU_CHI', chi_tiet))
+                                            cursor.execute(
+                                                "UPDATE dm_tieu_chi_phu_cap SET ten_tieu_chi = %s, km_min = %s, km_max = %s WHERE id = %s",
+                                                (edit_tc_name.strip(), edit_km_min, edit_km_max, edit_tc_id)
+                                            )
                                             
-                                            conn.commit()
-                                            clear_master_cache() # Xóa cache sau khi sửa
-                                            st.success("✅ Cập nhật tiêu chí thành công!")
-                                            for k in ["edit_tc_sel", "edit_tc_name", "edit_km_min", "edit_km_max"]:
-                                                if k in st.session_state: del st.session_state[k]
-                                            import time
-                                            time.sleep(1)
-                                            st.rerun()
-                                        else:
+                                            if cursor.rowcount >= 0:
+                                                import json
+                                                chi_tiet = json.dumps({"id_sua": edit_tc_id, "ten_cu": curr_tc['ten_tieu_chi'], "ten_moi": edit_tc_name.strip()}, ensure_ascii=False)
+                                                
+                                                cursor.execute("""
+                                                    INSERT INTO audit_logs (phan_he, record_id, nguoi_thuc_hien, hanh_dong, chi_tiet) 
+                                                    VALUES (%s, %s, %s, %s, %s)
+                                                """, ('QUAN_LY_PHU_CAP', edit_tc_id, current_user, 'SUA_TIEU_CHI', chi_tiet))
+                                                
+                                                conn.commit()
+                                                clear_master_cache() # Xóa cache sau khi sửa
+                                                st.success("✅ Cập nhật tiêu chí thành công!")
+                                                for k in ["edit_tc_sel", "edit_tc_name", "edit_km_min", "edit_km_max"]:
+                                                    if k in st.session_state: del st.session_state[k]
+                                                import time
+                                                time.sleep(1)
+                                                st.rerun()
+                                            else:
+                                                conn.rollback()
+                                                st.warning("⚠️ Lỗi không xác định khi cập nhật.")
+                                        except Exception as e:
                                             conn.rollback()
-                                            st.warning("⚠️ Lỗi không xác định khi cập nhật.")
-                                    except Exception as e:
-                                        conn.rollback()
-                                        st.error(f"❌ Lỗi SQL: {e}")
-                                    finally:
-                                        cursor.close()
-                                        conn.close()
-                                else:
-                                    st.warning("⚠️ Vui lòng không để trống tên tiêu chí!")
-                    else:
-                        st.info("Chưa có dữ liệu tiêu chí để sửa.")
+                                            st.error(f"❌ Lỗi SQL: {e}")
+                                        finally:
+                                            cursor.close()
+                                            conn.close()
+                                    else:
+                                        st.warning("⚠️ Vui lòng không để trống tên tiêu chí!")
+                        else:
+                            st.info("Chưa có dữ liệu tiêu chí để sửa.")
+                except Exception as e:
+                       st.error(f"❌ Lỗi xảy ra trong quá trình sửa tiêu chí: {e}")    
                 
                 with col_edit2:
                     st.markdown("**2. Sửa Mức Tải Trọng**")

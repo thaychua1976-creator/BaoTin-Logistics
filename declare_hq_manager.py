@@ -275,6 +275,7 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
             c.so_cont,
             cd.is_thue_ngoai,
             cd.bien_so_xe_ngoai,
+            cd.loai_hinh_xe,
             xe.bien_so_xe AS bien_so_noi_bo,
             xe.loai_xe AS loai_xe_noi_bo,
             xe.tai_trong_thiet_ke,
@@ -439,7 +440,10 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
                         if is_thue_ngoai == 1:
                             val_bs_ngoai = r.get('bien_so_xe_ngoai')
                             hien_thi_so = str(val_bs_ngoai).strip() if pd.notna(val_bs_ngoai) else ""
-                            hien_thi_loai = "Xe Thuê Ngoài"
+                            
+                            # Lấy loại hình xe thuê ngoài từ chuyến đi, nếu rỗng thì dự phòng là "Xe tải"
+                            val_loai_ngoai = r.get('loai_hinh_xe')
+                            hien_thi_loai = str(val_loai_ngoai).strip() if pd.notna(val_loai_ngoai) and str(val_loai_ngoai).strip() != "" else "Xe tải"
                         else:
                             val_bs_noibo = r.get('bien_so_noi_bo')
                             hien_thi_so = str(val_bs_noibo).strip() if pd.notna(val_bs_noibo) else ""
