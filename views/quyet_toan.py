@@ -1291,7 +1291,7 @@ with tab3:
                                     ten_khach_hang_db = str(row_db.get('ten_khach_hang', ''))
                                     
                                     if trang_thai == 'Hoan_Thanh' and float(row_db.get('doanh_thu', 0.0) or 0.0) > 0:
-                                        error_list.append(f"⚠️ Dòng {index + 2} (Mã {cid}): Đã khóa sổ và có doanh thu hợp lệ trước đó.")
+                                        #error_list.append(f"⚠️ Dòng {index + 2} (Mã {cid}): Đã khóa sổ và có doanh thu hợp lệ trước đó.")
                                         continue
                                     
                                     booked_kg = float(row_db.get('khoi_luong_kg', 0.0) or 0.0)
@@ -1474,6 +1474,7 @@ with tab3:
                                     
                                     if doanh_thu_chuyen == 0:
                                         error_list.append(f"⚠️ Dòng {index + 2} (Mã {cid}): Không dò ra Doanh Thu (Khối lượng book {tai_trong_so_sanh_tan}T không khớp Rate Cards). Phụ phí % bị nhân với 0đ = 0đ!")
+                                        continue # Bắt buộc phải có lệnh này để ngắt không chạy xuống hàm settle_trip_transaction
 
                                     is_chu_nhat = False
                                     ngay_chd = row_db.get('ngay_chuyen_di')
