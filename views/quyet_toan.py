@@ -394,8 +394,15 @@ with tab1:
                     "🔍 Chọn chuyến đi đang chờ quyết toán:", 
                     options=list(trip_options.keys()), 
                     format_func=lambda x: trip_options[x],
+                    index=None,
+                    placeholder="-- Vui lòng click chọn 1 chuyến đi --",
                     key=f"sel_trip_{st.session_state['reset_chuyen_form']}"
                 )
+                
+                # Ngắt luồng hiển thị, trả về giao diện trắng nếu chưa chọn chuyến
+                if cd_id is None:
+                    st.info("👆 Vui lòng chọn một chuyến đi từ danh sách bên trên để tiến hành khai báo quyết toán.")
+                    return
                 
                 row_sel = df_cd[df_cd['id'] == cd_id].iloc[0]
                 is_thue_ngoai = bool(row_sel.get('is_thue_ngoai', 0))
@@ -660,7 +667,8 @@ with tab1:
                 #    st.write(f"- **Tổng cước (tong_cuoc):** {tong_cuoc:,.0f} VNĐ")
                 # ========================================================
 
-                with st.form(key=f"form_qt_{st.session_state['reset_chuyen_form']}"):
+                # Thêm clear_on_submit=True vào khai báo form
+                with st.form(key=f"form_qt_{st.session_state['reset_chuyen_form']}", clear_on_submit=True):
                     st.markdown(f"##### 📍 1. Chi phí vận hành {'[THUÊ NGOÀI]' if is_thue_ngoai else '[NỘI BỘ]'}")
                     edit_cong_ty = st.text_input("Tên Khách hàng / Công ty", value=str(row_sel.get('ten_khach_hang') or ""))
                     
