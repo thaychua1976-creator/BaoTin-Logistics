@@ -1315,11 +1315,16 @@ with tab3:
                                     is_bao_excel = parse_excel_bool(r.get('IS_BAO_CHUYEN'))
                                     loai_xe_bao_excel = str(r.get('LOAI_XE_BAO', 'Xe Tải')).strip()
                                     
-                                    if "➡️" in lo_trinh_hien_tai and kh_id:
+                                    # SỬA LỖI 1: Tách chuỗi lộ trình đa định dạng để AI dò Bảng Giá chính xác
+                                    parts = None
+                                    if "➡️" in lo_trinh_hien_tai: parts = lo_trinh_hien_tai.split("➡️")
+                                    elif "->" in lo_trinh_hien_tai: parts = lo_trinh_hien_tai.split("->")
+                                    elif "-" in lo_trinh_hien_tai: parts = lo_trinh_hien_tai.split("-")
+                                    
+                                    if parts and kh_id and len(parts) >= 2:
                                         try:
-                                            parts = lo_trinh_hien_tai.split("➡️")
                                             ddi = parts[0].strip()
-                                            dden = parts[1].strip()
+                                            dden = parts[-1].strip()
                                             
                                             sql_rc = """
                                                 SELECT id, diem_di, diem_den, don_gia_cuoc, gia_chuyen_tiep_noi, phan_loai_phuong_tien, loai_xe_quy_cach, khoang_cach, is_hang_tra_ve 
@@ -1589,25 +1594,29 @@ with tab3:
                                     #if not hinh_thuc_tt or hinh_thuc_tt.lower() == 'nan': hinh_thuc_tt = 'Cong_No'
 
                                     if doanh_thu_chuyen > 0:
-                                        data_dict_excel = {
-                                            'ten_khach_hang': ten_khach_hang_db,
-                                            # Lưu ý: Sửa 'TIEN_CONG_TAI_XE' thành trường đúng nếu cần, vì file mẫu ko có cột này
-                                            'cong_chuyen': parse_excel_money(r.get('TIEN_CONG_TAI_XE', 0)),
-                                            'doanh_thu': doanh_thu_chuyen,
-                                            'chi_phi_thue_ngoai': chi_phi_thue_ngoai_val,
-                                            'phi_hai_quan': parse_excel_money(r.get('PHI_HAI_QUAN')),
-                                            'phi_boc_xep': parse_excel_money(r.get('PHI_BOC_XEP')),
-                                            'phi_khac': tong_phi_khac_final,
-                                            'tien_them': tien_them_final,
-                                            'ghi_chu_quyet_toan': ghi_chu_goc 
-                                        }
-                            
-                                        success, msg = settle_trip_transaction(db.pool, data_dict_excel, 'Hoan_Thanh', cid)
-                                        if success: closed_count += 1
-                                        else: error_list.append(f"❌ Dòng {index + 2} (Mã {cid}): Lỗi DB - {msg}")
+                                            data_dict_excel = {
+                                                'ten_khach_hang': ten_khach_hang_db,
+                                                'cong_chuyen': parse_excel_money(r.get('TIEN_CONG_TAI_XE', 0)),
+                                                'doanh_thu': doanh_thu_chuyen,
+                                                'chi_phi_thue_ngoai': chi_phi_thue_ngoai_val,
+                                                'phi_hai_quan': parse_excel_money(r.get('PHI_HAI_QUAN')),
+                                                'phi_boc_xep': parse_excel_money(r.get('PHI_BOC_XEP')),
+                                                'phi_khac': tong_phi_khac_final,
+                                                'tien_them': tien_them_final,
+                                                'ghi_chu_quyet_toan': ghi_chu_goc 
+                                            }
+                                
+                                            # SỬA LỖI 2: Dùng hàm update_trip_transaction cho các chuyến đã "Hoan_Thanh" nhưng bị rỗng tiền
+                                            if trang_thai == 'Hoan_Thanh':
+                                                success, msg = update_trip_transaction(db.pool, data_dict_excel, 'Hoan_Thanh', cid)
+                                            else:
+                                                success, msg = settle_trip_transaction(db.pool, data_dict_excel, 'Hoan_Thanh', cid)
+                                                
+                                            if success: closed_count += 1
+                                            else: error_list.append(f"❌ Dòng {index + 2} (Mã {cid}): Lỗi DB - {msg}")
                                     else:
-                                        # Chốt chặn cuối cùng: Cấm lưu nếu Doanh thu vẫn = 0
-                                        error_list.append(f"⛔ Dòng {index + 2} (Mã {cid}): Đã chặn lưu! Doanh thu tính toán vẫn bằng 0đ.")
+                                            # Chốt chặn cuối cùng
+                                            error_list.append(f"⛔ Dòng {index + 2} (Mã {cid}): Đã chặn lưu! Doanh thu tính toán vẫn bằng 0đ.")
                                         
                                 except Exception as ex:
                                     error_list.append(f"❌ Dòng {index + 2} (Mã {cid}): Lỗi tính toán - {str(ex)}")
