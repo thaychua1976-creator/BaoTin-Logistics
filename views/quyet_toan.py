@@ -1237,10 +1237,10 @@ with tab3:
                                 if pd.isna(val) or val == "" or val is None: return 0.0
                                 try:
                                     if isinstance(val, (int, float)): return float(val)
-                                    clean_str = str(val).replace(",", "").replace(" ", "").strip()
-                                    match = re.search(r'[-+]?\d*\.\d+|\d+', clean_str)
-                                    if match: return float(match.group())
-                                    return 0.0
+                                    # Xóa triệt để dấu chấm, phẩy và khoảng trắng định dạng
+                                    clean_str = str(val).replace(",", "").replace(".", "").replace(" ", "").strip()
+                                    if not clean_str: return 0.0
+                                    return float(clean_str)
                                 except Exception: return 0.0
 
                             def parse_excel_bool(val):
@@ -1272,12 +1272,14 @@ with tab3:
                                 try:
                                     # Chuyến đi là giao dịch cụ thể, KHÔNG dùng cache
                                     sql_check = """
-                                        SELECT trang_thai_chuyen, khach_hang_id, ten_khach_hang, 
-                                            doanh_thu, dia_diem_giao_nhan, chi_phi_thue_ngoai, 
-                                            hinh_thuc_thanh_toan_ngoai, ghi_chu,
-                                            ngay_chuyen_di, khoi_luong_kg, xe_id, the_tich_cbm
-                                        FROM chuyen_di 
-                                        WHERE id = %s
+                                        SELECT cd.trang_thai_chuyen, cd.khach_hang_id, cd.ten_khach_hang, 
+                                            cd.doanh_thu, cd.dia_diem_giao_nhan, cd.chi_phi_thue_ngoai, 
+                                            cd.hinh_thuc_thanh_toan_ngoai, cd.ghi_chu,
+                                            cd.ngay_chuyen_di, cd.khoi_luong_kg, cd.xe_id, cd.the_tich_cbm,
+                                            x.tai_trong_thiet_ke
+                                        FROM chuyen_di cd
+                                        LEFT JOIN xe x ON cd.xe_id = x.id
+                                        WHERE cd.id = %s
                                     """
                                     df_check = db.execute_query(sql_check, (cid,))
                                     
@@ -1296,6 +1298,10 @@ with tab3:
                                     
                                     booked_kg = float(row_db.get('khoi_luong_kg', 0.0) or 0.0)
                                     tai_trong_so_sanh_tan = booked_kg / 1000.0 if booked_kg > 0 else 0.0
+                                    # Thêm fallback: Lấy tải trọng gốc của xe nếu khối lượng = 0
+                                    if tai_trong_so_sanh_tan <= 0:
+                                        tt_xe_float = float(row_db.get('tai_trong_thiet_ke', 99.0) or 99.0)
+                                        tai_trong_so_sanh_tan = (tt_xe_float / 1000.0) if tt_xe_float >= 50 else tt_xe_float
 
                                     dt_raw1 = float(row_db.get('doanh_thu', 0.0) or 0.0)
                                     doanh_thu_db = 0.0 if pd.isna(dt_raw1) or dt_raw1 == "" else float(dt_raw1)
@@ -1582,22 +1588,26 @@ with tab3:
                                     #hinh_thuc_tt = str(r.get('HINH_THUC_THANH_TOAN_NGOAI', '')).strip()
                                     #if not hinh_thuc_tt or hinh_thuc_tt.lower() == 'nan': hinh_thuc_tt = 'Cong_No'
 
-                                    data_dict_excel = {
-                                        'ten_khach_hang': ten_khach_hang_db,
-                                        'cong_chuyen': parse_excel_money(r.get('TIEN_CONG_TAI_XE')),
-                                        'doanh_thu': doanh_thu_chuyen,
-                                        'chi_phi_thue_ngoai': chi_phi_thue_ngoai_val,
-                                        #'hinh_thuc_thanh_toan_ngoai': hinh_thuc_tt,
-                                        'phi_hai_quan': parse_excel_money(r.get('PHI_HAI_QUAN')),
-                                        'phi_boc_xep': parse_excel_money(r.get('PHI_BOC_XEP')),
-                                        'phi_khac': tong_phi_khac_final,
-                                        'tien_them': tien_them_final,
-                                        'ghi_chu_quyet_toan': ghi_chu_goc 
-                                    }
-                        
-                                    success, msg = settle_trip_transaction(db.pool, data_dict_excel, 'Hoan_Thanh', cid)
-                                    if success: closed_count += 1
-                                    else: error_list.append(f"❌ Dòng {index + 2} (Mã {cid}): Lỗi DB - {msg}")
+                                    if doanh_thu_chuyen > 0:
+                                        data_dict_excel = {
+                                            'ten_khach_hang': ten_khach_hang_db,
+                                            # Lưu ý: Sửa 'TIEN_CONG_TAI_XE' thành trường đúng nếu cần, vì file mẫu ko có cột này
+                                            'cong_chuyen': parse_excel_money(r.get('TIEN_CONG_TAI_XE', 0)),
+                                            'doanh_thu': doanh_thu_chuyen,
+                                            'chi_phi_thue_ngoai': chi_phi_thue_ngoai_val,
+                                            'phi_hai_quan': parse_excel_money(r.get('PHI_HAI_QUAN')),
+                                            'phi_boc_xep': parse_excel_money(r.get('PHI_BOC_XEP')),
+                                            'phi_khac': tong_phi_khac_final,
+                                            'tien_them': tien_them_final,
+                                            'ghi_chu_quyet_toan': ghi_chu_goc 
+                                        }
+                            
+                                        success, msg = settle_trip_transaction(db.pool, data_dict_excel, 'Hoan_Thanh', cid)
+                                        if success: closed_count += 1
+                                        else: error_list.append(f"❌ Dòng {index + 2} (Mã {cid}): Lỗi DB - {msg}")
+                                    else:
+                                        # Chốt chặn cuối cùng: Cấm lưu nếu Doanh thu vẫn = 0
+                                        error_list.append(f"⛔ Dòng {index + 2} (Mã {cid}): Đã chặn lưu! Doanh thu tính toán vẫn bằng 0đ.")
                                         
                                 except Exception as ex:
                                     error_list.append(f"❌ Dòng {index + 2} (Mã {cid}): Lỗi tính toán - {str(ex)}")
