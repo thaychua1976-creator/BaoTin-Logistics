@@ -307,8 +307,12 @@ with tab2:
                 
                 if kieu_nghiep_vu == "Nghiệp vụ Xe Tải":
                     col_hl1, col_hl2 = st.columns(2)
-                    khoi_luong = col_hl1.number_input("📦 Khối lượng (KG)*", min_value=0.0, value=float(trip_data.get('khoi_luong_kg') or 0.0), step=1.0, key=kg_key)
-                    so_cbm = col_hl2.number_input("🧊 Thể tích (CBM)", min_value=0.0, value=float(trip_data.get('the_tich_cbm') or 0.0), step=0.1, key=cbm_key)
+                    
+                    val_kl = float(trip_data.get('khoi_luong_kg') or 0.0)
+                    khoi_luong = col_hl1.number_input("📦 Khối lượng (KG)*", min_value=0.0, value=val_kl if val_kl > 0 else None, placeholder="0", format="%g", step=1.0, key=kg_key)
+                    
+                    val_cbm = float(trip_data.get('the_tich_cbm') or 0.0)
+                    so_cbm = col_hl2.number_input("🧊 Thể tích (CBM)", min_value=0.0, value=val_cbm if val_cbm > 0 else None, placeholder="0", format="%g", step=0.1, key=cbm_key)
                 else:
                     c_c1, c_c2 = st.columns(2)
                     so_cont_input = c_c1.text_input("🔢 Số Container", value=so_cont_val, key=f"so_cont_{trip_suffix}")
@@ -321,7 +325,8 @@ with tab2:
                     chieu_opts = ["Nhập", "Xuất", "Nội Địa", "Chạy Rỗng"]
                     chieu_cont_input = c_c4.selectbox("🔄 Chiều Hàng", options=chieu_opts, key=f"chieu_cont_{trip_suffix}", index= None)
                     
-                    khoi_luong = c_c5.number_input("⚖️ Trọng lượng hàng (KG)*", min_value=0.0, value=float(trip_data.get('khoi_luong_kg') or 0.0), step=1.0, key=kg_key)
+                    val_kl_cont = float(trip_data.get('khoi_luong_kg') or 0.0)
+                    khoi_luong = c_c5.number_input("⚖️ Trọng lượng hàng (KG)*", min_value=0.0, value=val_kl_cont if val_kl_cont > 0 else None, placeholder="0", format="%g", step=1.0, key=kg_key)
                     so_cbm = 0.0 
                 
                 db_xe_id = trip_data.get('xe_id')
@@ -597,7 +602,7 @@ with tab2:
                         tien_thue = trip_data.get('chi_phi_thue_ngoai', 0)
                         tien_thue_clean = str(int(float(tien_thue))) if pd.notna(tien_thue) and float(tien_thue) > 0 else ""
                         
-                        ngoai_chi_phi_str = nx7.text_input("Giá vốn thuê ngoài (VNĐ)*", value=tien_thue_clean)
+                        ngoai_chi_phi_str = nx7.text_input("Giá vốn thuê ngoài (VNĐ)*", value=tien_thue_clean, placeholder="0")
                         tt_opts = ["Cong_No", "Tien_Mat"]
                         ngoai_thanh_toan = nx8.selectbox("Hình thức thanh toán ngoài", options=tt_opts, index=get_idx(tt_opts, trip_data.get('hinh_thuc_thanh_toan_ngoai', 'Cong_No')), format_func=lambda x: "Công nợ tháng" if x=="Cong_No" else "Tiền mặt")
                     
@@ -657,10 +662,10 @@ with tab2:
                         st.error("❌ Dữ liệu tiền tệ nhập vào chứa ký tự không hợp lệ. Vui lòng kiểm tra lại!")
                         st.stop()
 
-                    if gia_von_thue_ngoai < 0 or khoi_luong < 0 or so_cbm < 0:
-                        st.error("❌ Giá trị Khối lượng, Thể tích, Giá vốn thuê ngoài không được phép là số âm.")
+                    if gia_von_thue_ngoai < 0  or (so_cbm or 0.0) < 0:
+                        st.error("❌ Thể tích, Giá vốn thuê ngoài không được phép là số âm.")
                         st.stop()
-                    if khoi_luong == 0.0:
+                    if (khoi_luong or 0.0) == 0.0:
                         st.error("❌ Khối lượng hàng hóa phải được khai báo để phục vụ quyết toán! Vui lòng nhập số KG.")
                         st.stop()
                     if diem_dau == "" and diem_cuoi == "":
@@ -698,8 +703,8 @@ with tab2:
                         'ten_khach_hang': str(ten_kh_val),
                         'dia_chi_khach_hang': str(dia_chi_kh_input),
                         'dia_diem_giao_nhan': f"{diem_dau} ➡️ {diem_cuoi}", 
-                        'khoi_luong_kg': float(khoi_luong),                          
-                        'the_tich_cbm': float(so_cbm),                       
+                        'khoi_luong_kg': float(khoi_luong or 0.0),                          
+                        'the_tich_cbm': float(so_cbm or 0.0),                       
                         'trang_thai_chuyen': str(STATUS_MAP[trang_thai_ui_value]),                    
                         'ghi_chu': gc_final,
                         'is_hang_tra_ve': 1 if is_hang_ve_ui else 0               
@@ -1061,11 +1066,11 @@ with tab3:
                     ghi_chu_row = str(row.get('Ghi Chú', ''))
                     
                     msg_tai_xe = (
-                        f"🚛 LỆNH ĐIỀU XE BẢO TÍN\n"
+                        f"🚛 Mai anh,em,chú,cậu vào:\n"
+                        f"- Khách hàng: {row['Khách Hàng']}\n"
+                        f"- Địa chỉ: {row['Địa Chỉ Khách Hàng']} để giao\n"
                         f"- Lộ trình: {row['Lộ Trình']}\n"
                         f"- Mã chuyến: {row['Mã Chuyến Hệ Thống']}\n"
-                        f"- Khách hàng: {row['Khách Hàng']}\n"
-                        f"- Địa chỉ: {row['Địa Chỉ Khách Hàng']}\n"
                         f"- Ngày chạy: {row['Ngày Chạy']}\n"
                         f"- Ghi chú: {ghi_chu_row}"
                     )
