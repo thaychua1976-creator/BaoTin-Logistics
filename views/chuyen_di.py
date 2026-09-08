@@ -741,24 +741,27 @@ with tab2:
                     
                     if success:
                         st.success(msg_success)
-                        ma_chuyen_gui = result if mode_action == "➕ Tạo chuyến mới" else edit_trip_id_cast
-                        if loai_hinh_xe == "🚀 Chạy Xe Công Ty":
-                                bien_so_gui = xe_map.get(int(c_xe_sel), {}).get('bien_so_xe', '') if c_xe_sel else ''
-                                df_tx = get_cached_master_data("SELECT ho_ten, so_dien_thoai, cccd FROM nhan_vien WHERE id=%s", (int(tx_id_assign),))
-                                if isinstance(df_tx, pd.DataFrame) and not df_tx.empty:
-                                    ten_tx_gui = str(df_tx.iloc[0]['ho_ten'] or '')
-                                    sdt_tx_gui = str(df_tx.iloc[0]['so_dien_thoai'] or '')
-                                    cccd_tx_gui = str(df_tx.iloc[0]['cccd'] or '')
-                                else:
-                                    ten_tx_gui, sdt_tx_gui, cccd_tx_gui = "Chưa cập nhật", "Chưa cập nhật", "Chưa cập nhật"
-                        else:
-                                bien_so_gui = ngoai_bien_so
-                                ten_tx_gui = ngoai_ten_tx
-                                sdt_tx_gui = ngoai_sdt_tx
-                                cccd_tx_gui = ngoai_cccd_tx
-                                
-                        st.session_state["tn_tai_xe"] = f"🚛 LỆNH ĐIỀU XE\n- Mã chuyến: {ma_chuyen_gui}\n- Lộ trình: {diem_dau} ➡️ {diem_cuoi}\n- Khách hàng: {ten_kh_val}"
-                        st.session_state["tn_khach"] = f"📦 THÔNG TIN TÀI XẾ VẬN CHUYỂN\n- Tên tài xế: {ten_tx_gui}\n- SĐT: {sdt_tx_gui}\n- CCCD: {cccd_tx_gui}\n- Biển số xe: {bien_so_gui}"
+                        
+                        # Cải tiến: Chỉ sinh ra thông báo gửi Zalo nếu trạng thái chuyến là "Tạo Mới"
+                        if STATUS_MAP[trang_thai_ui_value] == "Tao_Moi":
+                            ma_chuyen_gui = result if mode_action == "➕ Tạo chuyến mới" else edit_trip_id_cast
+                            if loai_hinh_xe == "🚀 Chạy Xe Công Ty":
+                                    bien_so_gui = xe_map.get(int(c_xe_sel), {}).get('bien_so_xe', '') if c_xe_sel else ''
+                                    df_tx = get_cached_master_data("SELECT ho_ten, so_dien_thoai, cccd FROM nhan_vien WHERE id=%s", (int(tx_id_assign),))
+                                    if isinstance(df_tx, pd.DataFrame) and not df_tx.empty:
+                                        ten_tx_gui = str(df_tx.iloc[0]['ho_ten'] or '')
+                                        sdt_tx_gui = str(df_tx.iloc[0]['so_dien_thoai'] or '')
+                                        cccd_tx_gui = str(df_tx.iloc[0]['cccd'] or '')
+                                    else:
+                                        ten_tx_gui, sdt_tx_gui, cccd_tx_gui = "Chưa cập nhật", "Chưa cập nhật", "Chưa cập nhật"
+                            else:
+                                    bien_so_gui = ngoai_bien_so
+                                    ten_tx_gui = ngoai_ten_tx
+                                    sdt_tx_gui = ngoai_sdt_tx
+                                    cccd_tx_gui = ngoai_cccd_tx
+                                    
+                            st.session_state["tn_tai_xe"] = f"🚛 LỆNH ĐIỀU XE\n- Mã chuyến: {ma_chuyen_gui}\n- Lộ trình: {diem_dau} ➡️ {diem_cuoi}\n- Khách hàng: {ten_kh_val}"
+                            st.session_state["tn_khach"] = f"📦 THÔNG TIN TÀI XẾ VẬN CHUYỂN\n- Tên tài xế: {ten_tx_gui}\n- SĐT: {sdt_tx_gui}\n- CCCD: {cccd_tx_gui}\n- Biển số xe: {bien_so_gui}"
 
                         st.session_state["tab2_mode_action"] = "➕ Tạo chuyến mới"
                         st.session_state["api_km"] = 0.0
@@ -788,12 +791,7 @@ with tab2:
                         st.rerun()
                     st.divider()
 
-                # Đếm ngược 30 giây, nếu người dùng không bấm nút thì tự động dọn dẹp
-                for i in range(30, 0, -1):
-                    # Kiểm tra lại xem biến còn tồn tại không (nếu user đã bấm nút thì biến bị del rồi)
-                    if "tn_tai_xe" not in st.session_state:
-                        break
-                    time.sleep(1)
+                
                 
                 # Sau khi hết vòng lặp 30 giây, nếu biến vẫn còn thì tự động đóng
                 if "tn_tai_xe" in st.session_state:

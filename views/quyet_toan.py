@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import datetime
 import io,os,requests
+import json
+import re
 import time
 from map_service import MapService
 from trip_manager import save_trip_full_process, tao_khach_hang_nhanh,settle_trip_transaction,delete_trip_safe,update_trip_transaction,update_trip_full_process,group_trips_transaction
@@ -51,8 +53,7 @@ tab1, tab2, tab3,tab4 = st.tabs([
 # HÀM LÕI: ĐỘNG CƠ LUẬT TÍNH PHỤ PHÍ (RULE ENGINE) - DÙNG CHUNG CHO TAB 1 & TAB 3
 # =========================================================================
 
-import json
-import re
+
 
 def clean_money_val(val):
     if val is None or pd.isna(val) or str(val).strip() == "": return 0.0
@@ -377,7 +378,9 @@ with tab1:
                 LEFT JOIN chuyen_di_tai_xe ctx ON cd.id = ctx.chuyen_di_id AND ctx.loai_tai_xe = 'Tai_Chinh'
                 LEFT JOIN nhan_vien nv ON ctx.tai_xe_id = nv.id
                 WHERE cd.trang_thai_chuyen IN ('Quyet_Toan','Tao_Moi','Dang_Di')
+                   OR (cd.trang_thai_chuyen = 'Hoan_Thanh' AND (cd.doanh_thu IS NULL OR cd.doanh_thu = 0))
                 ORDER BY cd.ngay_chuyen_di DESC
+                
             """
             df_cd = db.execute_query(sql_load)
 
@@ -865,22 +868,24 @@ with tab1:
                             if submit_chot and not xac_nhan_chot:
                                 st.error("✋ HỆ THỐNG ĐÃ CHẶN: Vui lòng tick vào ô 'Tôi xác nhận...' trước khi chốt sổ!")
                             else:
-                                if is_save_to_rc and doanh_thu_val > 0 and ddi_save and dden_save:
-                                    qc_moi = f"{tt_xe_tan}T"
-                                    sql_insert_rc = """
-                                        INSERT INTO rate_cards (khach_hang_id, diem_di, diem_den, phan_loai_phuong_tien, loai_xe_quy_cach, don_gia_cuoc, gia_chuyen_tiep_noi, is_hang_tra_ve) 
-                                        VALUES (%s, %s, %s, %s, %s, %s, 0, %s)
-                                    """
-                                    try:
-                                        flag_luu_db = 1 if is_hang_ve_ui else 0
-                                        # Insert tĩnh, không dùng cache, cập nhật lại db
-                                        db.execute_non_query(sql_insert_rc, (kh_id_qt, ddi_save, dden_save, 'Hang_Le', qc_moi, doanh_thu_val, flag_luu_db))
-                                        clear_master_cache() # Clear cache bảng giá
-                                        st.toast("✅ Đã thêm lộ trình mới vào Bảng giá!")
-                                    except Exception as e: st.error(f"Lỗi lưu Bảng giá: {e}")
+                                with st.spinner("⏳ Đang lưu hệ thống, kế toán vui lòng đợi..."):
+                                    if is_save_to_rc and doanh_thu_val > 0 and ddi_save and dden_save:
+                                        qc_moi = f"{tt_xe_tan}T"
+                                        sql_insert_rc = """
+                                            INSERT INTO rate_cards (khach_hang_id, diem_di, diem_den, phan_loai_phuong_tien, loai_xe_quy_cach, don_gia_cuoc, gia_chuyen_tiep_noi, is_hang_tra_ve) 
+                                            VALUES (%s, %s, %s, %s, %s, %s, 0, %s)
+                                        """
+                                        try:
+                                            flag_luu_db = 1 if is_hang_ve_ui else 0
+                                            # Insert tĩnh, không dùng cache, cập nhật lại db
+                                            db.execute_non_query(sql_insert_rc, (kh_id_qt, ddi_save, dden_save, 'Hang_Le', qc_moi, doanh_thu_val, flag_luu_db))
+                                            clear_master_cache() # Clear cache bảng giá
+                                            st.toast("✅ Đã thêm lộ trình mới vào Bảng giá!")
+                                        except Exception as e: st.error(f"Lỗi lưu Bảng giá: {e}")
+                                        
+                                    # Ràng buộc sử dụng hàm Transaction từ trip_manager
+                                    is_ok, msg = settle_trip_transaction(db.pool, data_dict_thu_cong, 'Hoan_Thanh', cd_id)
                                     
-                                # Ràng buộc sử dụng hàm Transaction từ trip_manager
-                                is_ok, msg = settle_trip_transaction(db.pool, data_dict_thu_cong, 'Hoan_Thanh', cd_id)
                                 if is_ok:
                                     st.session_state["reset_chuyen_form"] += 1
                                     st.success("🎉 THÀNH CÔNG! Đã cập nhật và chốt chuyến đi!")

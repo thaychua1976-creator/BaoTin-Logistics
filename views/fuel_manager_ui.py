@@ -91,10 +91,10 @@ def render_fuel_management_tab(db, current_user):
                 default_tien = st.session_state.get('ai_fuel_tien', "")
                 
                 c1, c2 = st.columns(2)
-                odo_moi = c1.number_input("Nhập ODO trên taplo thực tế (KM)*", min_value=0.0, value=float(default_odo), step=1.0, format="%.1f")
-                so_lit = c2.number_input("Số lít nhiên liệu thực tế (L)*", min_value=0.0, value=float(default_lit), step=0.1, format="%.1f")
+                odo_moi = c1.number_input("Nhập ODO trên taplo thực tế (KM)*", min_value=0.0, value=float(default_odo) if default_odo > 0 else None, placeholder="0", step=1.0, format="%g")
+                so_lit = c2.number_input("Số lít nhiên liệu thực tế (L)*", min_value=0.0, value=float(default_lit) if default_lit > 0 else None, placeholder="0", step=0.1, format="%g")
                 
-                tong_tien_str = st.text_input("Tổng tiền thanh toán (VNĐ)*", value=str(default_tien) if default_tien else "", placeholder="VD: 2,000,000")
+                tong_tien_str = st.text_input("Tổng tiền thanh toán (VNĐ)*", value=str(default_tien) if default_tien else "", placeholder="0")
                 ghi_chu = st.text_area("Ghi chú (Tên cây xăng, Số hóa đơn...)")
                 
                 xac_nhan = st.checkbox("⚠️ Tôi xác nhận số liệu đồng hồ ODO và tiền nhiên liệu là chính xác.")
@@ -104,18 +104,18 @@ def render_fuel_management_tab(db, current_user):
                 if submitted:
                     if not xe_id_chon:
                         st.error("⚠️ Vui lòng chọn xe cần đổ xăng!")
-                    elif odo_moi <= 0:
+                    elif not odo_moi or odo_moi <= 0:
                         st.error("⚠️ Chỉ số ODO mới phải lớn hơn 0!")
-                    elif so_lit <= 0:
+                    elif not so_lit or so_lit <= 0:
                         st.error("⚠️ Số lít xăng phải lớn hơn 0!")
                     elif not tong_tien_str or not xac_nhan:
                         st.error("⚠️ Vui lòng nhập tổng tiền và tích chọn xác nhận thông tin trước khi lưu.")
                     else:
                         data_xang = {
                             "xe_id": xe_id_chon,
-                            "odo_hien_tai": odo_moi,
-                            "so_lit": so_lit,
-                            "tong_tien": tong_tien_str,
+                            "odo_hien_tai": odo_moi or 0.0,
+                            "so_lit": so_lit or 0.0,
+                            "tong_tien": tong_tien_str or "0",
                             "ghi_chu": ghi_chu
                         }
                         with st.spinner("Đang lưu lịch sử và cập nhật ODO xe..."):
@@ -173,19 +173,23 @@ def render_fuel_management_tab(db, current_user):
                     st.markdown(f"Đang hiệu chỉnh Mã phiếu **#{bill_edit_id}** của xe **{row_edit['bien_so_xe']}**")
                     
                     e_col1, e_col2, e_col3 = st.columns(3)
-                    e_odo = e_col1.number_input("ODO ghi nhận lại (KM)", value=float(row_edit['odo_hien_tai']), step=1.0, format="%.1f")
-                    e_lit = e_col2.number_input("Số lít nhiên liệu sửa lại", value=float(row_edit['so_lit']), step=0.1, format="%.1f")
+                    val_odo = float(row_edit['odo_hien_tai'])
+                    val_lit = float(row_edit['so_lit'])
+                    val_tien = float(row_edit['tong_tien'])
                     
-                    tien_format = f"{int(row_edit['tong_tien']):,}" 
-                    e_tien = e_col3.text_input("Tổng tiền sửa lại (VNĐ)", value=tien_format)
+                    e_odo = e_col1.number_input("ODO ghi nhận lại (KM)", min_value=0.0, value=val_odo if val_odo > 0 else None, placeholder="0", step=1.0, format="%g")
+                    e_lit = e_col2.number_input("Số lít nhiên liệu sửa lại", min_value=0.0, value=val_lit if val_lit > 0 else None, placeholder="0", step=0.1, format="%g")
+                    
+                    tien_format = f"{int(val_tien):,}" if val_tien > 0 else ""
+                    e_tien = e_col3.text_input("Tổng tiền sửa lại (VNĐ)", value=tien_format, placeholder="0")
                     
                     e_gc = st.text_input("Ghi chú chỉnh sửa (Lý do hiệu chỉnh)", value=str(row_edit['ghi_chu'] or ""))
                     
                     if st.form_submit_button("💾 Lưu thay đổi thông tin", type="primary"):
                         data_sua = {
-                            "odo_hien_tai": e_odo,
-                            "so_lit": e_lit,
-                            "tong_tien": e_tien,
+                            "odo_hien_tai": e_odo or 0.0,
+                            "so_lit": e_lit or 0.0,
+                            "tong_tien": e_tien or "0",
                             "ghi_chu": e_gc
                         }
                         

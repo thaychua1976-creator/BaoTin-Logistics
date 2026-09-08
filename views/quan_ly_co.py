@@ -91,9 +91,11 @@ with tab_khai_co:
             ngay_co = c3.date_input("Ngày Cấp C/O", value=datetime.date.today())
             
             c4, c5, c6 = st.columns(3)
-            # Giá tiền được tự động điền dựa trên phan_loai_co ở trên, người dùng vẫn có quyền sửa tay
-            phi_co = c4.text_input(f"Lệ Phí C/O (VNĐ)*", value=f"{gia_co_tu_dong:,.0f}", help="Hệ thống tự động đề xuất giá theo cấu hình. Có thể sửa tay.")
-            phi_dvhq = c5.text_input("Phí DVHQ C/O (VNĐ)", value="0")
+            # Ẩn số 0 nếu giá tự động bằng 0
+            phi_co_val = f"{gia_co_tu_dong:,.0f}" if gia_co_tu_dong > 0 else ""
+            
+            phi_co = c4.text_input(f"Lệ Phí C/O (VNĐ)*", value=phi_co_val, placeholder="0", help="Hệ thống tự động đề xuất giá theo cấu hình. Có thể sửa tay.")
+            phi_dvhq = c5.text_input("Phí DVHQ C/O (VNĐ)", value="", placeholder="0")
             so_hoa_don_co = c6.text_input("Số Hóa Đơn Phí C/O")
             
             # Ghi chú mặc định thêm Loại làm C/O để đối soát sau này
@@ -110,8 +112,8 @@ with tab_khai_co:
                         'form_co': form_co,
                         'so_co': so_co,
                         'ngay_co': ngay_co.strftime('%Y-%m-%d'),
-                        'phi_co': parse_money_input(phi_co),
-                        'phi_dvhq': parse_money_input(phi_dvhq),
+                        'phi_co': parse_money_input(phi_co or 0),
+                        'phi_dvhq': parse_money_input(phi_dvhq or 0),
                         'so_hoa_don_co': so_hoa_don_co,
                         'ghi_chu': ghi_chu_co
                     }
@@ -203,12 +205,17 @@ with tab_quan_ly_co:
                         e_so_co = ec2.text_input("Số C/O*", value=co_info['so_co'] or "")
                         e_ngay_co = ec3.date_input("Ngày Cấp C/O", value=pd.to_datetime(co_info['ngay_co']).date())
                         
-                        def fmt(val): return f"{int(float(val)):,}" if pd.notna(val) else "0"
+                        def fmt(val): 
+                            if pd.isna(val) or val == "": return ""
+                            try:
+                                num = float(val)
+                                return f"{int(num):,}" if num > 0 else ""
+                            except: return ""
                         
                         ec4, ec5, ec6 = st.columns(3)
-                        # Giao diện sửa hiển thị giá cũ, người dùng có thể tự gõ đè giá trị nếu cần đổi Thường -> Gấp
-                        e_phi_co = ec4.text_input("Lệ Phí C/O (VNĐ)*", value=fmt(co_info['phi_co']))
-                        e_phi_dvhq = ec5.text_input("Phí DVHQ C/O (VNĐ)", value=fmt(co_info['phi_dvhq']))
+                        # Bổ sung placeholder="0" và hàm fmt đã cải tiến
+                        e_phi_co = ec4.text_input("Lệ Phí C/O (VNĐ)*", value=fmt(co_info['phi_co']), placeholder="0")
+                        e_phi_dvhq = ec5.text_input("Phí DVHQ C/O (VNĐ)", value=fmt(co_info['phi_dvhq']), placeholder="0")
                         e_so_hoa_don_co = ec6.text_input("Số Hóa Đơn Phí C/O", value=co_info['so_hoa_don_co'] or "")
                         
                         e_ghi_chu = st.text_input("Ghi chú bổ sung", value=co_info['ghi_chu'] or "")
@@ -222,8 +229,8 @@ with tab_quan_ly_co:
                                     'form_co': e_form_co,
                                     'so_co': e_so_co,
                                     'ngay_co': e_ngay_co.strftime('%Y-%m-%d'),
-                                    'phi_co': parse_money_input(e_phi_co),
-                                    'phi_dvhq': parse_money_input(e_phi_dvhq),
+                                    'phi_co': parse_money_input(e_phi_co or 0),
+                                    'phi_dvhq': parse_money_input(e_phi_dvhq or 0),
                                     'so_hoa_don_co': e_so_hoa_don_co,
                                     'ghi_chu': e_ghi_chu
                                 }

@@ -127,7 +127,7 @@ with tab1:
                 e_ten_bg = c1.text_input("Tên bảng giá")
                 e_diem_di = c2.text_input("Điểm đi*")
                 e_diem_den = c3.text_input("Điểm đến*")
-                e_khoang_cach = c4.number_input("Khoảng cách km", min_value=0.0, value=0.0,step=1.0)
+                e_khoang_cach = c4.number_input("Khoảng cách km", min_value=0.0, value=None, placeholder="0", format="%g", step=1.0)
                 
                 c5, c6, c7 = st.columns(3)
                 phan_loai_opts = ['Container', 'Xe_Tai', 'Hang_Le', 'Hang_Air', 'Xe_May']
@@ -136,12 +136,12 @@ with tab1:
                 e_is_ve = c7.selectbox("Chiều hàng", options=[0, 1], format_func=lambda x: "Chiều Đi (0)" if x==0 else "Chiều Về (1)")
 
                 c8, c9, c10 = st.columns(3)
-                e_gh_kg = c8.number_input("Giới hạn KG (LCL)", min_value=0.0, value=0.0, step=1.0)
-                e_gh_cbm = c9.number_input("Giới hạn CBM (LCL)", min_value=0.0, value=0.0, step=0.1)
-                e_gia_tp = c10.text_input("Giá chuyến tiếp nối (VNĐ)", value="0")
+                e_gh_kg = c8.number_input("Giới hạn KG (LCL)", min_value=0.0, value=None, placeholder="0", format="%g", step=1.0)
+                e_gh_cbm = c9.number_input("Giới hạn CBM (LCL)", min_value=0.0, value=None, placeholder="0", format="%g", step=0.1)
+                e_gia_tp = c10.text_input("Giá chuyến tiếp nối (VNĐ)", value="", placeholder="0")
 
                 c11, c12 = st.columns(2)
-                e_don_gia = c11.text_input("Đơn giá cước (VNĐ)*", value="0")
+                e_don_gia = c11.text_input("Đơn giá cước (VNĐ)*", value="", placeholder="0")
                 e_ghi_chu = c12.text_input("Ghi chú")
 
                 if st.form_submit_button("💾 Xác Nhận Thêm Mới", type="primary"):
@@ -151,10 +151,12 @@ with tab1:
                         data_add = {
                             "khach_hang_id": selected_kh_create, "ten_bang_gia": e_ten_bg.strip(), 
                             "diem_di": e_diem_di.strip().upper(), "diem_den": e_diem_den.strip().upper(),
-                            "khoang_cach": e_khoang_cach, 
+                            "khoang_cach": e_khoang_cach or 0.0, 
                             "phan_loai_phuong_tien": e_phan_loai, "loai_xe_quy_cach": e_quy_cach.strip(),
-                            "gioi_han_kg": e_gh_kg, "gioi_han_cbm": e_gh_cbm, "is_hang_tra_ve": e_is_ve,
-                            "don_gia_cuoc": e_don_gia, "gia_chuyen_tiep_noi": e_gia_tp, "ghi_chu": e_ghi_chu.strip()
+                            "gioi_han_kg": e_gh_kg or 0.0, "gioi_han_cbm": e_gh_cbm or 0.0, "is_hang_tra_ve": e_is_ve,
+                            "don_gia_cuoc": parse_money_input(e_don_gia or "0"), 
+                            "gia_chuyen_tiep_noi": parse_money_input(e_gia_tp or "0"), 
+                            "ghi_chu": e_ghi_chu.strip()
                         }
                         success, message = create_single_rate_card_transaction(db.pool, data_add, current_user)
                         if success:
@@ -214,7 +216,7 @@ with tab1:
                             
                             kc_raw = row_info.get('khoang_cach')
                             kc_safe = float(kc_raw) if pd.notna(kc_raw) and str(kc_raw).strip() != "" else 0.0
-                            e_khoang_cach = c4.number_input("Khoảng cách km", value=kc_safe, step=1.0)
+                            e_khoang_cach = c4.number_input("Khoảng cách km", value=kc_safe if kc_safe > 0 else None, placeholder="0", format="%g", step=1.0)
                             
                             c5, c6, c7 = st.columns(3)
                             phan_loai_opts = ['Container', 'Xe_Tai', 'Hang_Le', 'Hang_Air', 'Xe_May']
@@ -224,23 +226,25 @@ with tab1:
                             e_is_ve = c7.selectbox("Chiều hàng", options=[0, 1], index=int(row_info['is_hang_tra_ve']), format_func=lambda x: "Chiều Đi (0)" if x==0 else "Chiều Về (1)")
 
                             c8, c9, c10 = st.columns(3)
-                            e_gh_kg = c8.number_input("Giới hạn KG (LCL)", value=float(row_info.get('gioi_han_kg',  0)))
-                            e_gh_cbm = c9.number_input("Giới hạn CBM (LCL)", value=float(row_info.get('gioi_han_cbm', 0)))
+                            val_kg = float(row_info.get('gioi_han_kg',  0))
+                            val_cbm = float(row_info.get('gioi_han_cbm', 0))
+                            e_gh_kg = c8.number_input("Giới hạn KG (LCL)", value=val_kg if val_kg > 0 else None, placeholder="0", format="%g")
+                            e_gh_cbm = c9.number_input("Giới hạn CBM (LCL)", value=val_cbm if val_cbm > 0 else None, placeholder="0", format="%g")
                             val_tiep_noi = float(row_info['gia_chuyen_tiep_noi'] or 0)
-                            e_gia_tp = c10.text_input("Giá chuyến tiếp nối", value=f"{val_tiep_noi:,.0f}")
+                            e_gia_tp = c10.text_input("Giá chuyến tiếp nối", value=f"{val_tiep_noi:,.0f}" if val_tiep_noi > 0 else "", placeholder="0")
 
                             c11, c12 = st.columns(2)
                             val_don_gia = float(row_info['don_gia_cuoc'] or 0)
-                            e_don_gia = c11.text_input("Đơn giá cước (VNĐ)*", value=f"{val_don_gia:,.0f}")
+                            e_don_gia = c11.text_input("Đơn giá cước (VNĐ)*", value=f"{val_don_gia:,.0f}" if val_don_gia > 0 else "", placeholder="0")
                             e_ghi_chu = c12.text_input("Ghi chú", value=str(row_info['ghi_chu'] or ''))
 
                             if st.form_submit_button("💾 Lưu Thay Đổi Mức Giá", type="primary"):
                                 data_edit = {
-                                    "ten_bang_gia": e_ten_bg, "diem_di": e_diem_di, "diem_den": e_diem_den, "khoang_cach": e_khoang_cach,
+                                    "ten_bang_gia": e_ten_bg, "diem_di": e_diem_di, "diem_den": e_diem_den, "khoang_cach": e_khoang_cach or 0.0,
                                     "phan_loai_phuong_tien": e_phan_loai, "loai_xe_quy_cach": e_quy_cach,
-                                    "gioi_han_kg": e_gh_kg, "gioi_han_cbm": e_gh_cbm, "is_hang_tra_ve": e_is_ve,
-                                    "don_gia_cuoc": parse_money_input(e_don_gia), 
-                                    "gia_chuyen_tiep_noi": parse_money_input(e_gia_tp), 
+                                    "gioi_han_kg": e_gh_kg or 0.0, "gioi_han_cbm": e_gh_cbm or 0.0, "is_hang_tra_ve": e_is_ve,
+                                    "don_gia_cuoc": parse_money_input(e_don_gia or "0"), 
+                                    "gia_chuyen_tiep_noi": parse_money_input(e_gia_tp or "0"), 
                                     "ghi_chu": e_ghi_chu
                                 }
                                 success, message = update_single_rate_card_transaction(db.pool, selected_rate_id, data_edit, current_user)
@@ -403,7 +407,7 @@ with tab3:
                 
                 c1, c2 = st.columns(2)
                 e_ten_pp = c1.text_input("Tên phụ phí*")
-                e_don_gia_pp = c2.text_input("Đơn giá phụ phí (VNĐ)*", value="0")
+                e_don_gia_pp = c2.text_input("Đơn giá phụ phí (VNĐ)*", value="", placeholder="0")
 
                 c3, c4 = st.columns(2)
                 e_dk_kich_hoat = c3.text_input("Điều kiện kích hoạt", placeholder='VD: {"loai": "boc_xep"}')
@@ -418,7 +422,7 @@ with tab3:
                         data_add_pp = {
                             "khach_hang_id": selected_kh_create,
                             "ten_phu_phi": e_ten_pp.strip(),
-                            "don_gia_phu_phi": parse_money_input(e_don_gia_pp),
+                            "don_gia_phu_phi": parse_money_input(e_don_gia_pp or "0"),
                             "dieu_kien_kich_hoat": e_dk_kich_hoat.strip(),
                             "loai_ap_dung": e_loai_ap_dung.strip(),
                             "ghi_chu": e_ghi_chu_pp.strip()
@@ -527,7 +531,7 @@ with tab3:
                             e_ten_pp = c1.text_input("Tên phụ phí*", value=str(row_pp['ten_phu_phi'] or ''))
                             
                             val_don_gia_pp = float(row_pp['don_gia_phu_phi'] or 0)
-                            e_don_gia_pp = c2.text_input("Đơn giá phụ phí (VNĐ)*", value=f"{val_don_gia_pp:,.0f}")
+                            e_don_gia_pp = c2.text_input("Đơn giá phụ phí (VNĐ)*", value=f"{val_don_gia_pp:,.0f}" if val_don_gia_pp > 0 else "", placeholder="0")
 
                             c3, c4 = st.columns(2)
                             e_dk_kich_hoat = c3.text_input("Điều kiện kích hoạt", value=str(row_pp['dieu_kien_kich_hoat'] or ''))
@@ -538,7 +542,7 @@ with tab3:
                             if st.form_submit_button("💾 Lưu Thay Đổi Phụ Phí", type="primary"):
                                 data_edit_pp = {
                                     "ten_phu_phi": e_ten_pp,
-                                    "don_gia_phu_phi": parse_money_input(e_don_gia_pp),
+                                    "don_gia_phu_phi": parse_money_input(e_don_gia_pp or "0"),
                                     "dieu_kien_kich_hoat": e_dk_kich_hoat,
                                     "loai_ap_dung": e_loai_ap_dung,
                                     "ghi_chu": e_ghi_chu_pp

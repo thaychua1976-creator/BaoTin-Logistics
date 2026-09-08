@@ -382,8 +382,15 @@ with tab3:
                                         format_func=lambda x: "Bảo dưỡng định kỳ" if x == 'Dinh_Ky' else ("Sửa chữa đột xuất" if x == 'Sua_Chua_Dot_Xuat' else ("Thay lốp" if x == 'Thay_Lop' else "Khác")))
                     
                     c4, c5 = st.columns(2)
-                    km_luc_bd = c4.number_input("Tốc độ kế (Số KM trên đồng hồ xe hiện tại)", min_value=0.0, step=10.0, 
-                                                help="Đồng hồ phần mềm sẽ được đồng bộ lại với con số này (nếu chọn Bảo dưỡng định kỳ).")
+                    km_luc_bd = c4.number_input(
+                        "Tốc độ kế (Số KM trên đồng hồ xe hiện tại)", 
+                        min_value=0.0, 
+                        value=None, 
+                        placeholder="0", 
+                        format="%g",
+                        step=10.0, 
+                        help="Đồng hồ phần mềm sẽ được đồng bộ lại với con số này (nếu chọn Bảo dưỡng định kỳ)."
+                    )
                     chi_phi_bd = c5.text_input("Tổng chi phí (VNĐ)", placeholder="VD: 5,500,000")
                     
                     hang_muc = st.text_area("🔧 Hạng mục thực hiện", placeholder="VD: Thay nhớt máy, lọc gió, đảo lốp...")
@@ -404,7 +411,7 @@ with tab3:
                             data_bd = {
                                 'xe_id': xe_duoc_chon,
                                 'ngay_bao_duong': ngay_bd.strftime('%Y-%m-%d'),
-                                'km_thuc_te': km_luc_bd,
+                                'km_thuc_te': km_luc_bd or 0.0,
                                 'loai_bao_duong': loai_bd,
                                 'hang_muc_sua_chua': hang_muc.strip(),
                                 'chi_phi': tien_clean,

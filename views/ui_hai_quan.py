@@ -77,7 +77,7 @@ with tab1:
                 
             with col2:
                 dia_diem_ui = st.selectbox("Địa điểm thông quan", ["Cảng Biển (Cát Lái...)", "Sân Bay (Tân Sơn Nhất...)"], index=None, placeholder="-- Chọn địa điểm --")
-                don_gia = st.text_input("Đơn giá (VNĐ)", value="0", help="Có thể nhập dấu phẩy. VD: 500,000")
+                don_gia = st.text_input("Đơn giá (VNĐ)", value="", placeholder="0", help="Có thể nhập dấu phẩy. VD: 500,000")
                 
             with col3:
                 phan_loai = st.text_input("Phân loại (Nguyên liệu, <= 50 dòng...)", placeholder="Nhập điều kiện...")
@@ -96,7 +96,7 @@ with tab1:
                         "nhom_dich_vu": nhom_dv,
                         "phan_loai_chi_tiet": phan_loai,
                         "dia_diem_thong_quan": map_dia_diem, 
-                        "don_gia_hq": parse_money_input(don_gia), # CHỐNG LỖI VÀ ÉP KIỂU TIỀN TỆ
+                        "don_gia_hq": parse_money_input(don_gia or "0"), # CHỐNG LỖI VÀ ÉP KIỂU TIỀN TỆ
                         "ghi_chu": ghi_chu
                     }
                     
@@ -136,8 +136,8 @@ with tab2:
             df_display = df_bang_gia[['id', 'ten_khach_hang', 'nhom_dich_vu', 'phan_loai_chi_tiet', 'dia_diem_thong_quan', 'don_gia_hq', 'ghi_chu']].copy()
             df_display['dia_diem_thong_quan'] = df_display['dia_diem_thong_quan'].replace({'Cang_Bien': 'Cảng Biển', 'San_Bay': 'Sân Bay'})
             
-            # FORMAT: Ép kiểu sang int rồi chuyển thành chuỗi có dấu phẩy phân cách nhóm ngàn
-            df_display['don_gia_hq'] = df_display['don_gia_hq'].apply(lambda x: f"{int(float(x)):,}" if pd.notnull(x) else "0")
+            # FORMAT: Ép kiểu sang int rồi chuyển thành chuỗi có dấu phẩy phân cách nhóm ngàn, ẩn số 0 mặc định
+            df_display['don_gia_hq'] = df_display['don_gia_hq'].apply(lambda x: f"{int(float(x)):,}" if pd.notnull(x) and float(x) > 0 else "")
 
             # 2. Tạo Data Editor
             edited_df = st.data_editor(
@@ -171,8 +171,8 @@ with tab2:
                         orig_row = df_display.loc[idx]
                         
                         # So sánh an toàn: Parse lại số tiền để kiểm tra xem user có thực sự đổi số không (ví dụ: gõ "2000000" vs "2,000,000" là bằng nhau)
-                        old_price = parse_money_input(str(orig_row['don_gia_hq']))
-                        new_price = parse_money_input(str(row['don_gia_hq']))
+                        old_price = parse_money_input(str(orig_row['don_gia_hq']) or "0")
+                        new_price = parse_money_input(str(row['don_gia_hq']) or "0")
                         
                         is_changed = (
                             row['nhom_dich_vu'] != orig_row['nhom_dich_vu'] or
