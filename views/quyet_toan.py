@@ -638,6 +638,25 @@ with tab1:
                                     if req_thuong and (has_nguy_hiem or has_lanh): is_prop_match = False
                                     if not is_prop_match: continue
 
+                                    # =========================================================================
+                                    # [BỔ SUNG] XỬ LÝ RIÊNG DOANH THU CHO XE MÁY THUÊ NGOÀI
+                                    # =========================================================================
+                                    is_xe_may = ('xe_may' in pl_pt_gia) or ('xemay' in pl_pt_gia) or ('xe máy' in qc_gia) or ('xe may' in qc_gia)
+                                    if is_xe_may and is_thue_ngoai:
+                                        gia_goc = float(rc.get('don_gia_cuoc', 0) or 0.0)
+                                        gia_tiep_noi = float(rc.get('gia_chuyen_tiep_noi', 0) or 0.0)
+                                        m_price = gia_tiep_noi if (is_ghep == 1 and stt_ghep > 1 and gia_tiep_noi > 0) else gia_goc
+                                        m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
+                                        
+                                        penalty = 0 if rc['match_type'] == 'direct' else 1000.0
+                                        
+                                        if rc_hang_ve_check == 1:
+                                            valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
+                                        else:
+                                            valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
+                                        continue # Khớp xong lấy giá luôn, bỏ qua bước kiểm tra Tải trọng (KG) bên dưới
+                                    # =========================================================================
+
                                     if pl_pt_gia in ['xe_tai', 'hang_le', 'xe tai', 'xe tải', 'hang le', 'hàng lẻ', '', 'nan', 'none'] or any(kw in pl_pt_gia for kw in ['tai', 'tải', 'le', 'lẻ']):
                                         is_weight_match = False
                                         gh_kg = float(rc.get('gioi_han_kg', 0) or 0)
@@ -1235,6 +1254,7 @@ with tab3:
                         "SO_NGAY_NEO_CONT": 0,
                         "DS_PHU_CAP_TAI_XE": "",
                         "IS_HANG_VE": 0,
+                        "IS_VE_KHUYA": 0,
                         "PHI_HAI_QUAN": 0,
                         "PHI_BOC_XEP": 0,
                         "PHI_KHAC": 0,
@@ -1500,13 +1520,30 @@ with tab3:
                                                         req_lanh = any(x in qc_gia for x in ['lạnh', 'lanh', 'rf'])
                                                         req_thuong = any(x in qc_gia for x in ['thường', 'thuong'])
 
-                                                        
                                                         is_prop_match = True
                                                         if req_nguy_hiem and not has_nguy_hiem: is_prop_match = False
                                                         if req_lanh and not has_lanh: is_prop_match = False
                                                         if req_thuong and (has_nguy_hiem or has_lanh): is_prop_match = False
 
                                                         if not is_prop_match: continue
+
+                                                        # =========================================================================
+                                                        # [BỔ SUNG TAB 3] XỬ LÝ RIÊNG DOANH THU CHO XE MÁY THUÊ NGOÀI
+                                                        # =========================================================================
+                                                        is_thue_ngoai_auto = pd.isna(row_db.get('xe_id'))
+                                                        is_xe_may = ('xe_may' in pl_pt_gia) or ('xemay' in pl_pt_gia) or ('xe máy' in qc_gia) or ('xe may' in qc_gia)
+                                                        
+                                                        if is_xe_may and is_thue_ngoai_auto:
+                                                            m_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
+                                                            m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
+                                                            penalty = 0 if rc['match_type'] == 'direct' else 1000.0
+                                                            
+                                                            if rc_hang_ve_check == 1:
+                                                                valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
+                                                            else:
+                                                                valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
+                                                            continue 
+                                                        # =========================================================================
 
                                                         if pl_pt_gia in ['xe_tai', 'hang_le', 'xe tai', 'xe tải', 'hang le', 'hàng lẻ', '', 'nan', 'none'] or any(kw in pl_pt_gia for kw in ['tai', 'tải', 'le', 'lẻ']):
                                                             is_weight_match = False
