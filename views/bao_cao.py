@@ -284,8 +284,8 @@ def render_tab_cong_no_khach_hang(db):
                     
                     # 1. Tách dữ liệu: Tìm các chuyến thuê ngoài VÀ là xe máy (dựa vào ghi chú, biển số hoặc loại xe)
                     mask_xe_may_ngoai = (df_group_full['is_thue_ngoai'] == 1) & (
-                        df_group_full['bien_so_xe'].str.lower().str.contains('xe máy|xe may', na=False) |
-                        df_group_full['ghi_chu'].str.lower().str.contains('xe máy|xe may', na=False)
+                        df_group_full['bien_so_xe'].str.lower().str.contains('xe_máy|xe_may', na=False) |
+                        df_group_full['ghi_chu'].str.lower().str.contains('xe_máy|xe_may', na=False)
                     )
                     
                     # Chia thành 2 tập dữ liệu
