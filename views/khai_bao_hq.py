@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import datetime, time
-import pypdf
 import json,re
 import uuid
 import traceback
@@ -171,7 +170,7 @@ with tab_khai_hq:
                 st.session_state["file_uploader_hq_key"] = "upload_file_to_khai_hq_init"
             try:
                 # --- SỬA LẠI THAM SỐ KEY Ở ĐÂY LẤY TỪ SESSION_STATE ---
-                uploaded_file = st.file_uploader("📂 Chọn file Excel / PDF tờ khai hải quan", type=["pdf", "txt", "xls", "xlsx"], key=st.session_state["file_uploader_hq_key"])
+                uploaded_file = st.file_uploader("📂 Chọn file Excel tờ khai hải quan", type=["txt", "xls", "xlsx"], key=st.session_state["file_uploader_hq_key"])
                 if uploaded_file is not None:
                     file_sig = f"{uploaded_file.name}_{uploaded_file.size}"
                     if st.session_state.get("last_uploaded_sig") != file_sig:
@@ -262,49 +261,7 @@ with tab_khai_hq:
                                             
                             st.success(f"✅ Đã trích xuất dữ liệu Excel. Đơn vị XNK: **{auto_data.get('extracted_ten_khach_hang')}**")
                             
-                        # --- XỬ LÝ FILE PDF (.pdf) ---
-                        else:
-                            reader = pypdf.PdfReader(uploaded_file)
-                            text = ""
-                            for page in reader.pages:
-                                text += page.extract_text() + "\n"
-                            
-                            m_stk = re.search(r'Số tờ khai[:\s]*(\d+)', text, re.IGNORECASE)
-                            if m_stk: auto_data['so_to_khai'] = m_stk.group(1).strip()
-                                
-                            m_sql = re.search(r'Số quản lý hàng hóa[:\s]*(\d+)', text, re.IGNORECASE)
-                            if m_sql: auto_data['so_van_don'] = m_sql.group(1).strip()
-                                
-                            m_ten_xnk = re.search(r'Đơn vị XNK[:\s]*([^\n\r]+)', text, re.IGNORECASE)
-                            if m_ten_xnk:
-                                auto_data['extracted_ten_khach_hang'] = m_ten_xnk.group(1).strip()
-                                # Tự động gán tên khách hàng vào textbox Tên Đối Tác
-                                auto_data['ten_doi_tac'] = auto_data['extracted_ten_khach_hang']
-                                st.success(f"✅ Đã trích xuất Đơn vị XNK: **{auto_data['extracted_ten_khach_hang']}**")
-                                    
-                            m_kien = re.search(r'1\s*\|\s*([\d\.,]+\s*[A-Za-z]+)', text) 
-                            if not m_kien:
-                                m_kien = re.search(r'(\d+\s*(?:CARTON|KIỆN|PALLET|PCS|BAO|THÙNG|CUỘN|CHIẾC|SET))', text, re.IGNORECASE)
-                            if m_kien: auto_data['so_kien'] = m_kien.group(1).strip()
-                            
-                            m_wt = re.search(r'TỔNG TRỌNG\s*LƯỢNG HÀNG\s*[-–—]*\s*([\d\.]+)\s*Kilogam', text, re.IGNORECASE)
-                            if not m_wt: m_wt = re.search(r'([\d\.]+)\s*Kilogam', text, re.IGNORECASE)
-                            if m_wt: auto_data['tong_trong_luong_hang'] = float(m_wt.group(1))
-                                
-                            m_date = re.search(r'Ngày tờ khai[:\s]*(\d{2}/\d{2}/\d{4})', text, re.IGNORECASE)
-                            if m_date:
-                                try: auto_data['ngay_khai'] = datetime.datetime.strptime(m_date.group(1), '%d/%m/%Y').date()
-                                except ValueError: pass
-                                    
-                            if "xuất khẩu" in text.lower(): auto_data['loai_to_khai'] = "Xuat_Khau"
-                            elif "nhập khẩu" in text.lower(): auto_data['loai_to_khai'] = "Nhap_Khau"
-
-                            m_luong = re.search(r'Luồng[:\s]*([^\n\r]+)', text, re.IGNORECASE)
-                            if m_luong:
-                                luong_text = m_luong.group(1).strip().lower()
-                                if 'xanh' in luong_text: auto_data['phan_luong'] = "Xanh"
-                                elif 'vàng' in luong_text or 'vang' in luong_text: auto_data['phan_luong'] = "Vang"
-                                elif 'đỏ' in luong_text or 'do' in luong_text: auto_data['phan_luong'] = "Do"
+                        
                                 
                         st.session_state["last_uploaded_sig"] = file_sig
             except Exception as e:
