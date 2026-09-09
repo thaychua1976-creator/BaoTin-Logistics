@@ -319,7 +319,7 @@ with tab2:
                     so_seal_input = c_c2.text_input("🔒 Số Seal", value=so_seal_val, key=f"so_seal_{trip_suffix}")
                     
                     c_c3, c_c4, c_c5 = st.columns(3)
-                    loai_cont_opts = ["20DC", "40DC", "40HC", "45HC", "20RF (Lạnh)", "40RF (Lạnh)", "Khác"]
+                    loai_cont_opts = ["20DC","20","40","20HC", "40DC", "40HC", "45HC", "20RF", "40RF", "Khác"]
                     loai_cont_input = c_c3.selectbox("🧊 Loại Cont", options=loai_cont_opts,  key=f"loai_cont_{trip_suffix}",index= None)
                     
                     chieu_opts = ["Nhập", "Xuất", "Nội Địa", "Chạy Rỗng"]
@@ -352,7 +352,11 @@ with tab2:
                         
                         if kieu_nghiep_vu == "Nghiệp vụ Xe Tải":
                             if st.button("🔍 Tìm xe tự động (Theo KG & CBM)", type="primary", use_container_width=True):
-                                if khoi_luong <= 0:
+                                # Ép kiểu an toàn (Fallback về 0.0) để triệt tiêu NoneType từ UI
+                                safe_khoi_luong = float(khoi_luong or 0.0)
+                                safe_so_cbm = float(so_cbm or 0.0)
+                                
+                                if safe_khoi_luong <= 0:
                                     st.warning("⚠️ Vui lòng nhập Khối lượng (KG) lớn hơn 0 để phần mềm tìm xe.")
                                 else:
                                     sql_xe_ranh = """
@@ -373,10 +377,15 @@ with tab2:
                                         for _, xe in df_xe_ranh.iterrows():
                                             if pd.isna(xe['tai_xe_co_dinh_id']): continue 
                                             
-                                            cap_kg = float(xe['tai_trong_thiet_ke'] or 0) * 1000 - float(xe['da_cho_kg'])
-                                            cap_cbm = float(xe['dung_tich_cbm'] or 0) - float(xe['da_cho_cbm'])
+                                            # Ép kiểu an toàn từ SQL phòng ngừa Null/None
+                                            da_cho_kg = float(xe['da_cho_kg'] or 0.0)
+                                            da_cho_cbm = float(xe['da_cho_cbm'] or 0.0)
                                             
-                                            if (cap_kg >= khoi_luong) and (so_cbm == 0 or cap_cbm >= so_cbm):
+                                            cap_kg = float(xe['tai_trong_thiet_ke'] or 0.0) * 1000 - da_cho_kg
+                                            cap_cbm = float(xe['dung_tich_cbm'] or 0.0) - da_cho_cbm
+                                            
+                                            # Đưa các biến đã an toàn (safe_) vào so sánh toán học
+                                            if (cap_kg >= safe_khoi_luong) and (safe_so_cbm == 0 or cap_cbm >= safe_so_cbm):
                                                 found_xe = int(xe['id'])
                                                 break
                                     
@@ -665,6 +674,21 @@ with tab2:
                     if gia_von_thue_ngoai < 0  or (so_cbm or 0.0) < 0:
                         st.error("❌ Thể tích, Giá vốn thuê ngoài không được phép là số âm.")
                         st.stop()
+                    # ================= THÊM MỚI CHỐT CHẶN CONTAINER TẠI ĐÂY =================
+                    if kieu_nghiep_vu == "Nghiệp vụ Container":
+                        if not so_cont_input or str(so_cont_input).strip() == "":
+                            st.error("❌ HỆ THỐNG CHẶN: Vui lòng nhập chính xác Số Container!")
+                            st.stop()
+                        if not loai_cont_input:
+                            st.error("❌ HỆ THỐNG CHẶN: Vui lòng chọn Loại Container (20, 40, 40HC...)!")
+                            st.stop()
+                        if not chieu_cont_input:
+                            st.error("❌ HỆ THỐNG CHẶN: Vui lòng chọn Chiều Hàng (Nhập / Xuất / Nội địa / Chạy rỗng)!")
+                            st.stop()
+                        if (khoi_luong or 0.0) <= 0:
+                            st.error("❌ HỆ THỐNG CHẶN: Vui lòng nhập Trọng lượng hàng hóa (KG) lớn hơn 0!")
+                            st.stop()
+                    # ========================================================================
                     if (khoi_luong or 0.0) == 0.0:
                         st.error("❌ Khối lượng hàng hóa phải được khai báo để phục vụ quyết toán! Vui lòng nhập số KG.")
                         st.stop()
@@ -707,7 +731,9 @@ with tab2:
                         'the_tich_cbm': float(so_cbm or 0.0),                       
                         'trang_thai_chuyen': str(STATUS_MAP[trang_thai_ui_value]),                    
                         'ghi_chu': gc_final,
-                        'is_hang_tra_ve': 1 if is_hang_ve_ui else 0               
+                        'is_hang_tra_ve': 1 if is_hang_ve_ui else 0,
+                        # FIX: Đảm bảo loai_hinh_xe luôn được lưu (Container / Xe_Tai) kể cả khi là xe nội bộ
+                        'loai_hinh_xe': "Container" if kieu_nghiep_vu == "Nghiệp vụ Container" else "Xe_Tai"
                     }
                     
                     if loai_hinh_xe == "🚀 Chạy Xe Công Ty":
@@ -760,8 +786,8 @@ with tab2:
                                     sdt_tx_gui = ngoai_sdt_tx
                                     cccd_tx_gui = ngoai_cccd_tx
                                     
-                            st.session_state["tn_tai_xe"] = f"🚛 LỆNH ĐIỀU XE\n- Mã chuyến: {ma_chuyen_gui}\n- Lộ trình: {diem_dau} ➡️ {diem_cuoi}\n- Khách hàng: {ten_kh_val}"
-                            st.session_state["tn_khach"] = f"📦 THÔNG TIN TÀI XẾ VẬN CHUYỂN\n- Tên tài xế: {ten_tx_gui}\n- SĐT: {sdt_tx_gui}\n- CCCD: {cccd_tx_gui}\n- Biển số xe: {bien_so_gui}"
+                            st.session_state["tn_tai_xe"] = f"🚛 Anh, em, chú, cậu vào:\n - Khách hàng: {ten_kh_val} giao,lấy hàng \n- Lộ trình: {diem_dau} ➡️ {diem_cuoi} \n- Mã chuyến: {ma_chuyen_gui}"
+                            st.session_state["tn_khach"] = f"📦 THÔNG TIN TÀI XẾ\n- Tên tài xế: {ten_tx_gui}\n- SĐT: {sdt_tx_gui}\n- CCCD: {cccd_tx_gui}\n- Biển số xe: {bien_so_gui}"
 
                         st.session_state["tab2_mode_action"] = "➕ Tạo chuyến mới"
                         st.session_state["api_km"] = 0.0
@@ -779,7 +805,7 @@ with tab2:
                 
                 with msg_container.container():
                     st.markdown("<br>", unsafe_allow_html=True)
-                    st.success("✅ Hệ thống đã lên lệnh thành công! Copy thông tin dưới đây để gửi đi, sẽ tự đóng trong 6s:")
+                    st.success("✅ Hệ thống đã lên lệnh thành công! Copy thông tin dưới đây để gửi đi:")
                         
                     c_msg1, c_msg2 = st.columns(2)
                     c_msg1.text_area("📱 Gửi cho Tài xế:", value=st.session_state["tn_tai_xe"], height=160, key="copy_tx")
@@ -794,12 +820,12 @@ with tab2:
                 
                 
                 # Sau khi hết vòng lặp 30 giây, nếu biến vẫn còn thì tự động đóng
-                if "tn_tai_xe" in st.session_state:
-                    del st.session_state["tn_tai_xe"]
-                    del st.session_state["tn_khach"]
-                    msg_container.empty() # Xóa khối thông báo khỏi UI
-                    st.rerun() # Refresh lại form
-                st.divider()
+                #if "tn_tai_xe" in st.session_state:
+                #    del st.session_state["tn_tai_xe"]
+                #    del st.session_state["tn_khach"]
+                #    msg_container.empty() # Xóa khối thông báo khỏi UI
+                #    st.rerun() # Refresh lại form
+                #st.divider()
 
         vung_thao_tac_chuyen_di()
     except Exception as e:

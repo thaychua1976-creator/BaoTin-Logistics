@@ -163,15 +163,29 @@ def rule_engine_calc(kh_id, tai_trong_xe_tan, doanh_thu, facts, db_instance):
                             tien_item = tinh_tien_goc(gia, loai, doanh_thu)
                             ly_do = "Làm hàng cảng"    
 
-                        elif ldk == "chuyen_cont_rong" and facts.get('is_cont_rong') and is_tt_ok:
+                        # ===== THAY THẾ KHỐI LỆNH XỬ LÝ CONT RỖNG (Khoảng dòng 166) =====
+                        elif ldk in ["chuyen_cont_rong", "ha_cont_rong", "lay_cont_rong", "ha_xa_trai_tuyen"] and facts.get('is_cont_rong') and is_tt_ok:
                             nghiep_vu = str(dk.get('nghiep_vu', '')).strip().lower()
-                            if nghiep_vu == "trai_tuyen" and not facts.get('is_cont_rong_trai_tuyen'): pass 
-                            else:
+                            loai_text_ui = str(facts.get('loai_cont_rong_text', '')).lower()
+                            is_match = True
+                            
+                            # 1. Khóa chéo Lấy/Hạ theo khai báo JSON
+                            if ldk == "ha_cont_rong" and ("lấy" in loai_text_ui or "lay " in loai_text_ui): is_match = False
+                            if ldk == "lay_cont_rong" and ("hạ" in loai_text_ui or "ha " in loai_text_ui): is_match = False
+                            if ldk == "ha_xa_trai_tuyen" and ("lấy" in loai_text_ui or "lay " in loai_text_ui): is_match = False
+                            
+                            # 2. Khóa chéo Tuyến thường / Trái tuyến
+                            is_tt_fact = facts.get('is_cont_rong_trai_tuyen', False)
+                            is_tt_json = (nghiep_vu == "trai_tuyen" or ldk == "ha_xa_trai_tuyen")
+                            
+                            if is_tt_json and not is_tt_fact:
+                                is_match = False # Bảng giá là Trái tuyến nhưng người dùng chọn Thường
+                            if not is_tt_json and is_tt_fact:
+                                is_match = False # Bảng giá là Thường nhưng người dùng chọn Trái tuyến
+                                
+                            if is_match:
                                 tien_item = tinh_tien_goc(gia, loai, doanh_thu)
                                 ly_do = f"{facts.get('loai_cont_rong_text', 'Xử lý Cont rỗng')}"
-                        elif ldk == "ha_xa_trai_tuyen" and facts.get('is_cont_rong_trai_tuyen') and is_tt_ok:
-                            tien_item = tinh_tien_goc(gia, loai, doanh_thu)
-                            ly_do = f"{facts.get('loai_cont_rong_text', 'Hạ xả cont rỗng trái tuyến')}"
                                 
                         elif ldk == "neo_xe_tai":
                             so_ngay = facts.get('so_ngay_neo_xe', 0)
@@ -247,12 +261,26 @@ def rule_engine_calc(kh_id, tai_trong_xe_tan, doanh_thu, facts, db_instance):
                     elif facts.get('is_lay_seal_som') and ("seal sớm" in tl or "seal som" in tl or "trước 1 ngày" in tl):
                         tien_item = tinh_tien_goc(gia, loai, doanh_thu)
                         ly_do = "Lấy seal/cont sớm 1 ngày"
-                    elif facts.get('is_cont_rong_trai_tuyen') and ("trái tuyến" in tl or "trai tuyen" in tl):
-                        tien_item = tinh_tien_goc(gia, loai, doanh_thu)
-                        ly_do = f"{facts.get('loai_cont_rong_text', 'Hạ xả cont rỗng trái tuyến')}"
-                    elif facts.get('is_cont_rong') and ("cont rỗng" in tl or "cont rong" in tl):
-                        tien_item = tinh_tien_goc(gia, loai, doanh_thu)
-                        ly_do = f"{facts.get('loai_cont_rong_text', 'Xử lý Cont rỗng')}"
+                    elif facts.get('is_cont_rong') and ("cont rỗng" in tl or "cont rong" in tl or "trái tuyến" in tl or "trai tuyen" in tl):
+                        loai_text = str(facts.get('loai_cont_rong_text', '')).lower()
+                        is_match = True
+                        
+                        # 1. Khóa chéo: Phân biệt Lấy và Hạ
+                        if "lấy" in loai_text and "hạ" in tl: is_match = False
+                        if "hạ" in loai_text and ("lấy" in tl or "lay " in tl): is_match = False
+                        
+                        # 2. Khóa chéo: Phân biệt Tuyến thường và Trái tuyến
+                        is_tt_fee = ("trái tuyến" in tl or "trai tuyen" in tl)
+                        is_tt_fact = facts.get('is_cont_rong_trai_tuyen', False)
+                        
+                        if is_tt_fact and not is_tt_fee:
+                            is_match = False # Chọn Trái tuyến nhưng tên phụ phí là Thường
+                        if not is_tt_fact and is_tt_fee:
+                            is_match = False # Chọn Thường nhưng tên phụ phí là Trái tuyến
+                            
+                        if is_match:
+                            tien_item = tinh_tien_goc(gia, loai, doanh_thu)
+                            ly_do = f"{facts.get('loai_cont_rong_text', 'Xử lý Cont rỗng')}"
                     elif facts.get('is_giao_khac_khu') and ("khác khu" in tl or "khac khu" in tl):
                         tien_item = tinh_tien_goc(gia, loai, doanh_thu)
                         ly_do = "Giao khác khu nội bộ"
@@ -420,10 +448,33 @@ with tab1:
                     except: pass
 
                 st.markdown("##### 📦 Khai báo Tính chất Hàng hóa & Container")
+                
+                # SỬA LỖI: Tự động tách Loại Container và Chiều từ chuỗi Ghi chú
+                db_ghi_chu = str(row_sel.get('ghi_chu', ''))
+                loai_cont_default = "Thường"
+                chieu_cont_default = "Không phân biệt"
+                
+                import re
+                match_cont = re.search(r'\[CONT:.*?\| LOAI:\s*(.*?)\s*\| CHIEU:\s*(.*?)\s*\]', db_ghi_chu)
+                if match_cont:
+                    loai_cont_default = match_cont.group(1).strip()
+                    chieu_cont_raw = match_cont.group(2).strip()
+                    if chieu_cont_raw in ["Nhập", "Xuất"]: 
+                        chieu_cont_default = chieu_cont_raw
+
+                cont_opts = ["Thường","20HC","20","40","20DC", "40DC", "40HC", "45HC", "20RF", "40RF", "Khác"]
+                if loai_cont_default not in cont_opts and loai_cont_default != "Thường":
+                    cont_opts.append(loai_cont_default)
+
                 col_hh1, col_hh2, col_hh3, col_hh4 = st.columns(4)
                 loai_hang_ui = col_hh1.selectbox("Tính chất hàng", options=["Thường", "Nguy hiểm"], key=f"lh_{cd_id}")
-                loai_cont_ui = col_hh2.selectbox("Loại Container", options=["Thường", "Lạnh (RF)"], key=f"lc_{cd_id}")
-                chieu_cont_ui = col_hh3.selectbox("Chiều Cont", options=["Không phân biệt", "Nhập", "Xuất"], key=f"chieu_{cd_id}")
+                
+                def_cont_idx = cont_opts.index(loai_cont_default) if loai_cont_default in cont_opts else 0
+                loai_cont_ui = col_hh2.selectbox("Loại Container", options=cont_opts, index=def_cont_idx, key=f"lc_{cd_id}")
+                
+                chieu_opts = ["Không phân biệt", "Nhập", "Xuất"]
+                def_chieu_idx = chieu_opts.index(chieu_cont_default) if chieu_cont_default in chieu_opts else 0
+                chieu_cont_ui = col_hh3.selectbox("Chiều Cont", options=chieu_opts, index=def_chieu_idx, key=f"chieu_{cd_id}")
                 
                 # Xử lý ép kiểu dữ liệu từ DB sang Boolean an toàn tuyệt đối
                 raw_is_ve = row_sel.get('is_hang_tra_ve', 0)# Xử lý ép kiểu dữ liệu từ DB sang Boolean an toàn tuyệt đối
@@ -525,7 +576,12 @@ with tab1:
                                 ghi_chu_chuyen = str(row_sel.get('ghi_chu', '')).lower()
                                 text_context = f"{quy_cach_xe} {ghi_chu_chuyen}".replace("_", " ")
                                 has_nguy_hiem = (loai_hang_ui == "Nguy hiểm") or ('nguy hiem' in text_context) or ('nguyhiem' in text_context)
-                                has_lanh = (loai_cont_ui == "Lạnh (RF)") or ('lạnh' in text_context) or ('lanh' in text_context) or ('rf' in text_context)
+                                
+                                # SỬA LỖI: Nhận diện chính xác Container Lạnh và làm sạch tên Quy cách
+                                has_lanh = ('lạnh' in loai_cont_ui.lower()) or ('rf' in loai_cont_ui.lower()) or ('lạnh' in text_context) or ('lanh' in text_context) or ('rf' in text_context)
+                                
+                                is_cont = loai_cont_ui != "Thường" and loai_cont_ui != "Khác"
+                                loai_cont_clean = loai_cont_ui.lower().replace(" (lạnh)", "").strip()
                                 is_ghep = int(row_sel.get('is_gop_chuyen', 0) if pd.notna(row_sel.get('is_gop_chuyen')) else 0)
                                 stt_ghep = int(row_sel.get('stt_chuyen_ghep', 1) if pd.notna(row_sel.get('stt_chuyen_ghep')) else 1)
 
@@ -563,6 +619,13 @@ with tab1:
                                         continue
                                     else:
                                         if 'bao xe tai' in qc_gia or 'bao_xe_tai' in qc_gia or 'bao xe cont' in qc_gia or 'bao_xe_cont' in qc_gia:
+                                            continue
+                                    # THÊM MỚI: Bắt buộc khớp quy cách Container nếu Bảng giá có yêu cầu
+                                    if is_cont:
+                                        cont_sizes = ['20dc','20','40', '40dc', '40hc', '45hc', '20rf', '40rf']
+                                        has_cont_size_in_qc = any(cs in qc_gia for cs in cont_sizes)
+                                        # Khách book 20DC nhưng bảng giá đang xét là 40HC -> Bỏ qua dòng này
+                                        if has_cont_size_in_qc and loai_cont_clean not in qc_gia:
                                             continue
 
                                     req_nguy_hiem = any(x in qc_gia for x in ['nguy hiem', 'nguyhiem'])
@@ -685,8 +748,9 @@ with tab1:
                         st.warning("⚠️ Tuyến đường này chưa có trong Bảng giá. Vui lòng tự nhập cước vào ô bên dưới:")
 
                     label_dt = "Doanh thu cước khách (VNĐ) - TỔNG 2 CHIỀU" if (is_hang_ve_ui and st.session_state.get(f"note_ve_{cd_id}")) else "Doanh thu cước khách (VNĐ)"
-                    dynamic_key = f"dt_input_{cd_id}_{is_hang_ve_ui}"
-                    
+                    # Mở rộng Key động: Bắt sự thay đổi của cả Hàng về, Bao chuyến và Loại xe bao
+                    dynamic_key = f"dt_input_{cd_id}_{is_hang_ve_ui}_{is_bao_chuyen_ui}_{loai_xe_bao_ui}"
+
                     doanh_thu_input = st.text_input(
                         label_dt, 
                         value=f"{doanh_thu_hien_tai:,.0f}" if doanh_thu_hien_tai > 0 else "",
@@ -729,7 +793,7 @@ with tab1:
                     f_khac_khu = c_f9.checkbox("🏢 Giao khác khu nội bộ")
                     cang_opts = ["", "Dong_Nai", "Hiep_Phuoc", "VICT", "Cai_Mep"]
                     f_cang = c_f10.selectbox("⚓ Nâng hạ/Qua cảng", options=cang_opts)
-                    cont_rong_opts = ["Không", "Lấy Cont rỗng", "Hạ Cont rỗng", "Trái tuyến (Lấy/Hạ)"]
+                    cont_rong_opts = ["Không", "Lấy Cont rỗng", "Hạ Cont rỗng", "Lấy Cont rỗng trái tuyến", "Hạ Cont rỗng trái tuyến"]
                     f_cont_rong = c_f11.selectbox("🔄 Xử lý Cont rỗng", options=cont_rong_opts)
                     f_lam_hang_cang = c_f12.checkbox("📦 Có làm hàng cảng")
                     
@@ -827,6 +891,9 @@ with tab1:
                         try:
                             # Ràng buộc Parse tiền tệ từ utils_core
                             doanh_thu_val = parse_money_input(doanh_thu_input)
+                            # SỬA LỖI 3: Fallback chặn đứng việc lưu 0đ nếu UI bị lỗi render
+                            if doanh_thu_val == 0 and doanh_thu_hien_tai > 0:
+                                doanh_thu_val = doanh_thu_hien_tai
                             phi_khac_nhap_tay = parse_money_input(num_k)
                             phi_bx_nhap_tay = parse_money_input(num_bx)
                             phi_hq_nhap_tay = parse_money_input(num_hq)
@@ -848,7 +915,8 @@ with tab1:
                                 'chieu_cont': 'nhap' if chieu_cont_ui == "Nhập" else ('xuat' if chieu_cont_ui == "Xuất" else ''),
                                 'is_lay_seal_som': f_seal, 'is_giao_khac_khu': f_khac_khu,
                                 'is_cont_rong': (f_cont_rong != "Không"),
-                                'is_cont_rong_trai_tuyen': (f_cont_rong == "Trái tuyến (Lấy/Hạ)"),
+                                # SỬA LỖI: Nhận diện linh hoạt từ khoá "trái tuyến"
+                                'is_cont_rong_trai_tuyen': ("trái tuyến" in f_cont_rong.lower()),
                                 'loai_cont_rong_text': f_cont_rong,
                                 'is_lam_hang_cang': f_lam_hang_cang,
                                 'is_hang_tra_ve': is_hang_ve_ui, 'is_chu_nhat': is_chu_nhat
@@ -856,7 +924,10 @@ with tab1:
                             
                             tong_phi_ai, chuoi_ghi_chu_ai = rule_engine_calc(kh_id_qt, tt_xe_tan, doanh_thu_val, facts_dict, db)
                             tien_phu_cap_tx, chuoi_phu_cap_tx = tinh_phu_cap_tai_xe(db, row_sel.get('xe_id'), selected_tc_ids)
-                            tien_them_final = float(row_sel.get('tien_them', 0.0) or 0.0) + tien_phu_cap_tx
+                            tienthem_raw = row_sel.get('tien_them')
+                            tien_them_hien_tai = 0.0 if pd.isna(tienthem_raw) or tienthem_raw == "" else float(tienthem_raw)
+                            #tien_them_final = float(row_sel.get('tien_them', 0.0) or 0.0) + tien_phu_cap_tx
+                            tien_them_final = tien_them_hien_tai + tien_phu_cap_tx
                             phi_khac_final = phi_khac_nhap_tay + tong_phi_ai
                             
                             gc_final = str(edit_gc).strip()
@@ -870,7 +941,10 @@ with tab1:
                                 'phi_hai_quan': phi_hq_nhap_tay, 'phi_boc_xep': phi_bx_nhap_tay,
                                 'phi_khac': phi_khac_final, 'tien_them': tien_them_final,
                                 'ghi_chu_quyet_toan': gc_final,
-                                'is_hang_tra_ve': 1 if is_hang_ve_ui else 0 # Lưu vết trạng thái 2 chiều
+                                'is_hang_tra_ve': 1 if is_hang_ve_ui else 0
+                                # SỬA LỖI 4: Bổ sung 2 trường thiết yếu để tương thích hoàn toàn với update_trip_transaction
+                                #'cong_chuyen': float(row_sel.get('cong_chuyen', 0.0) or 0.0),
+                                #'khoi_luong_kg': float(row_sel.get('khoi_luong_kg', 0.0) or 0.0)
                             }
 
                             if submit_chot and not xac_nhan_chot:
@@ -892,7 +966,16 @@ with tab1:
                                         except Exception as e: st.error(f"Lỗi lưu Bảng giá: {e}")
                                         
                                     # Ràng buộc sử dụng hàm Transaction từ trip_manager
-                                    is_ok, msg = settle_trip_transaction(db.pool, data_dict_thu_cong, 'Hoan_Thanh', cd_id)
+                                    #is_ok, msg = settle_trip_transaction(db.pool, data_dict_thu_cong, 'Hoan_Thanh', cd_id)
+                                    # SỬA LỖI 2: Dùng hàm update_trip_transaction cho các chuyến đã "Hoan_Thanh" nhưng bị rỗng tiền
+                                    # 1. Lấy trạng thái hiện tại của chuyến đi từ biến row_sel của Tab 1
+                                    trang_thai_hien_tai = row_sel.get('trang_thai_chuyen')
+                                    
+                                    # 2. Phân nhánh xử lý để tránh cộng nhầm Odometer cho xe
+                                    if trang_thai_hien_tai == 'Hoan_Thanh':
+                                        is_ok, msg = update_trip_transaction(db.pool, data_dict_thu_cong, 'Hoan_Thanh', cd_id)
+                                    else:
+                                        is_ok, msg = settle_trip_transaction(db.pool, data_dict_thu_cong, 'Hoan_Thanh', cd_id)
                                     
                                 if is_ok:
                                     st.session_state["reset_chuyen_form"] += 1
@@ -1367,6 +1450,10 @@ with tab3:
                                                     loai_cont_excel = str(r.get('LOAI_CONT', 'Thường')).strip().lower()
                                                     has_nguy_hiem = 'nguy hiểm' in loai_hang_excel or 'nguy hiem' in loai_hang_excel
                                                     has_lanh = 'lạnh' in loai_cont_excel or 'lanh' in loai_cont_excel
+                                                    
+                                                    # THÊM MỚI: Làm sạch tên Loại Cont từ Excel để chuẩn bị dò Bảng giá
+                                                    is_cont = loai_cont_excel not in ["thường", "thuong", "khác", "khac", ""]
+                                                    loai_cont_clean = loai_cont_excel.replace(" (lạnh)", "").replace(" (lanh)", "").strip()
 
                                                     valid_candidates_di = []
                                                     valid_candidates_ve = []
@@ -1401,11 +1488,19 @@ with tab3:
                                                         else:
                                                             if 'bao xe tai' in qc_gia or 'bao_xe_tai' in qc_gia or 'bao xe cont' in qc_gia or 'bao_xe_cont' in qc_gia:
                                                                 continue
+                                                        # THÊM MỚI: Bắt buộc khớp quy cách Container (20, 40, 40HC...) nếu Bảng giá có quy định
+                                                        if is_cont:
+                                                            cont_sizes = ['20dc', '20', '40', '40dc', '40hc', '45hc', '20rf', '40rf']
+                                                            has_cont_size_in_qc = any(cs in qc_gia for cs in cont_sizes)
+                                                            # Khách book 20DC nhưng bảng giá đang xét là 40HC -> Bỏ qua dòng này
+                                                            if has_cont_size_in_qc and loai_cont_clean not in qc_gia:
+                                                                continue
 
                                                         req_nguy_hiem = any(x in qc_gia for x in ['nguy hiem', 'nguyhiem'])
                                                         req_lanh = any(x in qc_gia for x in ['lạnh', 'lanh', 'rf'])
                                                         req_thuong = any(x in qc_gia for x in ['thường', 'thuong'])
 
+                                                        
                                                         is_prop_match = True
                                                         if req_nguy_hiem and not has_nguy_hiem: is_prop_match = False
                                                         if req_lanh and not has_lanh: is_prop_match = False
