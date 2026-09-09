@@ -185,6 +185,7 @@ def render_tab_cong_no_khach_hang(db):
                 CAST(COALESCE(cd.doanh_thu, 0) AS DECIMAL(15,2)) AS phi_van_chuyen,
                 CAST(COALESCE(cd.phi_boc_xep, 0) AS DECIMAL(15,2)) AS phi_boc_xep,
                 CAST(COALESCE(cd.phi_khac, 0) AS DECIMAL(15,2)) AS phu_phi_phat_sinh,
+                cd.is_thue_ngoai,
                 cd.ghi_chu
             FROM chuyen_di cd
             LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id
@@ -202,7 +203,7 @@ def render_tab_cong_no_khach_hang(db):
             df_kh['ngay_chuyen_di'] = pd.to_datetime(df_kh['ngay_chuyen_di']).dt.strftime('%d/%m/%Y')
             
             # Tính toán các khoản phụ phí và Thành tiền ngay trên Pandas
-            df_kh['phu_phi_xang_dau'] = df_kh['phi_van_chuyen'] * 0.0015
+            df_kh['phu_phi_xang_dau'] = df_kh['phi_van_chuyen'] * 0.15
             df_kh['thanh_tien'] = df_kh['phi_van_chuyen'] + df_kh['phu_phi_xang_dau'] + df_kh['phi_boc_xep'] + df_kh['phu_phi_phat_sinh']
             
             # Thống kê tổng hợp theo từng khách hàng
@@ -276,67 +277,82 @@ def render_tab_cong_no_khach_hang(db):
                 ws_th_kh.set_column('A:A', 40)
                 ws_th_kh.set_column('B:E', 20)
                 
-                # --- SHEET N: BẢNG KÊ CHI TIẾT TỪNG KHÁCH HÀNG ---
-                for kh_name, df_group in df_kh.groupby('ten_khach_hang'):
-                    # Xử lý tên sheet hợp lệ (Tối đa 30 ký tự)
-                    sheet_name = str(kh_name).replace('/', '-').replace('\\', '-').strip()[:30]
-                    if not sheet_name:
-                        sheet_name = "Khach_Hang"
+                # ==========================================
+                # BẮT ĐẦU VÒNG LẶP XUẤT SHEET KHÁCH HÀNG
+                # ==========================================
+                for kh_name, df_group_full in df_kh.groupby('ten_khach_hang'):
                     
-                    worksheet_kh = workbook.add_worksheet(sheet_name)
+                    # 1. Tách dữ liệu: Tìm các chuyến thuê ngoài VÀ là xe máy (dựa vào ghi chú, biển số hoặc loại xe)
+                    mask_xe_may_ngoai = (df_group_full['is_thue_ngoai'] == 1) & (
+                        df_group_full['bien_so_xe'].str.lower().str.contains('xe máy|xe may', na=False) |
+                        df_group_full['ghi_chu'].str.lower().str.contains('xe máy|xe may', na=False)
+                    )
                     
-                    # Nới rộng chiều cao dòng 1 để chứa đủ Header công ty
-                    worksheet_kh.set_row(0, 130)
-                    worksheet_kh.merge_range('A1:K1', header_text, format_company_header)
+                    # Chia thành 2 tập dữ liệu
+                    dict_dfs = {
+                        "Chinh": df_group_full[~mask_xe_may_ngoai], # Các chuyến bình thường (Tải/Cont nội bộ + ngoài)
+                        "XeMay": df_group_full[mask_xe_may_ngoai]   # Chỉ riêng Xe máy gọi ngoài
+                    }
                     
-                    # Tiêu đề bảng kê
-                    thang_nam = tu_ngay.strftime('%m.%Y')
-                    worksheet_kh.merge_range('A2:K2', f"BẢNG KÊ CHI TIẾT CÔNG NỢ - {kh_name.upper()} THÁNG {thang_nam}", format_title)
-                    
-                    # Ghi tiêu đề cột theo form mẫu
-                    headers = [
-                        "STT", "Ngày", "Biển Số Xe", "Nơi Giao Nhận", "Trọng Tải (Kg)", 
-                        "Phí vận chuyển", "VC tăng 0.15%", "Phí bốc xếp", "Phụ phí phát sinh", "Thành Tiền", "Ghi Chú"
-                    ]
-                    for col_num, data in enumerate(headers):
-                        worksheet_kh.write(3, col_num, data, format_header)
-                    
-                    # Ghi dữ liệu
-                    row_num = 4
-                    tong_thanh_tien = 0.0
-                    
-                    for index, row in df_group.reset_index(drop=True).iterrows():
-                        thanh_tien = float(row['thanh_tien'])
-                        tong_thanh_tien += thanh_tien
+                    for loai_sheet, df_group in dict_dfs.items():
+                        if df_group.empty:
+                            continue # Bỏ qua nếu không có dữ liệu cho loại này
+                            
+                        # Đặt tên sheet: Thêm hậu tố _XM nếu là sheet xe máy
+                        base_sheet_name = str(kh_name) if loai_sheet == "Chinh" else f"{kh_name}_XM"
+                        sheet_name = base_sheet_name.replace('/', '-').replace('\\', '-').strip()[:30]
+                        if not sheet_name: sheet_name = "Khach_Hang"
                         
-                        worksheet_kh.write(row_num, 0, index + 1, format_center)
-                        worksheet_kh.write(row_num, 1, row['ngay_chuyen_di'], format_center)
-                        worksheet_kh.write(row_num, 2, row['bien_so_xe'], format_center)
-                        worksheet_kh.write(row_num, 3, row['dia_diem_giao_nhan'], format_left)
-                        worksheet_kh.write(row_num, 4, float(row['trong_tai']), format_center)
-                        worksheet_kh.write(row_num, 5, float(row['phi_van_chuyen']), format_money)
-                        worksheet_kh.write(row_num, 6, float(row['phu_phi_xang_dau']), format_money)
-                        worksheet_kh.write(row_num, 7, float(row['phi_boc_xep']), format_money)
-                        worksheet_kh.write(row_num, 8, float(row['phu_phi_phat_sinh']), format_money)
-                        worksheet_kh.write(row_num, 9, thanh_tien, format_money)
-                        worksheet_kh.write(row_num, 10, row['ghi_chu'] if pd.notna(row['ghi_chu']) else "", format_left)
-                        row_num += 1
-                    
-                    # Tùy chỉnh độ rộng cột chuẩn mẫu
-                    worksheet_kh.set_column('A:A', 6)
-                    worksheet_kh.set_column('B:C', 14)
-                    worksheet_kh.set_column('D:D', 40)
-                    worksheet_kh.set_column('E:E', 12)
-                    worksheet_kh.set_column('F:J', 16)
-                    worksheet_kh.set_column('K:K', 25)
-                    
-                    # Dòng Tổng cộng
-                    worksheet_kh.write(row_num, 3, "TỔNG CỘNG TIỀN THANH TOÁN:", format_bold)
-                    worksheet_kh.write(row_num, 5, df_group['phi_van_chuyen'].sum(), format_money)
-                    worksheet_kh.write(row_num, 6, df_group['phu_phi_xang_dau'].sum(), format_money)
-                    worksheet_kh.write(row_num, 7, df_group['phi_boc_xep'].sum(), format_money)
-                    worksheet_kh.write(row_num, 8, df_group['phu_phi_phat_sinh'].sum(), format_money)
-                    worksheet_kh.write(row_num, 9, tong_thanh_tien, format_money)
+                        worksheet_kh = workbook.add_worksheet(sheet_name)
+                        
+                        # --- CÁC BƯỚC FORMAT EXCEL GIỮ NGUYÊN NHƯ CŨ ---
+                        worksheet_kh.set_row(0, 130)
+                        worksheet_kh.merge_range('A1:K1', header_text, format_company_header)
+                        
+                        thang_nam = tu_ngay.strftime('%m.%Y')
+                        loai_title = " (XE MÁY THUÊ NGOÀI)" if loai_sheet == "XeMay" else ""
+                        worksheet_kh.merge_range('A2:K2', f"BẢNG KÊ CHI TIẾT CÔNG NỢ - {kh_name.upper()}{loai_title} THÁNG {thang_nam}", format_title)
+                        
+                        headers = [
+                            "STT", "Ngày", "Biển Số Xe", "Nơi Giao Nhận", "Trọng Tải (Kg)", 
+                            "Phí vận chuyển", "VC tăng 15%", "Phí bốc xếp", "Phụ phí phát sinh", "Thành Tiền", "Ghi Chú"
+                        ]
+                        for col_num, data in enumerate(headers):
+                            worksheet_kh.write(3, col_num, data, format_header)
+                        
+                        row_num = 4
+                        tong_thanh_tien = 0.0
+                        
+                        for index, row in df_group.reset_index(drop=True).iterrows():
+                            thanh_tien = float(row['thanh_tien'])
+                            tong_thanh_tien += thanh_tien
+                            
+                            worksheet_kh.write(row_num, 0, index + 1, format_center)
+                            worksheet_kh.write(row_num, 1, row['ngay_chuyen_di'], format_center)
+                            worksheet_kh.write(row_num, 2, row['bien_so_xe'], format_center)
+                            worksheet_kh.write(row_num, 3, row['dia_diem_giao_nhan'], format_left)
+                            worksheet_kh.write(row_num, 4, float(row['trong_tai']), format_center)
+                            worksheet_kh.write(row_num, 5, float(row['phi_van_chuyen']), format_money)
+                            worksheet_kh.write(row_num, 6, float(row['phu_phi_xang_dau']), format_money)
+                            worksheet_kh.write(row_num, 7, float(row['phi_boc_xep']), format_money)
+                            worksheet_kh.write(row_num, 8, float(row['phu_phi_phat_sinh']), format_money)
+                            worksheet_kh.write(row_num, 9, thanh_tien, format_money)
+                            worksheet_kh.write(row_num, 10, row['ghi_chu'] if pd.notna(row['ghi_chu']) else "", format_left)
+                            row_num += 1
+                        
+                        worksheet_kh.set_column('A:A', 6)
+                        worksheet_kh.set_column('B:C', 14)
+                        worksheet_kh.set_column('D:D', 40)
+                        worksheet_kh.set_column('E:E', 12)
+                        worksheet_kh.set_column('F:J', 16)
+                        worksheet_kh.set_column('K:K', 25)
+                        
+                        worksheet_kh.write(row_num, 3, "TỔNG CỘNG TIỀN THANH TOÁN:", format_bold)
+                        worksheet_kh.write(row_num, 5, df_group['phi_van_chuyen'].sum(), format_money)
+                        worksheet_kh.write(row_num, 6, df_group['phu_phi_xang_dau'].sum(), format_money)
+                        worksheet_kh.write(row_num, 7, df_group['phi_boc_xep'].sum(), format_money)
+                        worksheet_kh.write(row_num, 8, df_group['phu_phi_phat_sinh'].sum(), format_money)
+                        worksheet_kh.write(row_num, 9, tong_thanh_tien, format_money)
                     
 
             st.download_button(
