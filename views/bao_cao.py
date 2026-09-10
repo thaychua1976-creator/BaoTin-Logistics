@@ -185,7 +185,7 @@ def render_tab_cong_no_khach_hang(db):
                 CAST(COALESCE(cd.doanh_thu, 0) AS DECIMAL(15,2)) AS phi_van_chuyen,
                 CAST(COALESCE(cd.phi_boc_xep, 0) AS DECIMAL(15,2)) AS phi_boc_xep,
                 CAST(COALESCE(cd.phi_khac, 0) AS DECIMAL(15,2)) AS phu_phi_phat_sinh,
-                cd.is_thue_ngoai,
+                cd.is_thue_ngoai,cd.loai_hinh_xe,
                 cd.ghi_chu
             FROM chuyen_di cd
             LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id
@@ -282,10 +282,10 @@ def render_tab_cong_no_khach_hang(db):
                 # ==========================================
                 for kh_name, df_group_full in df_kh.groupby('ten_khach_hang'):
                     
-                    # 1. Tách dữ liệu: Tìm các chuyến thuê ngoài VÀ là xe máy (dựa vào ghi chú, biển số hoặc loại xe)
+                    # 1. Tách dữ liệu: Bao phủ mọi biến thể gõ chữ của "xe máy"
                     mask_xe_may_ngoai = (df_group_full['is_thue_ngoai'] == 1) & (
-                        df_group_full['bien_so_xe'].str.lower().str.contains('xe_máy|xe_may', na=False) |
-                        df_group_full['ghi_chu'].str.lower().str.contains('xe_máy|xe_may', na=False)
+                        df_group_full['bien_so_xe'].str.lower().str.contains(r'xe máy|xe may|xe_máy|xe_may|xemay', na=False, regex=True) |
+                        df_group_full['loai_hinh_xe'].str.lower().str.contains(r'xe máy|xe may|xe_máy|xe_may|xemay', na=False, regex=True)
                     )
                     
                     # Chia thành 2 tập dữ liệu
