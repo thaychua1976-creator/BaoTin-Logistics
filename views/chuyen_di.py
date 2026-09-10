@@ -136,22 +136,59 @@ with tab2:
             if "form_reset_counter" not in st.session_state: st.session_state["form_reset_counter"] = 0
 
             # --- CHỌN CHẾ ĐỘ THAO TÁC & LOẠI HÌNH NGHIỆP VỤ ---
+            
+            # ================= CHUẨN BỊ DỮ LIỆU SỬA CHUYẾN (NẾU CÓ) =================
+            edit_trip_id = None
+            trip_data = {}
+            so_cont_val, so_seal_val, loai_cont_val, chieu_cont_val = "", "", "40HC", "Nhập"
+            ghi_chu_thucong_val = ""
+            default_nghiep_vu_idx = 0 # 0 = Xe Tải, 1 = Container
             col_mode1, col_mode2 = st.columns(2)
-            mode_action = col_mode1.radio(
+            # --- CHỌN CHẾ ĐỘ THAO TÁC ---
+            mode_action = st.radio(
                 "📌 Chọn hành động:", 
                 ["➕ Tạo chuyến mới", "✏️ Sửa chuyến hiện tại", "🗑️ Xóa chuyến đi"], 
                 horizontal=True, 
                 key=f"tab2_mode_action_{st.session_state['form_reset_counter']}"
             )
-            
-            kieu_nghiep_vu = col_mode2.radio(
+
+            # Lấy trước dữ liệu chuyến nếu đang ở mode Sửa
+            if mode_action == "✏️ Sửa chuyến hiện tại":
+                sql_edit_list = "SELECT id, ngay_chuyen_di, COALESCE(ten_khach_hang, 'Khách Lẻ') as ten_khach_hang FROM chuyen_di WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') ORDER BY id DESC"
+                df_trips = db.execute_query(sql_edit_list)
+                
+                if isinstance(df_trips, pd.DataFrame) and not df_trips.empty:
+                    trip_options = {r['id']: f"Mã chuyến {r['id']} | Ngày: {r['ngay_chuyen_di']} | Khách: {r['ten_khach_hang']}" for _, r in df_trips.iterrows()}
+                    edit_trip_id = st.selectbox("🔍 Chọn chuyến đi cần sửa", options=list(trip_options.keys()), format_func=lambda x: trip_options[x], key=f"selectbox_edit_trip_{st.session_state['form_reset_counter']}")
+                    
+                    if edit_trip_id:
+                        df_detail = db.execute_query("SELECT * FROM chuyen_di WHERE id=%s", (edit_trip_id,))
+                        if isinstance(df_detail, pd.DataFrame) and not df_detail.empty:
+                            trip_data = df_detail.iloc[0].to_dict()
+                            db_ghi_chu = trip_data.get('ghi_chu', '') or ''
+                            ghi_chu_thucong_val = db_ghi_chu
+                            
+                            # [QUAN TRỌNG] Quét Regex ngay từ đây để xác định loại nghiệp vụ
+                            import re
+                            match = re.search(r'\[CONT:\s*(.*?)\s*\|\s*SEAL:\s*(.*?)\s*\|\s*LOAI:\s*(.*?)\s*\|\s*CHIEU:\s*(.*?)\s*\]', db_ghi_chu)
+                            
+                            if match:
+                                so_cont_val = match.group(1).strip()
+                                so_seal_val = match.group(2).strip()
+                                loai_cont_val = match.group(3).strip()
+                                chieu_cont_val = match.group(4).strip()
+                                ghi_chu_thucong_val = db_ghi_chu.replace(match.group(0), "").strip()
+                                default_nghiep_vu_idx = 1 # Chuyển mặc định sang Container
+
+            # --- RENDER RADIO BUTTON PHÂN LOẠI NGHIỆP VỤ (VỚI INDEX ĐÃ TÍNH TOÁN) ---
+            kieu_nghiep_vu = st.radio(
                 "🚛 Phân loại nghiệp vụ:", 
                 ["Nghiệp vụ Xe Tải", "Nghiệp vụ Container"], 
                 horizontal=True, 
+                index=default_nghiep_vu_idx, # Sẽ tự động là 1 nếu quét thấy chuỗi CONT
                 key=f"tab2_kieu_nghiep_vu_{st.session_state['form_reset_counter']}"
             )
-            
-            trip_suffix = f"new_{st.session_state['form_reset_counter']}"
+            trip_suffix = f"edit_{edit_trip_id}_{st.session_state['form_reset_counter']}" if edit_trip_id else f"new_{st.session_state['form_reset_counter']}"
 
             # ================= CHẾ ĐỘ: XÓA CHUYẾN ĐI =================
             if mode_action == "🗑️ Xóa chuyến đi":
