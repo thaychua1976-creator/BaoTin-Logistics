@@ -281,9 +281,10 @@ def render_tab_cong_no_khach_hang(db):
                 # BẮT ĐẦU VÒNG LẶP XUẤT SHEET KHÁCH HÀNG
                 # ==========================================
                 existing_sheets_kh = [] # <--- BẮT BUỘC KHỞI TẠO Ở ĐÂY (NGOÀI VÒNG LẶP)
+                
                 for kh_name, df_group_full in df_kh.groupby('ten_khach_hang'):
                     
-                    # 1. Tách dữ liệu: Bao phủ mọi biến thể gõ chữ của "xe máy"
+                    # 1. Tách dữ liệu: Tìm các chuyến thuê ngoài VÀ là xe máy (dựa vào ghi chú, biển số hoặc loại xe)
                     mask_xe_may_ngoai = (df_group_full['is_thue_ngoai'] == 1) & (
                         df_group_full['bien_so_xe'].str.lower().str.contains(r'xe máy|xe may|xe_máy|xe_may|xemay', na=False, regex=True) |
                         df_group_full['loai_hinh_xe'].str.lower().str.contains(r'xe máy|xe may|xe_máy|xe_may|xemay', na=False, regex=True)
@@ -299,17 +300,26 @@ def render_tab_cong_no_khach_hang(db):
                         if df_group.empty:
                             continue # Bỏ qua nếu không có dữ liệu cho loại này
                             
-                        
-                       # Đặt tên sheet: Thêm hậu tố _XM nếu là sheet xe máy
-                        base_sheet_name = str(kh_name) if loai_sheet == "Chinh" else f"{kh_name}_XM"
-                        
-                        # Sử dụng hàm chuẩn của hệ thống để làm sạch ký tự và chống trùng lặp tên sheet
-                        if "existing_sheets_kh" not in locals():
-                            existing_sheets_kh = []
+                        # 1. Rút gọn tên Công ty (Bỏ bớt các từ khóa chung chung)
+                        ten_rut_gon = str(kh_name).upper()
+                        cac_tu_bo_qua = ['CÔNG TY', 'TNHH', 'CỔ PHẦN', 'CP', 'MTV', 'THƯƠNG MẠI', 'DỊCH VỤ', 'SẢN XUẤT']
+                        for tu in cac_tu_bo_qua:
+                            ten_rut_gon = ten_rut_gon.replace(tu, '').strip()
                             
+                        # 2. Xử lý đặt tên Sheet
+                        if loai_sheet == "Chinh":
+                            base_sheet_name = ten_rut_gon
+                        else:
+                            # Với sheet xe máy, lấy tiền tố Xe_may_ cộng với tên rút gọn
+                            # Rút ngắn thêm đoạn tên phía sau để đảm bảo tổng chiều dài <= 30 ký tự (Giới hạn Excel)
+                            base_sheet_name = f"Xe_may_{ten_rut_gon[:20]}".strip()
+                            
+                        # 3. Sử dụng hàm get_unique_sheet_name để làm sạch ký tự cấm và tránh lỗi trùng lặp
                         sheet_name = get_unique_sheet_name(base_sheet_name, existing_sheets_kh)
                         
                         worksheet_kh = workbook.add_worksheet(sheet_name)
+                        
+                        
                         
                         # --- CÁC BƯỚC FORMAT EXCEL GIỮ NGUYÊN NHƯ CŨ ---
                         worksheet_kh.set_row(0, 130)
