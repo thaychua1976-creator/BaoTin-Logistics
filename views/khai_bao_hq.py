@@ -381,9 +381,9 @@ with tab_khai_hq:
                 
                 selected_phu_phi = st.multiselect("🏷️ Chọn Phụ Phí Đã Cấu Hình Cho Khách Này", options=list(dict_phu_phi.keys()), format_func=lambda x: dict_phu_phi[x])
 
-                cp1, cp2 = st.columns(2)
-                phi_van_chuyen_lien_ket = cp1.text_input("Phí Vận Chuyển (Lấy từ Chuyến)", value="", placeholder="0", disabled=(loai_tk in ["Noi_Dia", "DHL"]))
-                phi_khac_nhap_tay = cp2.text_input("Phí Phát Sinh Khác (Gõ tay thêm nếu có)", value="", placeholder="0")
+                cp1 = st.columns(1)
+                #phi_van_chuyen_lien_ket = cp1.text_input("Phí Vận Chuyển (Lấy từ Chuyến)", value="", placeholder="0", disabled=(loai_tk in ["Noi_Dia", "DHL"]))
+                phi_khac_nhap_tay = cp1.text_input("Phí Phát Sinh Khác (Gõ tay thêm nếu có)", value="", placeholder="0")
                 ghi_chu = st.text_input("Ghi chú bổ sung")
                 
                 

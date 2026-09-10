@@ -329,10 +329,21 @@ with tab2:
                     khoi_luong = c_c5.number_input("⚖️ Trọng lượng hàng (KG)*", min_value=0.0, value=val_kl_cont if val_kl_cont > 0 else None, placeholder="0", format="%g", step=1.0, key=kg_key)
                     so_cbm = 0.0 
                 
-                db_xe_id = trip_data.get('xe_id')
-                is_ngoai_val = 0 if (pd.notna(db_xe_id) and db_xe_id is not None and int(db_xe_id) > 0) else 1
-                if mode_action == "➕ Tạo chuyến mới": is_ngoai_val = 0
+                # SỬA LỖI LOẠI HÌNH XE
+                if mode_action == "➕ Tạo chuyến mới":
+                    is_ngoai_val = 0
+                else:
+                    # Lấy trực tiếp cờ is_thue_ngoai từ DB nếu có
+                    is_thue_ngoai_db = trip_data.get('is_thue_ngoai', 0)
+                    db_xe_id = trip_data.get('xe_id')
                     
+                    if pd.notna(is_thue_ngoai_db) and int(is_thue_ngoai_db) == 1:
+                        is_ngoai_val = 1
+                    elif pd.notna(db_xe_id) and db_xe_id is not None and int(db_xe_id) > 0:
+                        is_ngoai_val = 0
+                    else:
+                        is_ngoai_val = 1 # Fallback an toàn
+
                 loai_hinh_xe = st.radio(
                     "Chọn hình thức điều xe:", 
                     options=["🚀 Chạy Xe Công Ty", "🤝 Thuê Xe Ngoài"], 
@@ -435,8 +446,10 @@ with tab2:
                         xe_keys = list(xe_dict_opts.keys())
                         
                         default_xe_idx = 0
-                        if mode_action == "✏️ Sửa chuyến hiện tại" and trip_data.get('xe_id') in xe_keys:
-                            default_xe_idx = xe_keys.index(trip_data.get('xe_id'))
+                        if mode_action == "✏️ Sửa chuyến hiện tại":
+                            xe_id_db = trip_data.get('xe_id')
+                            if pd.notna(xe_id_db) and int(xe_id_db) in xe_keys:
+                                default_xe_idx = xe_keys.index(int(xe_id_db))
                         
                         title_selectbox = "✅ Chọn Xe Nội Bộ (Điều phối/Ghép chuyến)*" if is_ghep_chuyen else "✅ Chọn Xe Nội Bộ (Đang trống)*"
                         
