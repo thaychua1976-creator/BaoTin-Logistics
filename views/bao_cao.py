@@ -280,6 +280,7 @@ def render_tab_cong_no_khach_hang(db):
                 # ==========================================
                 # BẮT ĐẦU VÒNG LẶP XUẤT SHEET KHÁCH HÀNG
                 # ==========================================
+                existing_sheets_kh = [] # <--- BẮT BUỘC KHỞI TẠO Ở ĐÂY (NGOÀI VÒNG LẶP)
                 for kh_name, df_group_full in df_kh.groupby('ten_khach_hang'):
                     
                     # 1. Tách dữ liệu: Bao phủ mọi biến thể gõ chữ của "xe máy"
