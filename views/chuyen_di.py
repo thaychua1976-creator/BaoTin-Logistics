@@ -416,40 +416,51 @@ with tab2:
                         busy_xe_ids = df_busy['xe_id'].tolist() if isinstance(df_busy, pd.DataFrame) and not df_busy.empty else []
 
                         xe_dict_opts = {None: "-- Vui lòng chọn Xe Nội Bộ --"}
+                        
+                        # [BỔ SUNG] Lấy ID xe đã lưu an toàn để bypass các bộ lọc
+                        saved_xe_id = None
+                        if mode_action == "✏️ Sửa chuyến hiện tại" and pd.notna(trip_data.get('xe_id')):
+                            saved_xe_id = int(float(trip_data.get('xe_id')))
+
                         for k, v in xe_map.items():
-                            is_busy = int(k) in busy_xe_ids
-                            
-                            if not is_ghep_chuyen and is_busy and int(k) != trip_data.get('xe_id'):
+                            k_int = int(k)
+                            is_busy = k_int in busy_xe_ids
+                            is_assigned_to_this = (saved_xe_id == k_int)
+
+                            # Bỏ qua xe bận nếu không phải là ghép chuyến và không phải xe đang được gán
+                            if not is_ghep_chuyen and is_busy and not is_assigned_to_this:
                                 continue
                             
-                            loai_xe_db = str(v.get('loai_xe', '')).lower()
-                            if kieu_nghiep_vu == "Nghiệp vụ Xe Tải":
-                                if 'tải' not in loai_xe_db and 'tai' not in loai_xe_db:
-                                    continue
-                            else:
-                                if ('tải' in loai_xe_db or 'tai' in loai_xe_db or 
-                                    '4 chỗ' in loai_xe_db or '7 chỗ' in loai_xe_db or 
-                                    '4 cho' in loai_xe_db or '7 cho' in loai_xe_db or 
-                                    'du lịch' in loai_xe_db or 'du lich' in loai_xe_db):
-                                    continue        
+                            # [QUAN TRỌNG] Bypass bộ lọc text đối với xe ĐÃ ĐƯỢC GÁN cho chuyến này
+                            if not is_assigned_to_this:
+                                loai_xe_db = str(v.get('loai_xe', '')).lower()
+                                if kieu_nghiep_vu == "Nghiệp vụ Xe Tải":
+                                    if 'tải' not in loai_xe_db and 'tai' not in loai_xe_db:
+                                        continue
+                                else:
+                                    # Nghiệp vụ Container: Bỏ qua xe tải nhỏ/du lịch (ngoại trừ đầu kéo)
+                                    if ('tải' in loai_xe_db or 'tai' in loai_xe_db or 
+                                        '4 chỗ' in loai_xe_db or '7 chỗ' in loai_xe_db or 
+                                        '4 cho' in loai_xe_db or '7 cho' in loai_xe_db or 
+                                        'du lịch' in loai_xe_db or 'du lich' in loai_xe_db) and 'đầu kéo' not in loai_xe_db and 'dau keo' not in loai_xe_db:
+                                        continue        
                                     
                             tx_id_raw = v.get('tai_xe_co_dinh_id')
                             ten_tx = "Chưa gán TX"
                             if pd.notna(tx_id_raw) and int(float(tx_id_raw)) in tx_opts:
                                 ten_tx = tx_opts[int(float(tx_id_raw))]
                             
-                            if is_busy:
-                                xe_dict_opts[int(k)] = f"🔄 [ĐANG CHẠY] {v['bien_so_xe']} ({v.get('tai_trong_thiet_ke', 0)}T) | 🧑‍✈️ TX: {ten_tx}"
+                            if is_busy and not is_assigned_to_this:
+                                xe_dict_opts[k_int] = f"🔄 [ĐANG CHẠY] {v['bien_so_xe']} ({v.get('tai_trong_thiet_ke', 0)}T) | 🧑‍✈️ TX: {ten_tx}"
                             else:
-                                xe_dict_opts[int(k)] = f"🚛 [TRỐNG] {v['bien_so_xe']} ({v.get('tai_trong_thiet_ke', 0)}T) | 🧑‍✈️ TX: {ten_tx}"
+                                xe_dict_opts[k_int] = f"🚛 [SẴN SÀNG] {v['bien_so_xe']} ({v.get('tai_trong_thiet_ke', 0)}T) | 🧑‍✈️ TX: {ten_tx}"
                             
                         xe_keys = list(xe_dict_opts.keys())
                         
                         default_xe_idx = 0
-                        if mode_action == "✏️ Sửa chuyến hiện tại":
-                            xe_id_db = trip_data.get('xe_id')
-                            if pd.notna(xe_id_db) and int(xe_id_db) in xe_keys:
-                                default_xe_idx = xe_keys.index(int(xe_id_db))
+                        # [SỬA LỖI] So sánh ID qua biến saved_xe_id nguyên thủy
+                        if mode_action == "✏️ Sửa chuyến hiện tại" and saved_xe_id in xe_keys:
+                            default_xe_idx = xe_keys.index(saved_xe_id)
                         
                         title_selectbox = "✅ Chọn Xe Nội Bộ (Điều phối/Ghép chuyến)*" if is_ghep_chuyen else "✅ Chọn Xe Nội Bộ (Đang trống)*"
                         
@@ -457,7 +468,7 @@ with tab2:
                             title_selectbox, 
                             options=xe_keys, 
                             index=default_xe_idx, 
-                            format_func=lambda x: xe_dict_opts[x],
+                            format_func=lambda x: xe_dict_opts.get(x, ""),
                             key=selectbox_xe_key
                         )
                         
@@ -466,8 +477,11 @@ with tab2:
                             tx_id_raw = selected_xe_info.get('tai_xe_co_dinh_id') 
                             
                             default_tx_id = None
-                            if mode_action == "✏️ Sửa chuyến hiện tại" and edit_trip_id and 'tai_xe_id_assigned' in trip_data and c_xe_sel == trip_data.get('xe_id'):
-                                default_tx_id = trip_data.get('tai_xe_id_assigned')
+                            # [SỬA LỖI] Ép kiểu int(float()) cho tài xế để đọc từ DataFrame an toàn
+                            if mode_action == "✏️ Sửa chuyến hiện tại" and edit_trip_id and 'tai_xe_id_assigned' in trip_data and c_xe_sel == saved_xe_id:
+                                assigned_tx = trip_data.get('tai_xe_id_assigned')
+                                if pd.notna(assigned_tx):
+                                    default_tx_id = int(float(assigned_tx))
                             elif pd.notna(tx_id_raw) and int(float(tx_id_raw)) in tx_opts:
                                 default_tx_id = int(float(tx_id_raw))
                             
