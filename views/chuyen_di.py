@@ -230,15 +230,22 @@ with tab2:
                                 db_ghi_chu = trip_data.get('ghi_chu', '') or ''
                                 ghi_chu_thucong_val = db_ghi_chu
                                 
-                                if kieu_nghiep_vu == "Nghiệp vụ Container":
-                                    import re
-                                    match = re.search(r'\[CONT:(.*?)\| SEAL:(.*?)\| LOAI:(.*?)\| CHIEU:(.*?)\]', db_ghi_chu)
-                                    if match:
-                                        so_cont_val = match.group(1).strip()
-                                        so_seal_val = match.group(2).strip()
-                                        loai_cont_val = match.group(3).strip()
-                                        chieu_cont_val = match.group(4).strip()
-                                        ghi_chu_thucong_val = db_ghi_chu.replace(match.group(0), "").strip()
+                                # Bỏ qua điều kiện kieu_nghiep_vu, LUÔN bóc tách nếu tìm thấy form Container
+                                import re
+                                # Cải tiến Regex để bắt chuẩn dữ liệu bất kể có dấu cách hay không
+                                match = re.search(r'\[CONT:\s*(.*?)\s*\|\s*SEAL:\s*(.*?)\s*\|\s*LOAI:\s*(.*?)\s*\|\s*CHIEU:\s*(.*?)\s*\]', db_ghi_chu)
+                                
+                                if match:
+                                    so_cont_val = match.group(1).strip()
+                                    so_seal_val = match.group(2).strip()
+                                    loai_cont_val = match.group(3).strip()
+                                    chieu_cont_val = match.group(4).strip()
+                                    ghi_chu_thucong_val = db_ghi_chu.replace(match.group(0), "").strip()
+                                    
+                                    # [QUAN TRỌNG] Tự động bẻ lái giao diện sang mode Container nếu phát hiện dữ liệu Cont
+                                    if kieu_nghiep_vu != "Nghiệp vụ Container":
+                                        kieu_nghiep_vu = "Nghiệp vụ Container"
+                                        st.info("🔄 Hệ thống tự động nhận diện đây là chuyến đi Container dựa trên dữ liệu đã lưu.")
                     else: st.warning("⚠️ Hiện tại không có chuyến đi nào đang ở trạng thái Tạo Mới / Đang Đi để chỉnh sửa.")
 
                 def get_idx(lst, val, default=0): return lst.index(val) if val in lst else default
@@ -314,16 +321,23 @@ with tab2:
                     val_cbm = float(trip_data.get('the_tich_cbm') or 0.0)
                     so_cbm = col_hl2.number_input("🧊 Thể tích (CBM)", min_value=0.0, value=val_cbm if val_cbm > 0 else None, placeholder="0", format="%g", step=0.1, key=cbm_key)
                 else:
+                    
                     c_c1, c_c2 = st.columns(2)
                     so_cont_input = c_c1.text_input("🔢 Số Container", value=so_cont_val, key=f"so_cont_{trip_suffix}")
                     so_seal_input = c_c2.text_input("🔒 Số Seal", value=so_seal_val, key=f"so_seal_{trip_suffix}")
                     
                     c_c3, c_c4, c_c5 = st.columns(3)
                     loai_cont_opts = ["20DC","20","40","20HC", "40DC", "40HC", "45HC", "20RF", "40RF", "Khác"]
-                    loai_cont_input = c_c3.selectbox("🧊 Loại Cont", options=loai_cont_opts,  key=f"loai_cont_{trip_suffix}",index= None)
+                    
+                    # Xác định vị trí Index của loại cont đã lưu
+                    def_loai_idx = loai_cont_opts.index(loai_cont_val) if loai_cont_val in loai_cont_opts else 0
+                    loai_cont_input = c_c3.selectbox("🧊 Loại Cont", options=loai_cont_opts, key=f"loai_cont_{trip_suffix}", index=def_loai_idx)
                     
                     chieu_opts = ["Nhập", "Xuất", "Nội Địa", "Chạy Rỗng"]
-                    chieu_cont_input = c_c4.selectbox("🔄 Chiều Hàng", options=chieu_opts, key=f"chieu_cont_{trip_suffix}", index= None)
+                    
+                    # Xác định vị trí Index của chiều hàng đã lưu
+                    def_chieu_idx = chieu_opts.index(chieu_cont_val) if chieu_cont_val in chieu_opts else 0
+                    chieu_cont_input = c_c4.selectbox("🔄 Chiều Hàng", options=chieu_opts, key=f"chieu_cont_{trip_suffix}", index=def_chieu_idx)
                     
                     val_kl_cont = float(trip_data.get('khoi_luong_kg') or 0.0)
                     khoi_luong = c_c5.number_input("⚖️ Trọng lượng hàng (KG)*", min_value=0.0, value=val_kl_cont if val_kl_cont > 0 else None, placeholder="0", format="%g", step=1.0, key=kg_key)
