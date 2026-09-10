@@ -298,10 +298,15 @@ def render_tab_cong_no_khach_hang(db):
                         if df_group.empty:
                             continue # Bỏ qua nếu không có dữ liệu cho loại này
                             
-                        # Đặt tên sheet: Thêm hậu tố _XM nếu là sheet xe máy
+                        
+                       # Đặt tên sheet: Thêm hậu tố _XM nếu là sheet xe máy
                         base_sheet_name = str(kh_name) if loai_sheet == "Chinh" else f"{kh_name}_XM"
-                        sheet_name = base_sheet_name.replace('/', '-').replace('\\', '-').strip()[:30]
-                        if not sheet_name: sheet_name = "Khach_Hang"
+                        
+                        # Sử dụng hàm chuẩn của hệ thống để làm sạch ký tự và chống trùng lặp tên sheet
+                        if "existing_sheets_kh" not in locals():
+                            existing_sheets_kh = []
+                            
+                        sheet_name = get_unique_sheet_name(base_sheet_name, existing_sheets_kh)
                         
                         worksheet_kh = workbook.add_worksheet(sheet_name)
                         
