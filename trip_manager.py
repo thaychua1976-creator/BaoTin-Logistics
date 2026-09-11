@@ -238,10 +238,14 @@ def update_trip_full_process(db_pool, chuyen_di_id: int, data_chuyen_di: dict, t
         sql_update = f"UPDATE chuyen_di SET {set_clause} WHERE id=%s"
         cursor.execute(sql_update, tuple(values))
         
-        # Kiểm tra rowcount bắt buộc sau lệnh UPDATE
-        if cursor.rowcount == 0:
+        # Bổ sung kiểm tra xem chuyến đi có thực sự tồn tại hay không
+        cursor.execute("SELECT id FROM chuyen_di WHERE id = %s", (chuyen_di_id,))
+        if not cursor.fetchone():
             conn.rollback()
-            return False, "Không có thay đổi dữ liệu hoặc chuyến đi không tồn tại."
+            return False, "Chuyến đi không tồn tại trong hệ thống."
+        
+        # Bỏ qua việc chặn cursor.rowcount == 0 ở đây 
+        # vì người dùng có thể chỉ cập nhật mỗi tài xế ở bảng chuyen_di_tai_xe
 
         # 2. Xóa liên kết tài xế cũ và cập nhật tài xế mới (nếu là xe nội bộ)
         cursor.execute("DELETE FROM chuyen_di_tai_xe WHERE chuyen_di_id=%s", (chuyen_di_id,))

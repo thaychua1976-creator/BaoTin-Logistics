@@ -112,7 +112,7 @@ def render_tab_cong_no_khach_hang1(db):
                 st.markdown(f"#### 💵 Tổng cộng tiền thanh toán: {int(tong_tien):,} VNĐ")
                 
                 buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                with pd.ExcelWriter(buffer, engine='xlsxwriter', engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
                     workbook = writer.book
                     worksheet = workbook.add_worksheet('Bang_Ke_Hoa_Don')
                     
@@ -200,6 +200,12 @@ def render_tab_cong_no_khach_hang(db):
         
         if isinstance(df_kh_raw, pd.DataFrame) and not df_kh_raw.empty:
             df_kh = df_kh_raw.copy()
+            
+            # BỌC LỖI NAN: Ép kiểu và điền 0 cho tất cả cột tiền tệ
+            for col in ['trong_tai', 'phi_van_chuyen', 'phi_boc_xep', 'phu_phi_phat_sinh']:
+                if col in df_kh.columns:
+                    df_kh[col] = pd.to_numeric(df_kh[col], errors='coerce').fillna(0)
+                    
             df_kh['ngay_chuyen_di'] = pd.to_datetime(df_kh['ngay_chuyen_di']).dt.strftime('%d/%m/%Y')
             
             # Tính toán các khoản phụ phí và Thành tiền ngay trên Pandas
@@ -239,7 +245,7 @@ def render_tab_cong_no_khach_hang(db):
             # 3. KẾT XUẤT EXCEL THEO ĐÚNG MẪU: "DEBIT SAMPLE BAO TIN -KHACH HANG.xlsx"
             # =========================================================================
             buffer_kh = io.BytesIO()
-            with pd.ExcelWriter(buffer_kh, engine='xlsxwriter') as writer:
+            with pd.ExcelWriter(buffer_kh, engine='xlsxwriter', engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
                 workbook = writer.book
                 
                 # --- ĐỊNH DẠNG (FORMATS) ---
@@ -424,8 +430,12 @@ def render_tab_cong_no_nha_xe(db):
         df_nx_raw = db.execute_query(sql_nx, (tu_ngay_nx.strftime('%Y-%m-%d'), den_ngay_nx.strftime('%Y-%m-%d')))
         
         if isinstance(df_nx_raw, pd.DataFrame) and not df_nx_raw.empty:
-            # Chuẩn hóa dữ liệu hiển thị trên Web
             df_nx = df_nx_raw.copy()
+            
+            # BỌC LỖI NAN
+            if 'chi_phi_thue_ngoai' in df_nx.columns:
+                df_nx['chi_phi_thue_ngoai'] = pd.to_numeric(df_nx['chi_phi_thue_ngoai'], errors='coerce').fillna(0)
+                
             df_nx['ngay_chuyen_di'] = pd.to_datetime(df_nx['ngay_chuyen_di']).dt.strftime('%d/%m/%Y')
             
             # Thống kê tổng hợp theo từng nhà xe để làm bảng Tổng hợp
@@ -457,7 +467,7 @@ def render_tab_cong_no_nha_xe(db):
             # 3. KẾT XUẤT EXCEL THEO ĐÚNG MẪU HEADER CÔNG TY (Loại bỏ Trạng thái, Thêm STT, Thành tiền)
             # =========================================================================
             buffer_nx = io.BytesIO()
-            with pd.ExcelWriter(buffer_nx, engine='xlsxwriter') as writer:
+            with pd.ExcelWriter(buffer_nx, engine='xlsxwriter', engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
                 workbook = writer.book
                 
                 # --- ĐỊNH DẠNG (FORMATS) ---
@@ -664,7 +674,7 @@ with tab_bc1:
 
                 st.markdown("##### 📥 Xuất báo cáo lương tài xế")
                 excel_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+                with pd.ExcelWriter(excel_buffer, engine='xlsxwriter', engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
                     cols_excel = [
                         'Mã Chuyến', 'Ngày hiển thị', 'Khách Hàng', 'Biển Số Xe', 'Tải Trọng', 'Tài Xế', 'Lộ Trình',
                          'Phụ cấp tài xế','Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Ghi chú'
@@ -769,35 +779,78 @@ with tab_out_cong_no_hq:
                 )
 
                 st.markdown("---")
+                #Thay điều kiện kết nối chuyến đi thành ON c.chuyen_di_id = cd.id thay vì gọi nhầm từ bảng tk
+                #Đổi JOIN khach_hang thành LEFT JOIN khach_hang để phòng ngừa rủi ro mất dữ liệu
+                #sql_preview = """ error Đảo thứ tự LEFT JOIN container_quan_ly c lên trước bảng chuyen_di để làm cầu nối liên kết chuẩn xác.  
+                #    SELECT 
+                #        tk.so_to_khai AS 'Số Tờ Khai', tk.loai_to_khai AS 'Loại', tk.ngay_khai AS 'Ngày Khai', 
+                #        kh.ten_khach_hang AS 'Khách Hàng', tk.ten_doi_tac AS 'Đối Tác', cd.loai_hinh_xe AS 'Loại Xe',
+                #        c.so_cont  AS 'Số Container', (IFNULL(c.phi_to_khai, 0) + IFNULL(tk.phi_dich_vu_hq, 0)) AS 'Phí DVHQ Tờ khai',
+                #        c.phi_nang_ha_on AS 'Phí Nâng ON', c.phi_nang_ha_off AS 'Phí Hạ OFF',
+                #        co.form_co  AS 'Form C/O', co.so_co  AS 'Số C/O', co.phi_co AS 'Phí C/O', co.phi_dvhq AS 'Phí DVHQ C/O',
+                #        cd.dia_diem_giao_nhan AS 'Lộ Trình', tk.tong_trong_luong_hang AS 'Trọng Lượng (KG)',
+                #        cd.doanh_thu AS 'Cước Vận Chuyển', tk.phi_khac AS 'Phụ Phí Khác', tk.ghi_chu AS 'Ghi Chú'
+                #    FROM to_khai_hai_quan tk
+                #    JOIN khach_hang kh ON tk.khach_hang_id = kh.id
+                #    LEFT JOIN chuyen_di cd ON tk.chuyen_di_id = cd.id
+                #    LEFT JOIN to_khai_co co ON tk.id = co.to_khai_id
+                #    LEFT JOIN container_quan_ly c ON tk.id = c.to_khai_id
+                #    WHERE tk.ngay_khai BETWEEN %s AND %s
+                #    ORDER BY tk.ngay_khai ASC
+                #"""
+                # 1. Bắt điều kiện lọc động dựa trên Radio Button người dùng chọn
+                if "CONTINENTAL" in loai_bao_cao:
+                    dieu_kien_khach_hang = "AND UPPER(kh.ten_khach_hang) LIKE '%CONTINENTAL%'"
+                else:
+                    dieu_kien_khach_hang = "AND (UPPER(kh.ten_khach_hang) LIKE '%ICHIHIRO%' OR UPPER(kh.ten_khach_hang) LIKE '%ZHENGXING%')"
 
-                sql_preview = """
+                # 2. Đưa điều kiện lọc vào câu SQL Preview
+                sql_preview = f"""
                     SELECT 
                         tk.so_to_khai AS 'Số Tờ Khai', tk.loai_to_khai AS 'Loại', tk.ngay_khai AS 'Ngày Khai', 
-                        kh.ten_khach_hang AS 'Khách Hàng', tk.ten_doi_tac AS 'Đối Tác', cd.loai_hinh_xe AS 'Loại Xe',
+                        kh.ten_khach_hang AS 'Khách Hàng', tk.ten_doi_tac AS 'Đối Tác', 
+                        
+                        -- Tự động lấy Loại xe theo thứ tự ưu tiên: Cont -> Xe ngoài -> Xe nhà -> Mặc định
+                        COALESCE(
+                            NULLIF(TRIM(c.loai_cont), ''), 
+                            NULLIF(TRIM(cd.loai_hinh_xe), ''), 
+                            NULLIF(TRIM(xe.loai_xe), ''), 
+                            CONCAT(xe.tai_trong_thiet_ke, ' Tấn'), 
+                            'Xe tải'
+                        ) AS 'Loại Xe',
+                        
                         c.so_cont  AS 'Số Container', (IFNULL(c.phi_to_khai, 0) + IFNULL(tk.phi_dich_vu_hq, 0)) AS 'Phí DVHQ Tờ khai',
                         c.phi_nang_ha_on AS 'Phí Nâng ON', c.phi_nang_ha_off AS 'Phí Hạ OFF',
                         co.form_co  AS 'Form C/O', co.so_co  AS 'Số C/O', co.phi_co AS 'Phí C/O', co.phi_dvhq AS 'Phí DVHQ C/O',
                         cd.dia_diem_giao_nhan AS 'Lộ Trình', tk.tong_trong_luong_hang AS 'Trọng Lượng (KG)',
                         cd.doanh_thu AS 'Cước Vận Chuyển', tk.phi_khac AS 'Phụ Phí Khác', tk.ghi_chu AS 'Ghi Chú'
                     FROM to_khai_hai_quan tk
-                    JOIN khach_hang kh ON tk.khach_hang_id = kh.id
-                    LEFT JOIN chuyen_di cd ON tk.chuyen_di_id = cd.id
-                    LEFT JOIN to_khai_co co ON tk.id = co.to_khai_id
+                    LEFT JOIN khach_hang kh ON tk.khach_hang_id = kh.id
                     LEFT JOIN container_quan_ly c ON tk.id = c.to_khai_id
+                    LEFT JOIN chuyen_di cd ON c.chuyen_di_id = cd.id
+                    LEFT JOIN xe xe ON cd.xe_id = xe.id -- Đã bổ sung JOIN bảng xe
+                    LEFT JOIN to_khai_co co ON tk.id = co.to_khai_id
                     WHERE tk.ngay_khai BETWEEN %s AND %s
+                    {dieu_kien_khach_hang}
                     ORDER BY tk.ngay_khai ASC
                 """
+                
                 # Không dùng cache cho dữ liệu báo cáo động
                 df_preview = db.execute_query(sql_preview, (e_tu_ngay.strftime('%Y-%m-%d'), e_den_ngay.strftime('%Y-%m-%d')))
                 
                 if isinstance(df_preview, pd.DataFrame) and not df_preview.empty:
-                    money_cols = ['Cước Vận Chuyển', 'Tổng Phí DVHQ', 'Phí C/O', 'Tổng Phí Nâng ON', 'Tổng Phí Hạ OFF']
+                    # Sửa tên cột khớp 100% với SQL Preview
+                    money_cols = ['Phí DVHQ Tờ khai', 'Phí Nâng ON', 'Phí Hạ OFF', 'Phí C/O', 'Phí DVHQ C/O', 'Cước Vận Chuyển', 'Phụ Phí Khác']
                     df_display = df_preview.copy()
-                    df_display['Ngày Khai'] = pd.to_datetime(df_display['Ngày Khai']).dt.strftime('%d/%m/%Y')
+                    
+                    # Bọc lỗi NaT (Ngày tháng trống)
+                    df_display['Ngày Khai'] = pd.to_datetime(df_display['Ngày Khai'], errors='coerce').dt.strftime('%d/%m/%Y').fillna('')
                     
                     for col in money_cols:
                         if col in df_display.columns:
-                            df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
+                            # Bọc lỗi NaN, chuyển thành 0 trước khi định dạng chuỗi
+                            df_display[col] = pd.to_numeric(df_display[col], errors='coerce').fillna(0)
+                            df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}")
                             
                     st.markdown(f"**✅ Đã tìm thấy {len(df_display)} bản ghi hợp lệ:**")
                     st.dataframe(df_display, use_container_width=True, hide_index=True)
@@ -826,7 +879,7 @@ with tab_out_cong_no_hq:
                                 use_container_width=True
                             )
                         else:
-                            st.error("Lỗi trong quá trình kết xuất dữ liệu Excel hoặc không có dữ liệu.")
+                            st.error("Không có dữ liệu của nhóm khách hàng này trong thời gian đã chọn để xuất file.")
                 else:
                     st.warning("⚠️ Không tìm thấy dữ liệu tờ khai trong khoảng thời gian này.")
             except Exception as e:

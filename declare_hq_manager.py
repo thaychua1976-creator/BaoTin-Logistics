@@ -269,8 +269,9 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
             tk.phan_luong,
             COALESCE(tk.phi_khac, 0) AS phi_khac,
             kh.ten_khach_hang, 
-            cd.dia_diem_giao_nhan, 
-            COALESCE(cd.doanh_thu, 0) AS phi_van_chuyen,
+            cd.dia_diem_giao_nhan,
+            c.phi_van_chuyen  AS c_phi_van_chuyen,
+            cd.doanh_thu  AS cd_doanh_thu,
             c.loai_cont,
             c.so_cont,
             cd.is_thue_ngoai,
@@ -283,13 +284,16 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
             c.so_hoa_don_lift_on,
             COALESCE(c.phi_nang_ha_off, 0) AS phi_nang_ha_off,
             c.so_hoa_don_lift_off,
+            COALESCE(c.phi_csht, 0) AS phi_csht,
+            c.so_hoa_don_csht,
             (IFNULL(c.phi_to_khai, 0) + IFNULL(tk.phi_dich_vu_hq, 0)) AS phi_to_khai
         FROM to_khai_hai_quan tk
-        JOIN khach_hang kh ON tk.khach_hang_id = kh.id
-        LEFT JOIN chuyen_di cd ON tk.chuyen_di_id = cd.id
-        LEFT JOIN xe ON cd.xe_id = xe.id
+        LEFT JOIN khach_hang kh ON tk.khach_hang_id = kh.id
         LEFT JOIN container_quan_ly c ON tk.id = c.to_khai_id
-        WHERE tk.ngay_khai BETWEEN %s AND %s 
+        LEFT JOIN chuyen_di cd ON c.chuyen_di_id = cd.id
+        LEFT JOIN xe xe ON cd.xe_id = xe.id 
+        LEFT JOIN to_khai_co co ON tk.id = co.to_khai_id
+        WHERE tk.ngay_khai BETWEEN %s AND %s
           AND (
               UPPER(kh.ten_khach_hang) LIKE '%ICHIHIRO%' 
               OR UPPER(kh.ten_khach_hang) LIKE '%ZHENGXING%'
@@ -308,7 +312,7 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
         return None
 
     # Làm sạch các cột số liệu
-    numeric_cols_tk = ['phi_to_khai', 'phi_nang_ha_on', 'phi_nang_ha_off', 'tong_trong_luong', 'phi_van_chuyen', 'phi_khac']
+    numeric_cols_tk = ['phi_to_khai', 'phi_nang_ha_on', 'phi_nang_ha_off','phi_csht', 'tong_trong_luong', 'phi_van_chuyen', 'phi_khac']
     for col in numeric_cols_tk:
         if col in df_raw.columns:
             df_raw[col] = pd.to_numeric(df_raw[col], errors='coerce').fillna(0)
@@ -408,6 +412,16 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
             ws.merge_range('S4:S5', 'PHÍ PHÁT SINH\nFees incurred', fmt_header)
             ws.merge_range('T4:T5', 'PHÂN LUỒNG\nSelectivity of customs declaration form', fmt_header)
             
+            # Hàm an toàn xử lý triệt để lỗi "nan" của thư viện Pandas
+            def safe_str(val):
+                if pd.isna(val) or str(val).strip().lower() == 'nan': return ""
+                return str(val).strip()
+            
+            def safe_float(val):
+                if pd.isna(val) or str(val).strip().lower() == 'nan': return 0.0
+                try: return float(val)
+                except: return 0.0
+                
             row = 5
             stt = 1
             grouped = df_loai.groupby('tk_id', sort=False)
@@ -426,51 +440,44 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
                         else:
                             ws.write(current_row, 0, stt, fmt_center)
                     
-                    # --- XỬ LÝ CHỐNG LỖI HIỂN THỊ CHỮ "nan" ---
-                    val_so_cont = r.get('so_cont')
-                    cont_so = str(val_so_cont).strip() if pd.notna(val_so_cont) else ""
+                    # 1. BÓC TÁCH AN TOÀN
+                    cont_so = safe_str(r.get('so_cont'))
+                    cont_loai = safe_str(r.get('loai_cont'))
+                    is_thue_ngoai = safe_float(r.get('is_thue_ngoai'))
                     
-                    val_loai_cont = r.get('loai_cont')
-                    cont_loai = str(val_loai_cont).strip() if pd.notna(val_loai_cont) else ""
-                    
-                    val_is_thue = r.get('is_thue_ngoai')
-                    is_thue_ngoai = int(val_is_thue) if pd.notna(val_is_thue) else 0
-                    
-                    if not cont_so and not cont_loai:
+                    # 2. KIỂM TRA VÀ GÁN DỮ LIỆU XE TẢI
+                    if not cont_so:
                         if is_thue_ngoai == 1:
-                            val_bs_ngoai = r.get('bien_so_xe_ngoai')
-                            hien_thi_so = str(val_bs_ngoai).strip() if pd.notna(val_bs_ngoai) else ""
-                            
-                            # Lấy loại hình xe thuê ngoài từ chuyến đi, nếu rỗng thì dự phòng là "Xe tải"
-                            val_loai_ngoai = r.get('loai_hinh_xe')
-                            hien_thi_loai = str(val_loai_ngoai).strip() if pd.notna(val_loai_ngoai) and str(val_loai_ngoai).strip() != "" else "Xe tải"
+                            hien_thi_so = safe_str(r.get('bien_so_xe_ngoai'))
+                            val_loai = safe_str(r.get('loai_hinh_xe'))
+                            hien_thi_loai = val_loai if val_loai else "Xe tải (Thuê)"
                         else:
-                            val_bs_noibo = r.get('bien_so_noi_bo')
-                            hien_thi_so = str(val_bs_noibo).strip() if pd.notna(val_bs_noibo) else ""
-                            
-                            val_loai_xe = r.get('loai_xe_noi_bo')
-                            loai_xe_db = str(val_loai_xe).strip() if pd.notna(val_loai_xe) else ""
-                            
-                            tai_trong = r.get('tai_trong_thiet_ke')
-                            if loai_xe_db and loai_xe_db.lower() != 'nan':
-                                hien_thi_loai = loai_xe_db
-                            elif pd.notna(tai_trong) and float(tai_trong) > 0:
-                                hien_thi_loai = f"{float(tai_trong):.1f} Tấn".replace('.0', '')
+                            hien_thi_so = safe_str(r.get('bien_so_noi_bo'))
+                            val_tai = safe_float(r.get('tai_trong_thiet_ke'))
+                            if val_tai > 0:
+                                hien_thi_loai = f"{val_tai:.1f} Tấn".replace('.0', '')
                             else:
-                                hien_thi_loai = "Xe tải"
+                                hien_thi_loai = safe_str(r.get('loai_xe_noi_bo')) or "Xe tải"
+                        
+                        if cont_loai and cont_loai.upper() != 'KHÁC':
+                             hien_thi_loai = cont_loai
                     else:
                         hien_thi_loai = cont_loai
                         hien_thi_so = cont_so
 
-                    # Các cột từ B đến I (index 1 đến 8)
+                    # 3. KÉO CƯỚC VẬN CHUYỂN KÉP
+                    phi_vc = safe_float(r.get('c_phi_van_chuyen'))
+                    if phi_vc == 0:
+                        phi_vc = safe_float(r.get('cd_doanh_thu'))
+
                     vals = [
-                        str(r.get('so_to_khai') or ''),
+                        safe_str(r.get('so_to_khai')),
                         pd.to_datetime(r['ngay_khai']).strftime('%d/%m/%Y') if pd.notna(r.get('ngay_khai')) else '',
-                        str(r.get('so_hoa_don_tm') or ''),
-                        str(r.get('dia_diem_giao_nhan') or ''),
-                        str(r.get('ma_loai_hinh') or ''),
-                        str(r.get('so_kien') or ''),
-                        float(r.get('tong_trong_luong') or 0),
+                        safe_str(r.get('so_hoa_don_tm')),
+                        safe_str(r.get('dia_diem_giao_nhan')),
+                        safe_str(r.get('ma_loai_hinh')),
+                        safe_str(r.get('so_kien')),
+                        safe_float(r.get('tong_trong_luong')),
                         hien_thi_loai  # Cột I: LOẠI CONT/XE
                     ]
                     
@@ -491,9 +498,9 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
                     ws.write(current_row, 11, str(r.get('so_hoa_don_lift_on') or ''), fmt_center)
                     ws.write(current_row, 12, float(r.get('phi_nang_ha_off') or 0), fmt_money)
                     ws.write(current_row, 13, str(r.get('so_hoa_don_lift_off') or ''), fmt_money)
-                    ws.write(current_row, 14, 0.0, fmt_money) # Phí CSHT
-                    ws.write(current_row, 15, "", fmt_center) # Inv No CSHT
-                    ws.write(current_row, 16, float(r.get('phi_van_chuyen') or 0), fmt_money)
+                    ws.write(current_row, 14, float(r.get('phi_csht') or 0), fmt_money) 
+                    ws.write(current_row, 15, str(r.get('so_hoa_don_csht') or ''), fmt_center) 
+                    ws.write(current_row, 16, phi_vc, fmt_money)
                     
                     # Phí DVHQ đã được gộp cả Container và Xe Tải
                     phi_to_khai_val = float(r.get('phi_to_khai') or 0) / num_rows if num_rows > 0 else 0.0
@@ -610,9 +617,9 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
     Xuất File Excel chuẩn Form CONTINENTAL:
     - 1 Sheet BẢNG TỔNG (Kèm Summary & Merge Header)
     - N Sheet riêng lẻ chia tách theo từng Số Vận Đơn (HBL) / Tờ Khai (Kèm Summary & Công thức Footer)
-    - Merge Cell các phí gộp chung theo chuẩn file mẫu.
+    - Nhận diện hiển thị Biển số xe tải và lấy chuẩn Cước vận chuyển.
     """
-    # 1. Truy vấn toàn bộ dữ liệu
+    # 1. Truy vấn toàn bộ dữ liệu (Đã bổ sung cột cho Xe Tải)
     sql_tk = """
         SELECT 
             tk.id AS tk_id, tk.so_to_khai, tk.so_van_don, tk.loai_to_khai, tk.ngay_khai,
@@ -621,11 +628,15 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
             COALESCE(tk.phi_khac, 0) AS phi_khac,
             kh.ten_khach_hang, cd.dia_diem_giao_nhan, 
             c.loai_cont, c.so_cont,
-            COALESCE(c.phi_van_chuyen, 0) AS phi_van_chuyen,
-            COALESCE(cd.doanh_thu, 0) AS doanh_thu_chuyen,
+            cd.id AS chuyen_di_id,
+            cd.is_thue_ngoai, cd.bien_so_xe_ngoai, cd.loai_hinh_xe,
+            xe.bien_so_xe AS bien_so_noi_bo, xe.loai_xe AS loai_xe_noi_bo, xe.tai_trong_thiet_ke,
+            COALESCE(cd.doanh_thu, 0) AS cd_doanh_thu,
+            COALESCE(c.phi_van_chuyen,0)  AS c_phi_van_chuyen,
             COALESCE(c.phi_to_khai, 0) AS phi_to_khai,
             COALESCE(c.phi_nang_ha_on, 0) AS phi_nang_ha_on, c.so_hoa_don_lift_on,
             COALESCE(c.phi_nang_ha_off, 0) AS phi_nang_ha_off, c.so_hoa_don_lift_off,
+            COALESCE(c.phi_csht, 0) AS phi_csht, c.so_hoa_don_csht,
             COALESCE(c.phi_bot, 0) AS phi_bot, COALESCE(c.phi_lay_mau, 0) AS phi_lay_mau,
             COALESCE(c.phi_kiem_dich, 0) AS phi_kiem_dich, c.so_hoa_don_kiem_dich,
             COALESCE(c.phi_luu_bai, 0) AS phi_luu_bai, c.so_hoa_don_luu_bai,
@@ -633,13 +644,14 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
             COALESCE(c.phi_handling, 0) AS phi_handling, c.so_hoa_don_handling,
             COALESCE(c.phi_khu_trung, 0) AS phi_khu_trung, c.so_hoa_don_khu_trung
         FROM to_khai_hai_quan tk
-        JOIN khach_hang kh ON tk.khach_hang_id = kh.id
-        LEFT JOIN chuyen_di cd ON tk.chuyen_di_id = cd.id
+        LEFT JOIN khach_hang kh ON tk.khach_hang_id = kh.id
         LEFT JOIN container_quan_ly c ON tk.id = c.to_khai_id
-        WHERE tk.ngay_khai BETWEEN %s AND %s 
+        LEFT JOIN chuyen_di cd ON c.chuyen_di_id = cd.id
+        LEFT JOIN xe xe ON cd.xe_id = xe.id 
+        WHERE tk.ngay_khai BETWEEN %s AND %s
         AND UPPER(kh.ten_khach_hang) LIKE %s
     """
-    params = [tu_ngay, den_ngay,'%CONTINENTAL%']
+    params = [tu_ngay, den_ngay, '%CONTINENTAL%']
     if khach_hang_id:
         sql_tk += " AND tk.khach_hang_id = %s"
         params.append(khach_hang_id)
@@ -651,17 +663,25 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
         return None
 
     # Làm sạch dữ liệu số
-    numeric_cols = ['phi_van_chuyen', 'doanh_thu_chuyen', 'phi_to_khai', 'phi_nang_ha_on', 'phi_nang_ha_off', 'phi_bot', 'phi_lay_mau', 'phi_kiem_dich', 'phi_luu_bai', 'phi_do', 'phi_handling', 'phi_khu_trung', 'phi_khac', 'tong_trong_luong']
+    numeric_cols = ['c_phi_van_chuyen', 'cd_doanh_thu', 'phi_to_khai', 'phi_nang_ha_on', 'phi_nang_ha_off', 'phi_bot', 'phi_lay_mau', 'phi_kiem_dich', 'phi_luu_bai', 'phi_do', 'phi_handling', 'phi_khu_trung', 'phi_khac', 'tong_trong_luong']
     for col in numeric_cols:
         if col in df_raw.columns:
             df_raw[col] = pd.to_numeric(df_raw[col], errors='coerce').fillna(0)
 
-    # Đảm bảo group bằng HBL không bị lỗi NaN
     df_raw['so_van_don'] = df_raw['so_van_don'].replace('', pd.NA).fillna(df_raw['so_to_khai']).fillna('CHUA_CO_SO')
 
+    # Hàm lọc rác thư viện an toàn (Giống Ichihiro)
+    def safe_str(val):
+        if pd.isna(val) or str(val).strip().lower() == 'nan': return ""
+        return str(val).strip()
+        
+    def safe_float(val):
+        if pd.isna(val) or str(val).strip().lower() == 'nan': return 0.0
+        try: return float(val)
+        except: return 0.0
+
     dt_tu_ngay = datetime.strptime(tu_ngay, '%Y-%m-%d')
-    mm = dt_tu_ngay.strftime('%m')
-    yyyy = dt_tu_ngay.strftime('%Y')
+    mm, yyyy = dt_tu_ngay.strftime('%m'), dt_tu_ngay.strftime('%Y')
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter', engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
@@ -674,7 +694,6 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
         fmt_center = workbook.add_format({'font_name': 'Times New Roman', 'align': 'center', 'valign': 'vcenter', 'border': 1})
         fmt_money = workbook.add_format({'font_name': 'Times New Roman', 'num_format': '#,##0', 'align': 'right', 'valign': 'vcenter', 'border': 1})
         
-        # Format cho phần Footer Summary
         fmt_center_bold = workbook.add_format({'font_name': 'Times New Roman', 'bold': True, 'align': 'center', 'valign': 'vcenter', 'border': 1})
         fmt_money_bold = workbook.add_format({'font_name': 'Times New Roman', 'bold': True, 'num_format': '#,##0', 'align': 'right', 'valign': 'vcenter', 'border': 1})
         fmt_bold_left = workbook.add_format({'font_name': 'Times New Roman', 'bold': True, 'align': 'left', 'valign': 'vcenter'})
@@ -691,32 +710,23 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
         ws_tong.merge_range('A1:L1', header_company_text, fmt_company)
         ws_tong.merge_range('A3:L3', f"BẢNG ĐỐI CHIẾU CÔNG NỢ THÁNG {mm}/{yyyy}", fmt_title)
         ws_tong.merge_range('A5:L5', "DEBIT NOTE FOR CÔNG TY TNHH DỆT SỢI CONTINENTAL", fmt_title)
-
         ws_tong.set_row(6, 25); ws_tong.set_row(7, 25)
         
-        # Ghi Header cột A->I (Trộn 2 dòng)
         headers_tong = ["STT", "SỐ TỜ KHAI", "NGÀY TỜ KHAI", "HBL", "INVOICE NO", "QTY", "PHÍ VẬN CHUYỂN", "PHÍ DỊCH VỤ", "PHÍ CHI HỘ"]
         for col_idx, h in enumerate(headers_tong):
             ws_tong.merge_range(6, col_idx, 7, col_idx, h, fmt_header)
             
-        # Ghi Header cột J->L (INVOICE nằm trên, VNĐ/VAT/DATE nằm dưới)
         ws_tong.merge_range(6, 9, 6, 11, "INVOICES", fmt_header)
-        ws_tong.write(7, 9, "VNĐ", fmt_header)
-        ws_tong.write(7, 10, "VAT INVOICE NO", fmt_header)
-        ws_tong.write(7, 11, "DATE INVOICE", fmt_header)
+        ws_tong.write(7, 9, "VNĐ", fmt_header); ws_tong.write(7, 10, "VAT INVOICE NO", fmt_header); ws_tong.write(7, 11, "DATE INVOICE", fmt_header)
             
-        row_tong = 8
-        stt_tong = 1
-        
-        # Các biến cộng dồn Footer Bảng Tổng
-        total_vc_tong = 0; total_dv_tong = 0; total_chiho_tong = 0; total_tong_tong = 0
+        row_tong, stt_tong = 8, 1
+        total_vc_tong = total_dv_tong = total_chiho_tong = total_tong_tong = 0
         
         grouped_tk = df_raw.groupby('tk_id', sort=False)
         for tk_id, group in grouped_tk:
             r = group.iloc[0]
             num_cont = len(group) if pd.notna(r.get('so_cont')) and str(r.get('so_cont')).strip() != '' else 0
             
-            # Tính QTY tự động
             qty_str = ""
             if num_cont > 0:
                 loai_counts = group['loai_cont'].value_counts()
@@ -725,45 +735,44 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
             else:
                 qty_str = str(r.get('tong_trong_luong') or '')
                 
-            # Tính toán chi phí
-            sum_phi_vc = group['phi_van_chuyen'].sum()
-            phi_vc = sum_phi_vc if sum_phi_vc > 0 else float(r.get('doanh_thu_chuyen') or 0)
+            # Cước vận chuyển chuẩn xác (Kết hợp c_phi_van_chuyen và cd_doanh_thu)
+            phi_vc = 0
+            unique_trips = {}
+            for _, r_cont in group.iterrows():
+                c_phi = safe_float(r_cont.get('c_phi_van_chuyen'))
+                if c_phi > 0:
+                    phi_vc += c_phi
+                else:
+                    cd_id = r_cont.get('chuyen_di_id')
+                    if cd_id and pd.notna(cd_id) and cd_id not in unique_trips:
+                        unique_trips[cd_id] = safe_float(r_cont.get('cd_doanh_thu'))
+            phi_vc += sum(unique_trips.values())
+
             phi_dv = group['phi_to_khai'].sum()
             sum_chi_ho_cont = group[['phi_nang_ha_on', 'phi_nang_ha_off', 'phi_bot', 'phi_lay_mau', 'phi_kiem_dich', 'phi_luu_bai', 'phi_do', 'phi_handling', 'phi_khu_trung']].sum().sum()
-            phi_chi_ho = sum_chi_ho_cont + float(r.get('phi_khac') or 0)
+            phi_chi_ho = sum_chi_ho_cont + safe_float(r.get('phi_khac'))
             tong_invoice = phi_vc + phi_dv + phi_chi_ho
             
-            # Cộng dồn cho bảng Tổng
-            total_vc_tong += phi_vc
-            total_dv_tong += phi_dv
-            total_chiho_tong += phi_chi_ho
-            total_tong_tong += tong_invoice
+            total_vc_tong += phi_vc; total_dv_tong += phi_dv; total_chiho_tong += phi_chi_ho; total_tong_tong += tong_invoice
             
             ws_tong.write(row_tong, 0, stt_tong, fmt_center)
-            ws_tong.write(row_tong, 1, str(r.get('so_to_khai') or ''), fmt_center)
+            ws_tong.write(row_tong, 1, safe_str(r.get('so_to_khai')), fmt_center)
             ws_tong.write(row_tong, 2, pd.to_datetime(r['ngay_khai']).strftime('%d/%m/%Y') if pd.notna(r.get('ngay_khai')) else '', fmt_center)
-            ws_tong.write(row_tong, 3, str(r.get('so_van_don') or ''), fmt_center)
-            ws_tong.write(row_tong, 4, str(r.get('so_hoa_don_tm') or ''), fmt_center)
+            ws_tong.write(row_tong, 3, safe_str(r.get('so_van_don')), fmt_center)
+            ws_tong.write(row_tong, 4, safe_str(r.get('so_hoa_don_tm')), fmt_center)
             ws_tong.write(row_tong, 5, qty_str, fmt_center)
             ws_tong.write(row_tong, 6, phi_vc, fmt_money)
             ws_tong.write(row_tong, 7, phi_dv, fmt_money)
             ws_tong.write(row_tong, 8, phi_chi_ho, fmt_money)
             ws_tong.write(row_tong, 9, tong_invoice, fmt_money)
-            ws_tong.write(row_tong, 10, "", fmt_center) 
-            ws_tong.write(row_tong, 11, "", fmt_center) 
+            ws_tong.write(row_tong, 10, "", fmt_center); ws_tong.write(row_tong, 11, "", fmt_center) 
             
             row_tong += 1; stt_tong += 1
             
-        # ==========================================
-        # BỔ SUNG: Dòng GRAND TOTAL cho Bảng Tổng
-        # ==========================================
         ws_tong.merge_range(row_tong, 0, row_tong, 5, "GRAND TOTAL", fmt_center_bold)
-        for c_idx in range(6, 12):
-            if c_idx == 6: ws_tong.write(row_tong, c_idx, total_vc_tong, fmt_money_bold)
-            elif c_idx == 7: ws_tong.write(row_tong, c_idx, total_dv_tong, fmt_money_bold)
-            elif c_idx == 8: ws_tong.write(row_tong, c_idx, total_chiho_tong, fmt_money_bold)
-            elif c_idx == 9: ws_tong.write(row_tong, c_idx, total_tong_tong, fmt_money_bold)
-            else: ws_tong.write(row_tong, c_idx, "", fmt_center_bold)
+        ws_tong.write(row_tong, 6, total_vc_tong, fmt_money_bold); ws_tong.write(row_tong, 7, total_dv_tong, fmt_money_bold)
+        ws_tong.write(row_tong, 8, total_chiho_tong, fmt_money_bold); ws_tong.write(row_tong, 9, total_tong_tong, fmt_money_bold)
+        ws_tong.write(row_tong, 10, "", fmt_center_bold); ws_tong.write(row_tong, 11, "", fmt_center_bold)
             
         ws_tong.set_column('A:A', 6); ws_tong.set_column('B:E', 18); ws_tong.set_column('F:L', 15)
         
@@ -774,11 +783,8 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
         sheet_idx = 1
         
         for hbl, group_hbl in grouped_hbl:
-            hbl_name = str(hbl)
-            invalid_chars = ['[', ']', ':', '*', '?', '/', '\\']
-            safe_sheet_name = f"{sheet_idx}. {hbl_name}"
-            for char in invalid_chars: safe_sheet_name = safe_sheet_name.replace(char, '')
-            safe_sheet_name = safe_sheet_name[:31] 
+            safe_sheet_name = "".join([c for c in str(hbl) if c not in r'[]:*?/\ '])
+            safe_sheet_name = f"{sheet_idx}. {safe_sheet_name}"[:31] 
             
             ws = workbook.add_worksheet(safe_sheet_name)
             
@@ -787,17 +793,11 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
             ws.merge_range('A3:V3', "BẢNG ĐỐI CHIẾU CÔNG NỢ", fmt_title)
             ws.set_row(4, 30); ws.set_row(5, 30); ws.set_row(6, 30)
             
-            # Cấu trúc Header
             ws.merge_range('A4:A6', "STT", fmt_header)
-            ws.merge_range('B4:B5', "TỜ KHAI\n(Customs declaration No.)", fmt_header)
-            ws.write('B6', "Số (no.)", fmt_header)
-            
+            ws.merge_range('B4:B5', "TỜ KHAI\n(Customs declaration No.)", fmt_header); ws.write('B6', "Số (no.)", fmt_header)
             ws.merge_range('C4:F4', "NHẬP-XUẤT\n(Import-Export)", fmt_header)
-            ws.merge_range('C5:C6', "Ngày\n(Date)", fmt_header)
-            ws.merge_range('D5:D6', "20'", fmt_header)
-            ws.merge_range('E5:E6', "40'", fmt_header)
-            ws.merge_range('F5:F6', "Lẻ(LCL)", fmt_header)
-            
+            ws.merge_range('C5:C6', "Ngày\n(Date)", fmt_header); ws.merge_range('D5:D6', "20'", fmt_header)
+            ws.merge_range('E5:E6', "40'", fmt_header); ws.merge_range('F5:F6', "Lẻ(LCL)", fmt_header)
             ws.merge_range('G4:G6', "SỐ VẬN ĐƠN\n(Bill No)", fmt_header)
             ws.merge_range('H4:H6', "SỐ HÓA ĐƠN THƯƠNG MẠI\n(Invoice No)", fmt_header)
             ws.merge_range('I4:I6', "Phí vận chuyển\n(Trucking fee)", fmt_header)
@@ -806,27 +806,16 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
             ws.merge_range('L4:L6', "PHÍ LẤY MẪU\n(Fee for sampling)", fmt_header)
             
             ws.merge_range('M4:T4', "CHI HỘ", fmt_header)
-            ws.merge_range('M5:N5', "Phí kiểm dịch", fmt_header)
-            ws.write('M6', "Số tiền", fmt_header); ws.write('N6', "Số HĐ", fmt_header)
-            
-            ws.merge_range('O5:P5', "Phí lưu bãi", fmt_header)
-            ws.write('O6', "Số tiền", fmt_header); ws.write('P6', "Số HĐ", fmt_header)
-            
-            ws.merge_range('Q5:R5', "Phí nâng hạ, Phí khử trùng", fmt_header)
-            ws.write('Q6', "Số tiền", fmt_header); ws.write('R6', "Số HĐ", fmt_header)
-            
-            ws.merge_range('S5:T5', "D/O, handling, Bill", fmt_header)
-            ws.write('S6', "Số tiền", fmt_header); ws.write('T6', "Số HĐ", fmt_header)
+            ws.merge_range('M5:N5', "Phí kiểm dịch", fmt_header); ws.write('M6', "Số tiền", fmt_header); ws.write('N6', "Số HĐ", fmt_header)
+            ws.merge_range('O5:P5', "Phí lưu bãi", fmt_header); ws.write('O6', "Số tiền", fmt_header); ws.write('P6', "Số HĐ", fmt_header)
+            ws.merge_range('Q5:R5', "Phí nâng hạ, Phí khử trùng", fmt_header); ws.write('Q6', "Số tiền", fmt_header); ws.write('R6', "Số HĐ", fmt_header)
+            ws.merge_range('S5:T5', "D/O, handling, Bill", fmt_header); ws.write('S6', "Số tiền", fmt_header); ws.write('T6', "Số HĐ", fmt_header)
             
             ws.merge_range('U4:U6', "SỐ CONTAINER", fmt_header)
             ws.merge_range('V4:V6', "GHI CHÚ (Note)", fmt_header)
             
-            row = 6
-            stt = 1
-            
-            # Các biến cộng dồn Footer HBL
-            hbl_total_vc = 0; hbl_total_bot = 0; hbl_total_dv = 0; hbl_total_laymau = 0
-            hbl_total_kiemdich = 0; hbl_total_luubai = 0; hbl_total_nangha = 0; hbl_total_do = 0
+            row, stt = 6, 1
+            hbl_total_vc = hbl_total_bot = hbl_total_dv = hbl_total_laymau = hbl_total_kiemdich = hbl_total_luubai = hbl_total_nangha = hbl_total_do = 0
             
             grouped_tk = group_hbl.groupby('tk_id', sort=False)
             for tk_id, group in grouped_tk:
@@ -835,77 +824,91 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
                 num_cont = len(group) if has_cont else 0
                 num_rows_group = num_cont * 2 if num_cont > 0 else 1 
                 
-                start_row = row
-                end_row = row + num_rows_group - 1
-                
+                start_row, end_row = row, row + num_rows_group - 1
                 def write_merge(col, val, fmt):
-                    if num_rows_group > 1:
-                        ws.merge_range(start_row, col, end_row, col, val, fmt)
-                    else:
-                        ws.write(start_row, col, val, fmt)
+                    if num_rows_group > 1: ws.merge_range(start_row, col, end_row, col, val, fmt)
+                    else: ws.write(start_row, col, val, fmt)
 
-                phi_vc = group['phi_van_chuyen'].sum()
-                if phi_vc == 0: phi_vc = float(r_first.get('doanh_thu_chuyen') or 0)
+                # Cước vận chuyển chuẩn
+                phi_vc = 0
+                unique_trips_hbl = {}
+                for _, r_cont in group.iterrows():
+                    c_phi = safe_float(r_cont.get('c_phi_van_chuyen'))
+                    if c_phi > 0: phi_vc += c_phi
+                    else:
+                        cd_id = r_cont.get('chuyen_di_id')
+                        if cd_id and pd.notna(cd_id) and cd_id not in unique_trips_hbl:
+                            unique_trips_hbl[cd_id] = safe_float(r_cont.get('cd_doanh_thu'))
+                phi_vc += sum(unique_trips_hbl.values())
                 
                 phi_bot = group['phi_bot'].sum()
-                phi_dv = group['phi_to_khai'].sum() + float(r_first.get('phi_khac') or 0)
-                phi_lay_mau = group['phi_lay_mau'].sum()
-                phi_kiem_dich = group['phi_kiem_dich'].sum()
+                phi_dv = group['phi_to_khai'].sum() + safe_float(r_first.get('phi_khac'))
+                phi_lay_mau = group['phi_lay_mau'].sum(); phi_kiem_dich = group['phi_kiem_dich'].sum()
                 phi_luu_bai = group['phi_luu_bai'].sum()
                 phi_do_handling = group['phi_do'].sum() + group['phi_handling'].sum()
                 phi_nang_ha_khu_trung = group['phi_nang_ha_on'].sum() + group['phi_nang_ha_off'].sum() + group['phi_khu_trung'].sum()
                 
-                # Cộng dồn HBL
                 hbl_total_vc += phi_vc; hbl_total_bot += phi_bot; hbl_total_dv += phi_dv; hbl_total_laymau += phi_lay_mau
                 hbl_total_kiemdich += phi_kiem_dich; hbl_total_luubai += phi_luu_bai
                 hbl_total_nangha += phi_nang_ha_khu_trung; hbl_total_do += phi_do_handling
                 
-                # Lấy ID Hóa Đơn
                 def get_unique_inv(col_name):
                     invs = group[col_name].dropna().astype(str).str.strip()
-                    return ", ".join(sorted(set([x for x in invs if x])))
+                    return ", ".join(sorted(set([x for x in invs if x and str(x).lower() != 'nan'])))
                 
-                inv_kiem_dich = get_unique_inv('so_hoa_don_kiem_dich')
-                inv_luu_bai = get_unique_inv('so_hoa_don_luu_bai')
+                inv_kiem_dich = get_unique_inv('so_hoa_don_kiem_dich'); inv_luu_bai = get_unique_inv('so_hoa_don_luu_bai')
                 inv_d_h_combined = ", ".join(filter(None, [get_unique_inv('so_hoa_don_do'), get_unique_inv('so_hoa_don_handling')]))
                 
-                # Setup Type QTY
                 loai_counts = group['loai_cont'].value_counts()
                 c_20 = sum(count for loai, count in loai_counts.items() if '20' in str(loai)) or ""
                 c_40 = sum(count for loai, count in loai_counts.items() if '40' in str(loai) or '45' in str(loai)) or ""
                 c_le = "" if has_cont else 1
 
-                write_merge(0, stt, fmt_center); write_merge(1, str(r_first.get('so_to_khai') or ''), fmt_center)
+                write_merge(0, stt, fmt_center); write_merge(1, safe_str(r_first.get('so_to_khai')), fmt_center)
                 write_merge(2, pd.to_datetime(r_first['ngay_khai']).strftime('%d/%m/%Y') if pd.notna(r_first.get('ngay_khai')) else '', fmt_center)
                 write_merge(3, c_20, fmt_center); write_merge(4, c_40, fmt_center); write_merge(5, c_le, fmt_center)
-                write_merge(6, str(r_first.get('so_van_don') or ''), fmt_center); write_merge(7, str(r_first.get('so_hoa_don_tm') or ''), fmt_center)
+                write_merge(6, safe_str(r_first.get('so_van_don')), fmt_center); write_merge(7, safe_str(r_first.get('so_hoa_don_tm')), fmt_center)
                 write_merge(8, phi_vc, fmt_money); write_merge(9, phi_bot, fmt_money); write_merge(10, phi_dv, fmt_money); write_merge(11, phi_lay_mau, fmt_money)
                 write_merge(12, phi_kiem_dich, fmt_money); write_merge(13, inv_kiem_dich, fmt_center)
                 write_merge(14, phi_luu_bai, fmt_money); write_merge(15, inv_luu_bai, fmt_center)
                 write_merge(18, phi_do_handling, fmt_money); write_merge(19, inv_d_h_combined, fmt_center)
                 
-                ghi_chu_arr = [x for x in [str(r_first.get('ma_loai_hinh') or ''), str(r_first.get('dia_diem_giao_nhan') or ''), str(r_first.get('phan_luong') or '')] if x]
+                ghi_chu_arr = [x for x in [safe_str(r_first.get('ma_loai_hinh')), safe_str(r_first.get('dia_diem_giao_nhan')), safe_str(r_first.get('phan_luong'))] if x]
                 write_merge(21, " - ".join(ghi_chu_arr), fmt_center)
                 
-                # Ghi phí Nâng / Hạ (Mỗi cont 2 dòng)
+                # Ghi phí Nâng/Hạ & Cột Số Container / Xe Tải (Cột 20 - U)
                 if num_rows_group == 1: 
-                    phi_on = float(r_first.get('phi_nang_ha_on') or 0) + float(r_first.get('phi_khu_trung') or 0)
-                    inv_on = ", ".join(filter(None, [str(r_first.get('so_hoa_don_lift_on') or ''), str(r_first.get('so_hoa_don_khu_trung') or '')]))
-                    ws.write(start_row, 16, phi_on, fmt_money)
-                    ws.write(start_row, 17, inv_on, fmt_center)
-                    ws.write(start_row, 20, "", fmt_center)
+                    phi_on = safe_float(r_first.get('phi_nang_ha_on')) + safe_float(r_first.get('phi_khu_trung'))
+                    inv_on = ", ".join(filter(None, [safe_str(r_first.get('so_hoa_don_lift_on')), safe_str(r_first.get('so_hoa_don_khu_trung'))]))
+                    
+                    cont_so = safe_str(r_first.get('so_cont'))
+                    if not cont_so:
+                        is_thue = safe_float(r_first.get('is_thue_ngoai'))
+                        if is_thue == 1: cont_name = safe_str(r_first.get('bien_so_xe_ngoai'))
+                        else: cont_name = safe_str(r_first.get('bien_so_noi_bo'))
+                        if not cont_name: cont_name = "Xe tải"
+                    else: cont_name = cont_so
+
+                    ws.write(start_row, 16, phi_on, fmt_money); ws.write(start_row, 17, inv_on, fmt_center)
+                    ws.write(start_row, 20, cont_name, fmt_center)
                 else:
                     current_row = start_row
                     for _, r_cont in group.iterrows():
-                        cont_name = str(r_cont.get('so_cont') or '')
+                        cont_so = safe_str(r_cont.get('so_cont'))
+                        if not cont_so:
+                            is_thue = safe_float(r_cont.get('is_thue_ngoai'))
+                            if is_thue == 1: cont_name = safe_str(r_cont.get('bien_so_xe_ngoai'))
+                            else: cont_name = safe_str(r_cont.get('bien_so_noi_bo'))
+                            if not cont_name: cont_name = "Xe tải"
+                        else: cont_name = cont_so
+                        
                         ws.merge_range(current_row, 20, current_row + 1, 20, cont_name, fmt_center)
                         
-                        phi_on = float(r_cont.get('phi_nang_ha_on') or 0) + float(r_cont.get('phi_khu_trung') or 0)
-                        inv_on = ", ".join(filter(None, [str(r_cont.get('so_hoa_don_lift_on') or ''), str(r_cont.get('so_hoa_don_khu_trung') or '')]))
+                        phi_on = safe_float(r_cont.get('phi_nang_ha_on')) + safe_float(r_cont.get('phi_khu_trung'))
+                        inv_on = ", ".join(filter(None, [safe_str(r_cont.get('so_hoa_don_lift_on')), safe_str(r_cont.get('so_hoa_don_khu_trung'))]))
                         ws.write(current_row, 16, phi_on, fmt_money); ws.write(current_row, 17, inv_on, fmt_center)
                         
-                        phi_off = float(r_cont.get('phi_nang_ha_off') or 0)
-                        inv_off = str(r_cont.get('so_hoa_don_lift_off') or '')
+                        phi_off = safe_float(r_cont.get('phi_nang_ha_off')); inv_off = safe_str(r_cont.get('so_hoa_don_lift_off'))
                         ws.write(current_row + 1, 16, phi_off, fmt_money); ws.write(current_row + 1, 17, inv_off, fmt_center)
                         
                         current_row += 2
@@ -917,7 +920,6 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
             # ==========================================
             hbl_grand_total = hbl_total_vc + hbl_total_bot + hbl_total_dv + hbl_total_laymau + hbl_total_kiemdich + hbl_total_luubai + hbl_total_nangha + hbl_total_do
             
-            # --- 1. Dòng TỔNG CỘNG ---
             ws.merge_range(row, 0, row, 2, "TỔNG CỘNG", fmt_center_bold)
             for c_idx in range(3, 22):
                 if c_idx == 8: ws.write(row, c_idx, hbl_total_vc, fmt_money_bold)
@@ -931,7 +933,6 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
                 elif c_idx == 20: ws.write(row, c_idx, hbl_grand_total, fmt_money_bold)
                 else: ws.write(row, c_idx, "", fmt_center_bold)
             
-            # --- 2. Dòng TỔNG THU (Grand Total) & Cột Ngày Tháng ---
             row += 2
             ws.merge_range(row, 0, row, 1, "TỔNG THU: (total)", fmt_bold_left)
             ws.merge_range(row, 2, row, 5, hbl_grand_total, fmt_money_bold_no_border)
@@ -944,14 +945,12 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
                 date_str = ""
             ws.merge_range(row, 16, row, 18, date_str, fmt_bold_left)
             
-            # --- 3. Phí dịch vụ chưa VAT ---
             row += 1
             ws.merge_range(row, 0, row, 2, "Phí dịch vụ chưa VAT\n( the service fee not\ninclude value Add Tax): ", fmt_bold_left_wrap)
             phi_dich_vu_chua_vat = hbl_total_vc + hbl_total_bot + hbl_total_dv + hbl_total_laymau
             ws.merge_range(row, 3, row, 5, phi_dich_vu_chua_vat, fmt_money_bold_no_border)
             ws.write(row, 6, "đồng", fmt_bold_left)
             
-            # --- 4. Tổng Chi hộ ---
             row += 2
             ws.merge_range(row, 0, row, 2, "Chi hộ( pay on behaft)", fmt_bold_left)
             chi_ho_pay = hbl_total_kiemdich + hbl_total_luubai + hbl_total_nangha + hbl_total_do

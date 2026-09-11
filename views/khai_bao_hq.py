@@ -52,17 +52,23 @@ def save_containers_batch_transaction(db_pool, link_col, parent_id, container_li
         sql_get_current = f"SELECT id, so_cont FROM container_quan_ly WHERE {link_col} = %s"
         cursor.execute(sql_get_current, (parent_id,))
         current_rows = cursor.fetchall() 
-        current_db_map = {row[1]: row[0] for row in current_rows} 
+        # Chuẩn hóa map DB hiện tại để bẫy trường hợp số cont NULL trong Database
+        current_db_map = {str(row[1] or '').strip().upper(): row[0] for row in current_rows} 
         input_cont_set = set()
 
         for item in container_list_input:
             so_cont = str(item.get('so_cont') or '').strip().upper()
-            if not so_cont: continue
+            loai_cont = str(item.get('loai_cont') or '40HC').strip()
+            
+            # Chỉ bỏ qua nếu không nhập Số Cont VÀ loại khai báo không phải là Xe Tải
+            loai_xe_tai = ["1T", "2T", "2T:", "3T", "4T", "5T", "8T", "15T", "22T", "Khác"]
+            if not so_cont and loai_cont not in loai_xe_tai:
+                continue
+                
             input_cont_set.add(so_cont)
             cd_id = item.get('chuyen_di_id')
             tk_id = item.get('to_khai_id')
             
-            loai_cont = item.get('loai_cont', '40HC').strip()
             phi_dv_hq = parse_money_input(item.get('phi_to_khai', 0))
             phi_on = parse_money_input(item.get('phi_nang_ha_on', 0))
             inv_on = str(item.get('so_hoa_don_lift_on') or '').strip()
@@ -82,6 +88,8 @@ def save_containers_batch_transaction(db_pool, link_col, parent_id, container_li
             hd_khu_trung = str(item.get('so_hoa_don_khu_trung') or '').strip()
             phi_van_chuyen = parse_money_input(item.get('phi_van_chuyen',0))
             phi_thong_quan = parse_money_input(item.get('phi_thong_quan',0))
+            phi_csht = parse_money_input(item.get('phi_csht',0))
+            so_hoa_don_csht = parse_money_input(item.get('so_hoa_don_csht',0))
             ghi_chu = str(item.get('ghi_chu') or '').strip()
             
             if so_cont in current_db_map:
@@ -93,17 +101,17 @@ def save_containers_batch_transaction(db_pool, link_col, parent_id, container_li
                         phi_to_khai = %s, phi_bot = %s, phi_lay_mau = %s, phi_kiem_dich = %s, so_hoa_don_kiem_dich = %s,
                         phi_luu_bai = %s, so_hoa_don_luu_bai = %s, phi_do = %s, so_hoa_don_do = %s,
                         phi_handling = %s, so_hoa_don_handling = %s, phi_khu_trung = %s, so_hoa_don_khu_trung = %s,
-                        phi_van_chuyen = %s,phi_thong_quan = %s, ghi_chu = %s
+                        phi_van_chuyen = %s,phi_thong_quan = %s,phi_csht = %s, so_hoa_don_csht = %s, ghi_chu = %s
                     WHERE id = %s
                 """
-                cursor.execute(sql_update, (loai_cont, phi_on, inv_on, phi_off, inv_off, phi_dv_hq, phi_bot, phi_lay_mau, phi_kiem_dich, hd_kiem_dich, phi_luu_bai, hd_luu_bai, phi_do, hd_do, phi_handling, hd_handling, phi_khu_trung, hd_khu_trung, phi_van_chuyen,phi_thong_quan, ghi_chu, cont_id))
+                cursor.execute(sql_update, (loai_cont, phi_on, inv_on, phi_off, inv_off, phi_dv_hq, phi_bot, phi_lay_mau, phi_kiem_dich, hd_kiem_dich, phi_luu_bai, hd_luu_bai, phi_do, hd_do, phi_handling, hd_handling, phi_khu_trung, hd_khu_trung, phi_van_chuyen,phi_thong_quan,phi_csht,so_hoa_don_csht, ghi_chu, cont_id))
             else:
                 sql_insert = """
                     INSERT INTO container_quan_ly 
-                    (so_cont, loai_cont, chuyen_di_id, to_khai_id, phi_nang_ha_on, so_hoa_don_lift_on, phi_nang_ha_off, so_hoa_don_lift_off, phi_to_khai, phi_bot, phi_lay_mau, phi_kiem_dich, so_hoa_don_kiem_dich, phi_luu_bai, so_hoa_don_luu_bai, phi_do, so_hoa_don_do, phi_handling, so_hoa_don_handling, phi_khu_trung, so_hoa_don_khu_trung, phi_van_chuyen,phi_thong_quan, ghi_chu) 
-                    VALUES (%s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (so_cont, loai_cont, chuyen_di_id, to_khai_id, phi_nang_ha_on, so_hoa_don_lift_on, phi_nang_ha_off, so_hoa_don_lift_off, phi_to_khai, phi_bot, phi_lay_mau, phi_kiem_dich, so_hoa_don_kiem_dich, phi_luu_bai, so_hoa_don_luu_bai, phi_do, so_hoa_don_do, phi_handling, so_hoa_don_handling, phi_khu_trung, so_hoa_don_khu_trung, phi_van_chuyen,phi_thong_quan,phi_csht,so_hoa_don_csht, ghi_chu) 
+                    VALUES (%s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s,%s)
                 """
-                cursor.execute(sql_insert, (so_cont, loai_cont, cd_id, tk_id, phi_on, inv_on, phi_off, inv_off, phi_dv_hq, phi_bot, phi_lay_mau, phi_kiem_dich, hd_kiem_dich, phi_luu_bai, hd_luu_bai, phi_do, hd_do, phi_handling, hd_handling, phi_khu_trung, hd_khu_trung, phi_van_chuyen,phi_thong_quan, ghi_chu))
+                cursor.execute(sql_insert, (so_cont, loai_cont, cd_id, tk_id, phi_on, inv_on, phi_off, inv_off, phi_dv_hq, phi_bot, phi_lay_mau, phi_kiem_dich, hd_kiem_dich, phi_luu_bai, hd_luu_bai, phi_do, hd_do, phi_handling, hd_handling, phi_khu_trung, hd_khu_trung, phi_van_chuyen,phi_thong_quan,phi_csht,so_hoa_don_csht, ghi_chu))
                 
         log_detail = {link_col: parent_id, "danh_sach_cap_nhat": container_list_input, "tong_so_luong": len(container_list_input)}
         ghi_log_he_thong(cursor=cursor, phan_he="QUAN_LY_CONTAINER", record_id=parent_id, nguoi_thuc_hien=user, hanh_dong="DONG_BO_DANH_SACH_CONTAINER", chi_tiet=json.dumps(log_detail, ensure_ascii=False))
@@ -682,10 +690,25 @@ with tab_container:
             
             sub_tab_tao, sub_tab_sua_xoa, sub_tab_ds = st.tabs(["📥 Tạo Mới / Cập Nhật Cont Theo Lô", "🛠️ Sửa / Xóa Container Đơn Lẻ", "🔍 Tra Cứu Danh Sách"])
             
-            df_cd_cont = db.execute_query("SELECT id, ngay_chuyen_di, dia_diem_giao_nhan FROM chuyen_di  WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') ORDER BY id DESC LIMIT 100")
+            # Lấy chuyến chưa chốt HOẶC chuyến đã hoàn thành trong 30 ngày gần nhất
+            sql_cd_cont = """
+                SELECT id, ngay_chuyen_di, dia_diem_giao_nhan, doanh_thu 
+                FROM chuyen_di 
+                WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di', 'Quyet_Toan')
+                   OR (trang_thai_chuyen = 'Hoan_Thanh' AND ngay_chuyen_di >= DATE_SUB(CURDATE(), INTERVAL 30 DAY))
+                ORDER BY id DESC LIMIT 250
+            """
+            df_cd_cont = db.execute_query(sql_cd_cont)
             dict_cd_cont = {0: "-- Không liên kết chuyến đi --"}
+            # Tạo dictionary lưu trữ doanh thu tương ứng với ID chuyến đi
+            dict_doanh_thu_cd = {0: 0} 
+            
             if isinstance(df_cd_cont, pd.DataFrame) and not df_cd_cont.empty:
-                dict_cd_cont.update({r['id']: f"Chuyến #{r['id']} - {r['dia_diem_giao_nhan']} ({r['ngay_chuyen_di']})" for _, r in df_cd_cont.iterrows()})
+                for _, r in df_cd_cont.iterrows():
+                    dict_cd_cont[r['id']] = f"Chuyến #{r['id']} - {r['dia_diem_giao_nhan']} ({r['ngay_chuyen_di']})"
+                    # Ép kiểu an toàn, mặc định là 0 nếu null
+                    dict_doanh_thu_cd[r['id']] = float(r['doanh_thu'] or 0.0) 
+            # ---------------------------
 
             dict_tk_cont = {0: "-- Không liên kết tờ khai hải quan --"}
             try:
@@ -701,11 +724,37 @@ with tab_container:
                 if "form_tao_cont_key" not in st.session_state:
                     st.session_state["form_tao_cont_key"] = "form_tao_moi_container_batch_1"
 
-                with st.form(key=st.session_state["form_tao_cont_key"], clear_on_submit=False):
-                    sc1, sc2 = st.columns(2)
-                    cd_id_val = sc1.selectbox("Liên kết Chuyến Đi", options=list(dict_cd_cont.keys()), format_func=lambda x: dict_cd_cont[x])
-                    tk_id_val = sc2.selectbox("Liên kết Tờ Khai Hải Quan", options=list(dict_tk_cont.keys()), format_func=lambda x: dict_tk_cont[x])
+                # --- ĐOẠN CODE SỬA ĐỔI: Thêm Session State và Callback ---
+                # Đặt key cố định cho selectbox chọn chuyến và text_input vận chuyển
+                key_select_chuyen = f"select_cd_batch_{st.session_state['form_tao_cont_key']}"
+                key_phi_van_chuyen = f"input_phi_van_chuyen_batch_{st.session_state['form_tao_cont_key']}"
 
+                # Hàm callback được gọi khi người dùng đổi lựa chọn Chuyến đi
+                def on_change_chuyen_di_batch():
+                    # Lấy ID chuyến đi vừa được chọn
+                    selected_id = st.session_state[key_select_chuyen]
+                    # Lấy doanh thu từ dictionary đã chuẩn bị ở Bước 1
+                    doanh_thu = dict_doanh_thu_cd.get(selected_id, 0)
+                    # Gán giá trị định dạng tiền tệ vào text_input thông qua session_state
+                    if doanh_thu > 0:
+                        st.session_state[key_phi_van_chuyen] = f"{int(doanh_thu):,}"
+                    else:
+                        st.session_state[key_phi_van_chuyen] = "0"
+                sc1, sc2 = st.columns(2)
+                                    
+                                    # Bổ sung key và on_change vào selectbox
+                cd_id_val = sc1.selectbox(
+                              "Liên kết Chuyến Đi", 
+                               options=list(dict_cd_cont.keys()), 
+                               format_func=lambda x: dict_cd_cont[x],
+                               key=key_select_chuyen,
+                               on_change=on_change_chuyen_di_batch
+                               )
+                                    # --------------------------------------------------------
+                tk_id_val = sc2.selectbox("Liên kết Tờ Khai Hải Quan", options=list(dict_tk_cont.keys()), format_func=lambda x: dict_tk_cont[x])
+                
+                with st.form(key=st.session_state["form_tao_cont_key"], clear_on_submit=False):
+                    
                     sc3, sc4 = st.columns(2)
 
                     loai_cont_options = [None, "1T", "2T:","3T", "4T", "5T", "8T", "15T", "22T", "3X40", "1X40", "2X40", "1X20", "2X20","3X20", "4X40","1X45","2X45","3X45", "Khác"]
@@ -742,10 +791,18 @@ with tab_container:
                     phi_khu_trung_input = p15.text_input("Phí Khử Trùng", value="", placeholder="0")
                     inv_khu_trung_input = p16.text_input("Số HĐ Khử Trùng", value="")
 
-                    p17, p18,p19 = st.columns(3) 
-                    phi_van_chuyen_input = p17.text_input("Phí vận chuyển (Cho mỗi cont trong lô)", value="", placeholder="0")
+                    p17, p18,p19 ,p20,p21= st.columns(5) 
+                    # Bổ sung tham số key vào text_input
+                    phi_van_chuyen_input = p17.text_input(
+                        "Phí vận chuyển (Cho mỗi cont trong lô)", 
+                        placeholder="0",
+                        key=key_phi_van_chuyen # Đã gắn key để nhận giá trị từ Session State
+                    )
+                    # ---------------------------
                     phi_thong_quan_input = p18.text_input("Phí thông quan (Cho mỗi cont trong lô)", value="", placeholder="0")
-                    ghi_chu_input= p19.text_input("Ghi chú", value="")
+                    phi_csht_input = p19.text_input("Phí CSHT", value="", placeholder="0")
+                    inv_csht_input = p20.text_input("Số HĐ CSHT", value="")
+                    ghi_chu_input= p21.text_input("Ghi chú", value="")
 
                     raw_container_text = st.text_area(
                         "Danh sách số Container*",
@@ -758,83 +815,99 @@ with tab_container:
                             st.error("❌ Bắt buộc phải chọn cả liên kết Chuyến Đi và Tờ Khai Hải Quan!")
                             st.stop()
                         
-                        if parse_money_input(phi_dv_hq_input)<= 0   or  parse_money_input(phi_off_input) <= 0:
-                            st.error("❌ Phí DVHQ không được để trống và >0 )!")
-                            st.stop()
-                        if parse_money_input(phi_van_chuyen_input) <= 0 :
+                        # 1. Nhận diện Xe Tải dựa vào Loại Container
+                        loai_xe_tai = ["1T", "2T", "2T:", "3T", "4T", "5T", "8T", "15T", "22T", "Khác"]
+                        is_truck = loai_cont_default in loai_xe_tai
+
+                        # 2. Bỏ qua Validation nâng hạ nếu là Xe Tải
+                        if not is_truck:
+                            if parse_money_input(phi_dv_hq_input) <= 0:
+                                st.error("❌ Phí DVHQ không được để trống và > 0!")
+                                st.stop()
+                                
+                            if parse_money_input(phi_on_input) <= 0 or parse_money_input(phi_off_input) <= 0:
+                                st.error("❌ Số tiền phí Nâng ON và phí Hạ OFF không được để trống và > 0 (Đối với Container)!")
+                                st.stop()
+                                
+                            if not inv_on_input.strip() or not inv_off_input.strip():
+                                st.error("❌ Số hóa đơn Nâng ON và Hạ OFF không được để trống (Đối với Container)!")
+                                st.stop()
+                        else:
+                            # Validation riêng nhẹ nhàng hơn cho Xe Tải
+                            pass 
+
+                        # Cước vận chuyển vẫn bắt buộc
+                        if parse_money_input(phi_van_chuyen_input) <= 0:
                             st.error("❌ Phí vận chuyển không để trống (Nhập vào)!")
-                            st.stop()
-                            
-                        if parse_money_input(phi_on_input)<=0   or  parse_money_input(phi_off_input) <= 0:
-                            st.error("❌ Số tiền phí Nâng ON và phí Hạ OFF không được để trống và >0 )!")
-                            st.stop()
-                            
-                        if not inv_on_input.strip() or not inv_off_input.strip():
-                            st.error("❌ Số hóa đơn Nâng ON và Hạ OFF không được để trống!")
                             st.stop()
                             
                         if parse_money_input(phi_bot_input) < 0 or parse_money_input(phi_lay_mau_input) < 0:
                             st.error("❌ Các giá trị phí không được phép là số âm. Vui lòng hiệu chỉnh lại!")
+                            st.stop()
                             
-                        if not raw_container_text.strip():
-                            st.error("Vui lòng nhập ít nhất một số container.")
-                        elif cd_id_val == 0 and tk_id_val == 0:
-                            st.error("Vui lòng chọn liên kết Chuyến Đi và Tờ Khai Hải Quan.")
+                        # 3. Xử lý danh sách Container (Cho phép rỗng nếu là Xe Tải)
+                        if not raw_container_text.strip() and not is_truck:
+                            st.error("❌ Vui lòng nhập ít nhất một số container.")
+                            st.stop()
+                        
+                        tk_id_pass = tk_id_val if tk_id_val != 0 else None
+                        cd_id_pass = cd_id_val if cd_id_val != 0 else None
+                        
+                        # Nếu là xe tải và không nhập số cont, tự động tạo 1 mảng chứa chuỗi rỗng để nhảy vào vòng lặp
+                        parts = raw_container_text.replace(',', '\n').split('\n') if raw_container_text.strip() else [""]
+                        container_list_input = []
+                        
+                        for p in parts:
+                            std_cont = p.strip().upper()
+                            # Lưu dòng dữ liệu nếu có Số Cont HOẶC nếu đang khai báo Xe tải
+                            if std_cont or is_truck:
+                                container_list_input.append({
+                                    "so_cont": std_cont,
+                                    "loai_cont": loai_cont_default,
+                                    "chuyen_di_id": cd_id_pass, 
+                                    "to_khai_id": tk_id_pass,   
+                                    "phi_to_khai": phi_dv_hq_input or "0", 
+                                    "phi_nang_ha_on": phi_on_input or "0",
+                                    "so_hoa_don_lift_on": inv_on_input.strip(),
+                                    "phi_nang_ha_off": phi_off_input or "0",
+                                    "so_hoa_don_lift_off": inv_off_input.strip(),
+                                    "phi_bot": phi_bot_input or "0",
+                                    "phi_lay_mau": phi_lay_mau_input or "0",
+                                    "phi_kiem_dich": phi_kiem_dich_input or "0",
+                                    "so_hoa_don_kiem_dich": inv_kiem_dich_input.strip(),
+                                    "phi_luu_bai": phi_luu_bai_input or "0",
+                                    "so_hoa_don_luu_bai": inv_luu_bai_input.strip(),
+                                    "phi_do": phi_do_input or "0",
+                                    "so_hoa_don_do": inv_do_input.strip(),
+                                    "phi_handling": phi_handling_input or "0",
+                                    "so_hoa_don_handling": inv_handling_input.strip(),
+                                    "phi_khu_trung": phi_khu_trung_input or "0",
+                                    "so_hoa_don_khu_trung": inv_khu_trung_input.strip(),
+                                    "phi_van_chuyen": phi_van_chuyen_input or "0",
+                                    "phi_thong_quan": phi_thong_quan_input or "0",
+                                    "phi_csht": phi_csht_input or "0",
+                                    "so_hoa_don_csht": inv_csht_input,                                       
+                                    "ghi_chu": ghi_chu_input.strip()
+                                })
+                        
+                        if not container_list_input:
+                            st.error("❌ Không tìm thấy số container/xe hợp lệ sau khi bóc tách.")
                         else:
-                            tk_id_pass = tk_id_val if tk_id_val != 0 else None
-                            cd_id_pass = cd_id_val if cd_id_val != 0 else None
+                            ok, msg = save_containers_batch_transaction(
+                                db_pool=db.pool,
+                                link_col="to_khai_id" if tk_id_pass else "chuyen_di_id",
+                                parent_id=tk_id_pass if tk_id_pass else cd_id_pass,
+                                container_list_input=container_list_input,
+                                user=current_user
+                            )
                             
-                            parts = raw_container_text.replace(',', '\n').split('\n')
-                            container_list_input = []
-                            
-                            for p in parts:
-                                std_cont = p.strip().upper()
-                                if std_cont:
-                                    container_list_input.append({
-                                        "so_cont": std_cont,
-                                        "loai_cont": loai_cont_default,
-                                        "chuyen_di_id": cd_id_pass, 
-                                        "to_khai_id": tk_id_pass,   
-                                        "phi_to_khai": phi_dv_hq_input or "0", 
-                                        "phi_nang_ha_on": phi_on_input or "0",
-                                        "so_hoa_don_lift_on": inv_on_input.strip(),
-                                        "phi_nang_ha_off": phi_off_input or "0",
-                                        "so_hoa_don_lift_off": inv_off_input.strip(),
-                                        "phi_bot": phi_bot_input or "0",
-                                        "phi_lay_mau": phi_lay_mau_input or "0",
-                                        "phi_kiem_dich": phi_kiem_dich_input or "0",
-                                        "so_hoa_don_kiem_dich": inv_kiem_dich_input.strip(),
-                                        "phi_luu_bai": phi_luu_bai_input or "0",
-                                        "so_hoa_don_luu_bai": inv_luu_bai_input.strip(),
-                                        "phi_do": phi_do_input or "0",
-                                        "so_hoa_don_do": inv_do_input.strip(),
-                                        "phi_handling": phi_handling_input or "0",
-                                        "so_hoa_don_handling": inv_handling_input.strip(),
-                                        "phi_khu_trung": phi_khu_trung_input or "0",
-                                        "so_hoa_don_khu_trung": inv_khu_trung_input.strip(),
-                                        "phi_van_chuyen": phi_van_chuyen_input or "0",
-                                        "phi_thong_quan": phi_thong_quan_input or "0",
-                                        "ghi_chu": ghi_chu_input.strip()
-                                    })
-                            
-                            if not container_list_input:
-                                st.error("Không tìm thấy số container hợp lệ sau khi bóc tách.")
+                            if ok:
+                                st.success(f"✅ Tạo mới dữ liệu liên kết thành công!")
+                                st.session_state["form_tao_cont_key"] = f"form_tao_moi_container_batch_{uuid.uuid4()}"
+                                time.sleep(1)
+                                st.rerun()
                             else:
-                                ok, msg = save_containers_batch_transaction(
-                                    db_pool=db.pool,
-                                    link_col="to_khai_id" if tk_id_pass else "chuyen_di_id",
-                                    parent_id=tk_id_pass if tk_id_pass else cd_id_pass,
-                                    container_list_input=container_list_input,
-                                    user=current_user
-                                )
-                                
-                                if ok:
-                                    st.success(f"✅ Tạo mới container thành công")
-                                    st.session_state["form_tao_cont_key"] = f"form_tao_moi_container_batch_{uuid.uuid4()}"
-                                    time.sleep(1)
-                                    st.rerun()
-                                else:
-                                    st.error(f"Lỗi: {msg}")
+                                st.error(f"Lỗi: {msg}")
 
             with sub_tab_sua_xoa:
                 sql_get_all_cont = """
@@ -842,7 +915,7 @@ with tab_container:
                         c.phi_to_khai, c.phi_nang_ha_on, c.so_hoa_don_lift_on, c.phi_nang_ha_off, c.so_hoa_don_lift_off,
                         c.phi_bot, c.phi_lay_mau, c.phi_kiem_dich, c.so_hoa_don_kiem_dich,
                         c.phi_luu_bai, c.so_hoa_don_luu_bai, c.phi_do, c.so_hoa_don_do,
-                        c.phi_handling, c.so_hoa_don_handling, c.phi_khu_trung, c.so_hoa_don_khu_trung,c.phi_van_chuyen,c.phi_thong_quan,c.ghi_chu,
+                        c.phi_handling, c.so_hoa_don_handling, c.phi_khu_trung, c.so_hoa_don_khu_trung,c.phi_van_chuyen,c.phi_thong_quan,c.phi_csht,c.so_hoa_don_csht,c.ghi_chu,
                         cd.dia_diem_giao_nhan, tk.so_to_khai
                     FROM container_quan_ly c
                     LEFT JOIN chuyen_di cd ON c.chuyen_di_id = cd.id
@@ -892,35 +965,38 @@ with tab_container:
                                 e_chuyen_di_id = st.selectbox("Liên kết Chuyến Đi", options=list(dict_cd_cont.keys()), index=get_idx(list(dict_cd_cont.keys()), cont_info['chuyen_di_id'] or 0), format_func=lambda x: dict_cd_cont[x])
                                 e_to_khai_id = st.selectbox("Liên kết Tờ Khai Hải Quan", options=list(dict_tk_cont.keys()), index=get_idx(list(dict_tk_cont.keys()), cont_info['to_khai_id'] or 0), format_func=lambda x: dict_tk_cont[x])
 
-                                def fmt(val): return f"{int(float(val))}" if pd.notna(val) else "0"
+                                def fmt(val): return f"{int(float(val)):,}" if pd.notna(val) and float(val) > 0 else ""
                                 st.markdown("**💰 Cập Nhật Chi Phí Riêng Cho Cont Này**")
                                 ep1, ep2, ep3, ep4, ep5 = st.columns(5)
-                                e_phi_dv_hq = ep1.text_input("Phí DVHQ", value=fmt(cont_info.get('phi_to_khai', 0)))
-                                e_phi_on = ep2.text_input("Phí Nâng ON", value=fmt(cont_info.get('phi_nang_ha_on', 0)))
+                                e_phi_dv_hq = ep1.text_input("Phí DVHQ", value=fmt(cont_info.get('phi_to_khai', 0)), placeholder="0")
+                                e_phi_on = ep2.text_input("Phí Nâng ON", value=fmt(cont_info.get('phi_nang_ha_on', 0)), placeholder="0")
                                 e_inv_on = ep3.text_input("Số HĐ Nâng ON", value=cont_info.get('so_hoa_don_lift_on') or "")
-                                e_phi_off = ep4.text_input("Phí Hạ OFF", value=fmt(cont_info.get('phi_nang_ha_off', 0)))
+                                e_phi_off = ep4.text_input("Phí Hạ OFF", value=fmt(cont_info.get('phi_nang_ha_off', 0)), placeholder="0")
                                 e_inv_off = ep5.text_input("Số HĐ Hạ OFF", value=cont_info.get('so_hoa_don_lift_off') or "")
+                                
                                 ep6, ep7, ep8, ep9 = st.columns(4)
-                                e_phi_bot = ep6.text_input("Phí BOT", value=fmt(cont_info.get('phi_bot', 0)))
-                                e_phi_lay_mau = ep7.text_input("Phí Lấy Mẫu", value=fmt(cont_info.get('phi_lay_mau', 0)))
-                                e_phi_kiem_dich = ep8.text_input("Phí Kiểm Dịch", value=fmt(cont_info.get('phi_kiem_dich', 0)))
+                                e_phi_bot = ep6.text_input("Phí BOT", value=fmt(cont_info.get('phi_bot', 0)), placeholder="0")
+                                e_phi_lay_mau = ep7.text_input("Phí Lấy Mẫu", value=fmt(cont_info.get('phi_lay_mau', 0)), placeholder="0")
+                                e_phi_kiem_dich = ep8.text_input("Phí Kiểm Dịch", value=fmt(cont_info.get('phi_kiem_dich', 0)), placeholder="0")
                                 e_inv_kiem_dich = ep9.text_input("HĐ Kiểm Dịch", value=cont_info.get('so_hoa_don_kiem_dich') or "")
 
                                 ep10, ep11, ep12, ep13 = st.columns(4)
-                                e_phi_luu_bai = ep10.text_input("Phí Lưu Bãi", value=fmt(cont_info.get('phi_luu_bai', 0)))
+                                e_phi_luu_bai = ep10.text_input("Phí Lưu Bãi", value=fmt(cont_info.get('phi_luu_bai', 0)), placeholder="0")
                                 e_inv_luu_bai = ep11.text_input("HĐ Lưu Bãi", value=cont_info.get('so_hoa_don_luu_bai') or "")
-                                e_phi_do = ep12.text_input("Phí D/O", value=fmt(cont_info.get('phi_do', 0)))
+                                e_phi_do = ep12.text_input("Phí D/O", value=fmt(cont_info.get('phi_do', 0)), placeholder="0")
                                 e_inv_do = ep13.text_input("HĐ D/O", value=cont_info.get('so_hoa_don_do') or "")
 
                                 ep14, ep15, ep16, ep17 = st.columns(4)
-                                e_phi_handling = ep14.text_input("Phí Handling", value=fmt(cont_info.get('phi_handling', 0)))
+                                e_phi_handling = ep14.text_input("Phí Handling", value=fmt(cont_info.get('phi_handling', 0)), placeholder="0")
                                 e_inv_handling = ep15.text_input("HĐ Handling", value=cont_info.get('so_hoa_don_handling') or "")
-                                e_phi_khu_trung = ep16.text_input("Phí Khử Trùng", value=fmt(cont_info.get('phi_khu_trung', 0)))
+                                e_phi_khu_trung = ep16.text_input("Phí Khử Trùng", value=fmt(cont_info.get('phi_khu_trung', 0)), placeholder="0")
                                 e_inv_khu_trung = ep17.text_input("HĐ Khử Trùng", value=cont_info.get('so_hoa_don_khu_trung') or "")
-                                ep18, ep19,ep20 = st.columns(3) 
-                                e_phi_van_chuyen = ep18.text_input("Phí vận chuyển (Cho mỗi cont trong lô)", value="0")
-                                e_phi_thong_quan = ep19.text_input("Phí thông quan (Cho mỗi cont trong lô)", value="0")
-                                e_ghi_chu= ep20.text_input("Ghi chú", value="")
+                                ep18, ep19, ep20, ep21, ep22 = st.columns(5) 
+                                e_phi_van_chuyen = ep18.text_input("Phí vận chuyển (Cho mỗi cont trong lô)", value=fmt(cont_info.get('phi_van_chuyen', 0)), placeholder="0")
+                                e_phi_thong_quan = ep19.text_input("Phí thông quan (Cho mỗi cont trong lô)", value=fmt(cont_info.get('phi_thong_quan', 0)), placeholder="0")
+                                e_phi_csht = ep20.text_input("Phí CSHT", value=fmt(cont_info.get('phi_csht', 0)), placeholder="0")
+                                e_inv_csht = ep21.text_input("Số hoá đơn CSHT", value=cont_info.get('so_hoa_don_csht') or "")
+                                e_ghi_chu = ep22.text_input("Ghi chú", value=cont_info.get('ghi_chu') or "")
 
                                 if st.form_submit_button("💾 LƯU THAY ĐỔI CONTAINER", type="primary"):
                                     if not e_so_cont:
@@ -943,16 +1019,16 @@ with tab_container:
                                                     phi_bot=%s, phi_lay_mau=%s, phi_kiem_dich=%s, so_hoa_don_kiem_dich=%s,
                                                     phi_luu_bai=%s, so_hoa_don_luu_bai=%s, phi_do=%s, so_hoa_don_do=%s,
                                                     phi_handling=%s, so_hoa_don_handling=%s, phi_khu_trung=%s, so_hoa_don_khu_trung=%s,phi_van_chuyen=%s,
-                                                    phi_thong_quan=%s,ghi_chu=%s
+                                                    phi_thong_quan=%s, phi_csht=%s, so_hoa_don_csht=%s, ghi_chu=%s
                                                 WHERE id=%s
                                             """
                                             cursor_ed.execute(sql_up, (
                                                 std_so_cont, e_loai_cont if e_loai_cont else None, e_chuyen_di_id if e_chuyen_di_id != 0 else None, e_to_khai_id if e_to_khai_id != 0 else None, 
-                                                parse_money_input(e_phi_on), e_inv_on.strip(), parse_money_input(e_phi_off), e_inv_off.strip(), parse_money_input(e_phi_dv_hq),
-                                                parse_money_input(e_phi_bot), parse_money_input(e_phi_lay_mau), parse_money_input(e_phi_kiem_dich), e_inv_kiem_dich.strip(),
-                                                parse_money_input(e_phi_luu_bai), e_inv_luu_bai.strip(), parse_money_input(e_phi_do), e_inv_do.strip(),
-                                                parse_money_input(e_phi_handling), e_inv_handling.strip(), parse_money_input(e_phi_khu_trung), e_inv_khu_trung.strip(),
-                                                parse_money_input(e_phi_van_chuyen),parse_money_input(e_phi_thong_quan), e_ghi_chu.strip(), selected_cont_id
+                                                parse_money_input(e_phi_on or "0"), e_inv_on.strip(), parse_money_input(e_phi_off or "0"), e_inv_off.strip(), parse_money_input(e_phi_dv_hq or "0"),
+                                                parse_money_input(e_phi_bot or "0"), parse_money_input(e_phi_lay_mau or "0"), parse_money_input(e_phi_kiem_dich or "0"), e_inv_kiem_dich.strip(),
+                                                parse_money_input(e_phi_luu_bai or "0"), e_inv_luu_bai.strip(), parse_money_input(e_phi_do or "0"), e_inv_do.strip(),
+                                                parse_money_input(e_phi_handling or "0"), e_inv_handling.strip(), parse_money_input(e_phi_khu_trung or "0"), e_inv_khu_trung.strip(),
+                                                parse_money_input(e_phi_van_chuyen or "0"),parse_money_input(e_phi_thong_quan or "0"), parse_money_input(e_phi_csht or "0"),e_inv_csht.strip(),e_ghi_chu.strip(), selected_cont_id
                                             ))
                                             
                                             if cursor_ed.rowcount == 0: 
@@ -986,7 +1062,7 @@ with tab_container:
                     SELECT 
                         c.id AS 'ID', c.so_cont AS 'Số Container', c.loai_cont AS 'Loại Cont', c.phi_to_khai AS 'Phí DVHQ',
                         c.phi_nang_ha_on AS 'Phí Nâng ON', c.so_hoa_don_lift_on as 'HĐ Nâng ON',
-                        c.phi_nang_ha_off AS 'Phí Hạ OFF', c.so_hoa_don_lift_off as 'HĐ Hạ OFF',
+                        c.phi_nang_ha_off AS 'Phí Hạ OFF', c.so_hoa_don_lift_off as 'HĐ Hạ OFF', c.phi_csht as 'Phí CSHT', c.so_hoa_don_csht as 'Hoá đơn CSHT',
                         c.chuyen_di_id AS 'Mã Chuyến Đi', tk.so_to_khai AS 'Số Tờ Khai HQ', cd.doanh_thu AS 'Tổng cước vận chuyển của chuyến'
                     FROM container_quan_ly c
                     LEFT JOIN chuyen_di cd ON c.chuyen_di_id = cd.id
