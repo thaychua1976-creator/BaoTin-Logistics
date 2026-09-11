@@ -611,7 +611,7 @@ st.divider()
 # ==========================================
 # 2. KHU VỰC HIỂN THỊ: CHIA CÁC TAB BÁO CÁO
 # ==========================================
-tab_bc1, tab_bc2,tab_out_cong_no_hq = st.tabs([ "📊 Thống kê lương tài xế", "🏢 Đối soát Công nợ", "✍️ XUẤT CÔNG NỢ HẢI QUAN" ])
+tab_bc1, tab_bc2,tab_out_cong_no_hq = st.tabs([ "📊 THỐNG KÊ LƯƠNG TÀI XẾ", "🏢 CÔNG NỢ KHÁCH HÀNG ", "✍️ CÔNG NỢ ICHIHIRO,CONTINETIAL,ZHENGXING" ])
 
 
 # ---------------------------------------------------------
@@ -628,12 +628,14 @@ with tab_bc1:
                 tx_clause = "AND cdtx.tai_xe_id = %s"
                 params_bc1.append(tai_xe_duoc_chon)
 
+            # 1. Bổ sung cột loai_xe vào SQL để nhận diện chính xác Đầu Kéo / Remooc
             sql_raw_data = f"""
                 SELECT 
                     cd.id AS 'Mã Chuyến', 
                     cd.ngay_chuyen_di AS 'Ngày Chạy', 
                     cd.ten_khach_hang AS 'Khách Hàng',
                     COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) AS 'Biển Số Xe', 
+                    COALESCE(x.loai_xe, cd.loai_hinh_xe) AS 'Loại Xe',
                     CAST(COALESCE(x.tai_trong_thiet_ke, 0) AS DECIMAL(15,2)) AS 'Tải Trọng',
                     COALESCE(nv.ho_ten, cd.tai_xe_ngoai_ten) AS 'Tài Xế', 
                     cd.dia_diem_giao_nhan AS 'Lộ Trình', 
@@ -642,44 +644,79 @@ with tab_bc1:
                     CAST(COALESCE(cd.phi_hai_quan, 0) AS DECIMAL(15,2)) AS 'Phí Hải Quan',
                     CAST(COALESCE(cd.phi_boc_xep, 0) AS DECIMAL(15,2)) AS 'Phí Bốc Xếp',
                     CAST(COALESCE(cd.phi_khac, 0) AS DECIMAL(15,2)) AS 'Phí Khác',
-                    cd.ghi_chu_quyet_toan AS 'Ghi chú'
+                    cd.ghi_chu_quyet_toan AS 'Ghi chú',
+                    
+                    c.so_cont AS 'Số Container',
+                    c.loai_cont AS 'Loại Cont',
+                    CAST(COALESCE(c.phi_nang_ha_on, 0) AS DECIMAL(15,2)) AS 'Phí Nâng ON',
+                    CAST(COALESCE(c.phi_nang_ha_off, 0) AS DECIMAL(15,2)) AS 'Phí Hạ OFF',
+                    CAST(COALESCE(c.phi_csht, 0) AS DECIMAL(15,2)) AS 'Phí CSHT',
+                    CAST(COALESCE(c.phi_luu_bai, 0) AS DECIMAL(15,2)) AS 'Phí Lưu Bãi',
+                    CAST(COALESCE(c.phi_kiem_dich, 0) AS DECIMAL(15,2)) AS 'Phí Kiểm Dịch',
+                    CAST(COALESCE(c.phi_bot, 0) AS DECIMAL(15,2)) AS 'Phí BOT'
+                    
                 FROM chuyen_di cd
                 LEFT JOIN xe x ON cd.xe_id = x.id
                 LEFT JOIN chuyen_di_tai_xe cdtx ON cd.id = cdtx.chuyen_di_id AND cdtx.loai_tai_xe = 'Tai_Chinh'
                 LEFT JOIN nhan_vien nv ON cdtx.tai_xe_id = nv.id
+                LEFT JOIN container_quan_ly c ON cd.id = c.chuyen_di_id
                 WHERE cd.trang_thai_chuyen = 'Hoan_Thanh' and cd.is_thue_ngoai = 0 
                 AND cd.ngay_chuyen_di >= %s 
                 AND cd.ngay_chuyen_di <= %s
                 {tx_clause}
                 ORDER BY cd.ngay_chuyen_di DESC, cd.id DESC
             """
-            # Không dùng cache cho dữ liệu báo cáo động
+            
             df_result = db.execute_query(sql_raw_data, tuple(params_bc1))
 
             if isinstance(df_result, pd.DataFrame) and not df_result.empty:
                 df_result['Ngày hiển thị'] = pd.to_datetime(df_result['Ngày Chạy']).dt.strftime('%d/%m/%Y')
+                df_result['Ngày Chạy'] = df_result['Ngày hiển thị'] 
+                df_result['Số Container'] = df_result['Số Container'].fillna('')
+
+                # 2. Logic phân loại chuẩn xác: Dựa vào Tên Loại Xe hoặc có Số Cont
+                def check_is_cont(row):
+                    loai = str(row.get('Loại Xe', '')).upper()
+                    so_cont = str(row.get('Số Container', '')).strip()
+                    if 'KÉO' in loai or 'KEO' in loai or 'REMOOC' in loai or 'CONT' in loai:
+                        return True
+                    if so_cont != "":
+                        return True
+                    return False
+
+                df_result['Is_Cont'] = df_result.apply(check_is_cont, axis=1)
+
+                df_unique_trips = df_result.drop_duplicates(subset=['Mã Chuyến'])
                 
-                tong_so_chuyen = len(df_result)
-                tong_luong_tx = df_result['Phụ cấp tài xế'].sum()
-                tong_hq_bx = df_result['Phí Hải Quan'].sum() + df_result['Phí Bốc Xếp'].sum()
-                tong_phi_khac = df_result['Phí Khác'].sum()
+                tong_so_chuyen = len(df_unique_trips)
+                tong_luong_tx = df_unique_trips['Phụ cấp tài xế'].sum()
+                tong_hq_bx = df_unique_trips['Phí Hải Quan'].sum() + df_unique_trips['Phí Bốc Xếp'].sum()
+                tong_phi_khac = df_unique_trips['Phí Khác'].sum()
                 
                 col_m1, col_m2, col_m3, col_m4 = st.columns(4)
                 col_m1.metric("🚛 Tổng số chuyến", f"{tong_so_chuyen} chuyến")
                 col_m2.metric("👨‍✈️ Phụ cấp tài xế", f"{tong_luong_tx:,.0f} đ")
-                col_m3.metric("📦 Phí Hải Quan & Bốc Xếp", f"{tong_hq_bx:,.0f} đ")
+                col_m3.metric("📦 Phí HQ & Bốc Xếp", f"{tong_hq_bx:,.0f} đ")
                 col_m4.metric("💸 Tổng Phí Khác", f"{tong_phi_khac:,.0f} đ")
                 
                 st.divider()
-
-                st.markdown("##### 📥 Xuất báo cáo lương tài xế")
+                st.markdown("##### 📥 Xuất báo cáo lương tài xế (Đã phân tách Xe Tải & Xe Cont)")
+                
                 excel_buffer = io.BytesIO()
                 with pd.ExcelWriter(excel_buffer, engine='xlsxwriter', engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
-                    cols_excel = [
-                        'Mã Chuyến', 'Ngày hiển thị', 'Khách Hàng', 'Biển Số Xe', 'Tải Trọng', 'Tài Xế', 'Lộ Trình',
-                         'Phụ cấp tài xế','Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Ghi chú'
+                    
+                    cols_tai = [
+                        'Mã Chuyến', 'Ngày Chạy', 'Khách Hàng', 'Biển Số Xe', 'Loại Xe', 'Tải Trọng', 'Tài Xế', 'Lộ Trình',
+                        'Phụ cấp tài xế','Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Ghi chú'
                     ]
-                    df_excel_all = df_result[cols_excel].rename(columns={'Ngày hiển thị': 'Ngày Chạy'}).copy()
+                    cols_cont = [
+                        'Mã Chuyến', 'Ngày Chạy', 'Khách Hàng', 'Biển Số Xe', 'Loại Xe', 'Tài Xế', 'Lộ Trình',
+                        'Số Container', 'Loại Cont', 'Phí Nâng ON', 'Phí Hạ OFF', 'Phí CSHT', 'Phí Lưu Bãi', 'Phí Kiểm Dịch', 'Phí BOT',
+                        'Phụ cấp tài xế','Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Ghi chú'
+                    ]
+                    
+                    df_tai_all = df_result[~df_result['Is_Cont']].drop_duplicates(subset=['Mã Chuyến'])[cols_tai]
+                    df_cont_all = df_result[df_result['Is_Cont']][cols_cont]
                     
                     def auto_fit_columns(worksheet, df):
                         for idx, col in enumerate(df.columns):
@@ -687,41 +724,67 @@ with tab_bc1:
                             max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
                             worksheet.set_column(idx, idx, min(max_len, 50))
 
-                    existing_sheets_tab4 = []
+                    existing_sheets_tab1 = []
+                    header_format_tai = writer.book.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#0b5394', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+                    header_format_cont = writer.book.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#0f9d58', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
 
-                    # Sheet tổng hợp
-                    sheet_tong_hop_name = get_unique_sheet_name("Tổng Hợp", existing_sheets_tab4)
-                    df_excel_all.to_excel(writer, sheet_name=sheet_tong_hop_name, index=False)
-                    worksheet_all = writer.sheets[sheet_tong_hop_name]
-                    header_format = writer.book.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#0b5394', 'border': 1})
-                    for col_num, col_name in enumerate(df_excel_all.columns):
-                        worksheet_all.write(0, col_num, col_name, header_format)
-                    auto_fit_columns(worksheet_all, df_excel_all)
+                    # --- SHEET TỔNG HỢP XE TẢI ---
+                    if not df_tai_all.empty:
+                        sheet_th_tai = get_unique_sheet_name("Tổng Hợp - Xe Tải", existing_sheets_tab1)
+                        df_tai_all.to_excel(writer, sheet_name=sheet_th_tai, index=False)
+                        ws_th_tai = writer.sheets[sheet_th_tai]
+                        for col_num, col_name in enumerate(df_tai_all.columns):
+                            ws_th_tai.write(0, col_num, col_name, header_format_tai)
+                        auto_fit_columns(ws_th_tai, df_tai_all)
+                    
+                    # --- SHEET TỔNG HỢP XE CONT ---
+                    if not df_cont_all.empty:
+                        sheet_th_cont = get_unique_sheet_name("Tổng Hợp - Xe Cont", existing_sheets_tab1)
+                        df_cont_all.to_excel(writer, sheet_name=sheet_th_cont, index=False)
+                        ws_th_cont = writer.sheets[sheet_th_cont]
+                        for col_num, col_name in enumerate(df_cont_all.columns):
+                            ws_th_cont.write(0, col_num, col_name, header_format_cont)
+                        auto_fit_columns(ws_th_cont, df_cont_all)
 
-                    # Sheet chi tiết từng tài xế (có chống trùng tên sheet hoa/thường)
-                    for tx_name, df_group in df_excel_all.groupby('Tài Xế'):
-                        clean_sheet_name = get_unique_sheet_name(tx_name, existing_sheets_tab4)
-                        df_group.to_excel(writer, sheet_name=clean_sheet_name, index=False)
-                        worksheet_tx = writer.sheets[clean_sheet_name]
-                        for col_num, col_name in enumerate(df_group.columns):
-                            worksheet_tx.write(0, col_num, col_name, header_format)
-                        auto_fit_columns(worksheet_tx, df_group)
+                    # --- SHEET CHI TIẾT TỪNG TÀI XẾ ---
+                    for tx_name, df_group in df_result.groupby('Tài Xế'):
+                        tx_rut_gon = tx_name[:20]
+                        
+                        df_tx_tai = df_group[~df_group['Is_Cont']].drop_duplicates(subset=['Mã Chuyến'])[cols_tai]
+                        if not df_tx_tai.empty:
+                            sheet_tai_tx = get_unique_sheet_name(f"{tx_rut_gon}_Tai", existing_sheets_tab1)
+                            df_tx_tai.to_excel(writer, sheet_name=sheet_tai_tx, index=False)
+                            ws_tx_tai = writer.sheets[sheet_tai_tx]
+                            for col_num, col_name in enumerate(df_tx_tai.columns):
+                                ws_tx_tai.write(0, col_num, col_name, header_format_tai)
+                            auto_fit_columns(ws_tx_tai, df_tx_tai)
+                        
+                        df_tx_cont = df_group[df_group['Is_Cont']][cols_cont]
+                        if not df_tx_cont.empty:
+                            sheet_cont_tx = get_unique_sheet_name(f"{tx_rut_gon}_Cont", existing_sheets_tab1)
+                            df_tx_cont.to_excel(writer, sheet_name=sheet_cont_tx, index=False)
+                            ws_tx_cont = writer.sheets[sheet_cont_tx]
+                            for col_num, col_name in enumerate(df_tx_cont.columns):
+                                ws_tx_cont.write(0, col_num, col_name, header_format_cont)
+                            auto_fit_columns(ws_tx_cont, df_tx_cont)
                             
                 st.download_button(
                     label="📥 TẢI FILE EXCEL BÁO CÁO",
                     data=excel_buffer.getvalue(),
-                    file_name=f"Bao_Cao_Van_Tai_{tu_ngay.strftime('%d%m%Y')}_{den_ngay.strftime('%d%m%Y')}.xlsx",
+                    file_name=f"Bao_Cao_Luong_Tai_Xe_{tu_ngay.strftime('%d%m%Y')}_{den_ngay.strftime('%d%m%Y')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary"
                 )
                 
                 st.markdown("<br><b>📊 Bảng xem trước dữ liệu Báo cáo:</b>", unsafe_allow_html=True)
-                df_app_display = df_result[cols_excel].copy()
+                preview_cols = ['Mã Chuyến', 'Ngày Chạy', 'Khách Hàng', 'Biển Số Xe', 'Loại Xe', 'Tài Xế', 'Lộ Trình', 'Số Container', 'Phụ cấp tài xế', 'Phí Hải Quan', 'Phí Bốc Xếp']
+                df_app_display = df_result[preview_cols].copy()
+                
                 gb = GridOptionsBuilder.from_dataframe(df_app_display)
-                gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=150)
+                gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=130)
                 gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=12)
                 
-                money_columns = ['Phụ cấp tài xế', 'Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác']
+                money_columns = ['Phụ cấp tài xế', 'Phí Hải Quan', 'Phí Bốc Xếp']
                 for col in money_columns:
                     gb.configure_column(col, type=["numericColumn", "numberColumnFilter"], valueFormatter="Math.floor(value).toString().replace(/(\\d)(?=(\\d{3})+(?!\\d))/g, '$1,') + ' đ'")
                 
@@ -765,8 +828,18 @@ with tab_out_cong_no_hq:
                 st.info("Hệ thống sẽ tổng hợp tờ khai, gộp nhóm danh sách container, tính tổng Phí DVHQ và phí nâng hạ theo chuẩn form ICHIHIRO,ZHENGXING.")
                 
                 col_d1, col_d2 = st.columns(2)
-                e_tu_ngay = col_d1.date_input("Từ ngày", value=datetime.date.today().replace(day=1), key="exp_tu_ngay")
-                e_den_ngay = col_d2.date_input("Đến ngày", value=datetime.date.today(), key="exp_den_ngay")
+                e_tu_ngay = col_d1.date_input(
+                     "Từ ngày", 
+                     value=datetime.date.today().replace(day=1), 
+                     format="DD/MM/YYYY", 
+                     key="exp_tu_ngay"
+                )
+                e_den_ngay = col_d2.date_input(
+                    "Đến ngày", 
+                    value=datetime.date.today(), 
+                    format="DD/MM/YYYY", 
+                    key="exp_den_ngay"
+                )
                 
                 #if "loai_bao_cao_selected" not in st.session_state:
                 #    st.session_state["loai_bao_cao_selected"] = "Mẫu Chuẩn (ICHIHIRO,ZHENGXING)"
