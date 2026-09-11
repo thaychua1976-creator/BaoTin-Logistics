@@ -768,17 +768,17 @@ with tab_out_cong_no_hq:
                 e_tu_ngay = col_d1.date_input("Từ ngày", value=datetime.date.today().replace(day=1), key="exp_tu_ngay")
                 e_den_ngay = col_d2.date_input("Đến ngày", value=datetime.date.today(), key="exp_den_ngay")
                 
-                if "loai_bao_cao_selected" not in st.session_state:
-                    st.session_state["loai_bao_cao_selected"] = "Mẫu Chuẩn (ICHIHIRO,ZHENGXING)"
+                #if "loai_bao_cao_selected" not in st.session_state:
+                #    st.session_state["loai_bao_cao_selected"] = "Mẫu Chuẩn (ICHIHIRO,ZHENGXING)"
 
-                loai_bao_cao = st.radio(
-                    "📑 Chọn Mẫu Xuất Báo Cáo:", 
-                    ["Mẫu Chuẩn (ICHIHIRO,ZHENGXING)", "Mẫu CONTINENTAL (Tách Sheet theo HBL)"], 
-                    horizontal=True,
-                    key="loai_bao_cao_selected"
-                )
+                #loai_bao_cao = st.radio(
+                #    "📑 Chọn Mẫu Xuất Báo Cáo:", 
+                #    ["Mẫu Chuẩn (ICHIHIRO,ZHENGXING)", "Mẫu CONTINENTAL (Tách Sheet theo HBL)"], 
+                #    horizontal=True,
+                #    key="loai_bao_cao_selected"
+                #)
 
-                st.markdown("---")
+                #st.markdown("---")
                 #Thay điều kiện kết nối chuyến đi thành ON c.chuyen_di_id = cd.id thay vì gọi nhầm từ bảng tk
                 #Đổi JOIN khach_hang thành LEFT JOIN khach_hang để phòng ngừa rủi ro mất dữ liệu
                 #sql_preview = """ error Đảo thứ tự LEFT JOIN container_quan_ly c lên trước bảng chuyen_di để làm cầu nối liên kết chuẩn xác.  
@@ -799,18 +799,67 @@ with tab_out_cong_no_hq:
                 #    ORDER BY tk.ngay_khai ASC
                 #"""
                 # 1. Bắt điều kiện lọc động dựa trên Radio Button người dùng chọn
-                if "CONTINENTAL" in loai_bao_cao:
-                    dieu_kien_khach_hang = "AND UPPER(kh.ten_khach_hang) LIKE '%CONTINENTAL%'"
-                else:
-                    dieu_kien_khach_hang = "AND (UPPER(kh.ten_khach_hang) LIKE '%ICHIHIRO%' OR UPPER(kh.ten_khach_hang) LIKE '%ZHENGXING%')"
+                #if "CONTINENTAL" in loai_bao_cao:
+                #    dieu_kien_khach_hang = "AND UPPER(kh.ten_khach_hang) LIKE '%CONTINENTAL%'"
+                #else:
+                #    dieu_kien_khach_hang = "AND (UPPER(kh.ten_khach_hang) LIKE '%ICHIHIRO%' OR UPPER(kh.ten_khach_hang) LIKE '%ZHENGXING%')"
 
-                # 2. Đưa điều kiện lọc vào câu SQL Preview
+                # Lấy tháng năm hiện tại để đặt tên file
+                
+                # 1. Điều kiện chung để bảng Preview hiển thị đủ 3 công ty
+                dieu_kien_khach_hang_preview = "AND (UPPER(kh.ten_khach_hang) LIKE '%ICHIHIRO%' OR UPPER(kh.ten_khach_hang) LIKE '%ZHENGXING%' OR UPPER(kh.ten_khach_hang) LIKE '%CONTINENTAL%')"
+
+                mm_yyyy = datetime.date.today().strftime('%m_%Y')
+                str_tu_ngay = e_tu_ngay.strftime('%Y-%m-%d')
+                str_den_ngay = e_den_ngay.strftime('%Y-%m-%d')
+
+                # 2. Chia thành 3 cột cho 3 công ty
+                col_bc1, col_bc2, col_bc3 = st.columns(3)
+
+                with col_bc1:
+                    file_ichihiro = xuat_excel_hai_quan_bao_tin(db, str_tu_ngay, str_den_ngay, "ICHIHIRO")
+                    if file_ichihiro:
+                        st.download_button(
+                            label="📥 Tải Báo Cáo ICHIHIRO",
+                            data=file_ichihiro,
+                            file_name=f"Bao_Cao_ICHIHIRO_{mm_yyyy}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+                    else:
+                        st.info("📭 Không có dữ liệu ICHIHIRO.")
+
+                with col_bc2:
+                    file_zhengxing = xuat_excel_hai_quan_bao_tin(db, str_tu_ngay, str_den_ngay, "ZHENGXING")
+                    if file_zhengxing:
+                        st.download_button(
+                            label="📥 Tải Báo Cáo ZHENGXING",
+                            data=file_zhengxing,
+                            file_name=f"Bao_Cao_ZHENGXING_{mm_yyyy}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+                    else:
+                        st.info("📭 Không có dữ liệu ZHENGXING.")
+
+                with col_bc3:
+                    file_continental = xuat_excel_hai_quan_continental(db, str_tu_ngay, str_den_ngay)
+                    if file_continental:
+                        st.download_button(
+                            label="📥 Tải Báo Cáo CONTINENTAL",
+                            data=file_continental,
+                            file_name=f"Bao_Cao_CONTINENTAL_{mm_yyyy}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+                    else:
+                        st.info("📭 Không có dữ liệu CONTINENTAL.")
+
+                # 3. Đưa biến điều kiện chung vào câu SQL Preview
                 sql_preview = f"""
                     SELECT 
                         tk.so_to_khai AS 'Số Tờ Khai', tk.loai_to_khai AS 'Loại', tk.ngay_khai AS 'Ngày Khai', 
                         kh.ten_khach_hang AS 'Khách Hàng', tk.ten_doi_tac AS 'Đối Tác', 
-                        
-                        -- Tự động lấy Loại xe theo thứ tự ưu tiên: Cont -> Xe ngoài -> Xe nhà -> Mặc định
                         COALESCE(
                             NULLIF(TRIM(c.loai_cont), ''), 
                             NULLIF(TRIM(cd.loai_hinh_xe), ''), 
@@ -818,7 +867,6 @@ with tab_out_cong_no_hq:
                             CONCAT(xe.tai_trong_thiet_ke, ' Tấn'), 
                             'Xe tải'
                         ) AS 'Loại Xe',
-                        
                         c.so_cont  AS 'Số Container', (IFNULL(c.phi_to_khai, 0) + IFNULL(tk.phi_dich_vu_hq, 0)) AS 'Phí DVHQ Tờ khai',
                         c.phi_nang_ha_on AS 'Phí Nâng ON', c.phi_nang_ha_off AS 'Phí Hạ OFF',
                         co.form_co  AS 'Form C/O', co.so_co  AS 'Số C/O', co.phi_co AS 'Phí C/O', co.phi_dvhq AS 'Phí DVHQ C/O',
@@ -828,10 +876,10 @@ with tab_out_cong_no_hq:
                     LEFT JOIN khach_hang kh ON tk.khach_hang_id = kh.id
                     LEFT JOIN container_quan_ly c ON tk.id = c.to_khai_id
                     LEFT JOIN chuyen_di cd ON c.chuyen_di_id = cd.id
-                    LEFT JOIN xe xe ON cd.xe_id = xe.id -- Đã bổ sung JOIN bảng xe
+                    LEFT JOIN xe xe ON cd.xe_id = xe.id
                     LEFT JOIN to_khai_co co ON tk.id = co.to_khai_id
                     WHERE tk.ngay_khai BETWEEN %s AND %s
-                    {dieu_kien_khach_hang}
+                    {dieu_kien_khach_hang_preview}
                     ORDER BY tk.ngay_khai ASC
                 """
                 
@@ -856,30 +904,30 @@ with tab_out_cong_no_hq:
                     st.dataframe(df_display, use_container_width=True, hide_index=True)
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    if "CONTINENTAL" in loai_bao_cao:
-                        st.info("📌 Đang áp dụng: **Mẫu xuất file riêng cho khách hàng Continental** (Kèm bảng tổng và tách sheet theo HBL).")
-                    else:
-                        st.info("📌 Đang áp dụng: **Mẫu xuất file chuẩn ICHIHIRO** truyền thống.")
+                    #if "CONTINENTAL" in loai_bao_cao:
+                    #    st.info("📌 Đang áp dụng: **Mẫu xuất file riêng cho khách hàng Continental** (Kèm bảng tổng và tách sheet theo HBL).")
+                    #else:
+                    #    st.info("📌 Đang áp dụng: **Mẫu xuất file chuẩn ICHIHIRO** truyền thống.")
 
-                    if st.button("🚀 Xuất File Excel Tổng Hợp", type="primary", use_container_width=True):
-                        if "CONTINENTAL" in loai_bao_cao:
-                            file_data = xuat_excel_hai_quan_continental(db, e_tu_ngay.strftime('%Y-%m-%d'), e_den_ngay.strftime('%Y-%m-%d'))
-                            file_name = f"Bao_Cao_Continental_{e_tu_ngay.strftime('%m%Y')}.xlsx"
-                        else:
-                            file_data = xuat_excel_hai_quan_bao_tin(db, e_tu_ngay.strftime('%Y-%m-%d'), e_den_ngay.strftime('%Y-%m-%d'))
-                            file_name = f"Bao_Cao_Hai_Quan_Bao_Tin_{e_tu_ngay.strftime('%m%Y')}.xlsx"
+                    #if st.button("🚀 Xuất File Excel Tổng Hợp", type="primary", use_container_width=True):
+                    #    if "CONTINENTAL" in loai_bao_cao:
+                    #        file_data = xuat_excel_hai_quan_continental(db, e_tu_ngay.strftime('%Y-%m-%d'), e_den_ngay.strftime('%Y-%m-%d'))
+                    #        file_name = f"Bao_Cao_Continental_{e_tu_ngay.strftime('%m%Y')}.xlsx"
+                    #    else:
+                    #        file_data = xuat_excel_hai_quan_bao_tin(db, e_tu_ngay.strftime('%Y-%m-%d'), e_den_ngay.strftime('%Y-%m-%d'))
+                    #        file_name = f"Bao_Cao_Hai_Quan_Bao_Tin_{e_tu_ngay.strftime('%m%Y')}.xlsx"
                         
-                        if file_data:
-                            st.success("Tạo file thành công! Vui lòng tải xuống bên dưới.")
-                            st.download_button(
-                                label="⬇️ Tải Xuống File Báo Cáo Excel",
-                                data=file_data,
-                                file_name=file_name,
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                use_container_width=True
-                            )
-                        else:
-                            st.error("Không có dữ liệu của nhóm khách hàng này trong thời gian đã chọn để xuất file.")
+                        #if file_data:
+                        #    st.success("Tạo file thành công! Vui lòng tải xuống bên dưới.")
+                        #    st.download_button(
+                        #        label="⬇️ Tải Xuống File Báo Cáo Excel",
+                        #        data=file_data,
+                        #        file_name=file_name,
+                        #        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        #        use_container_width=True
+                        #    )
+                        #else:
+                        #    st.error("Không có dữ liệu của nhóm khách hàng này trong thời gian đã chọn để xuất file.")
                 else:
                     st.warning("⚠️ Không tìm thấy dữ liệu tờ khai trong khoảng thời gian này.")
             except Exception as e:

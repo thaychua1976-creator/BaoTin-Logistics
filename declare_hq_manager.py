@@ -254,38 +254,22 @@ def delete_bang_gia_hai_quan_transaction(db_pool, bg_id, current_user):
 ################################################
 
 
-def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
-    # 1. Truy vấn chi tiết tờ khai (Chỉ lấy khách hàng ICHIHIRO,ZEHENXING)
+def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, tu_khoa_cong_ty):
+    # 1. Truy vấn chi tiết tờ khai (Lọc động theo từ khóa tên công ty)
     sql_tk = """
         SELECT 
-            tk.id AS tk_id,
-            tk.so_to_khai, 
-            tk.loai_to_khai,
-            tk.ngay_khai,
-            tk.so_hoa_don_tm,
-            tk.ma_loai_hinh,
-            tk.so_kien,
+            tk.id AS tk_id, tk.so_to_khai, tk.loai_to_khai, tk.ngay_khai,
+            tk.so_hoa_don_tm, tk.ma_loai_hinh, tk.so_kien,
             COALESCE(tk.tong_trong_luong_hang, cd.khoi_luong_kg, 0) AS tong_trong_luong,
-            tk.phan_luong,
-            COALESCE(tk.phi_khac, 0) AS phi_khac,
-            kh.ten_khach_hang, 
-            cd.dia_diem_giao_nhan,
-            c.phi_van_chuyen  AS c_phi_van_chuyen,
-            cd.doanh_thu  AS cd_doanh_thu,
-            c.loai_cont,
-            c.so_cont,
-            cd.is_thue_ngoai,
-            cd.bien_so_xe_ngoai,
-            cd.loai_hinh_xe,
-            xe.bien_so_xe AS bien_so_noi_bo,
-            xe.loai_xe AS loai_xe_noi_bo,
-            xe.tai_trong_thiet_ke,
-            COALESCE(c.phi_nang_ha_on, 0) AS phi_nang_ha_on,
-            c.so_hoa_don_lift_on,
-            COALESCE(c.phi_nang_ha_off, 0) AS phi_nang_ha_off,
-            c.so_hoa_don_lift_off,
-            COALESCE(c.phi_csht, 0) AS phi_csht,
-            c.so_hoa_don_csht,
+            tk.phan_luong, COALESCE(tk.phi_khac, 0) AS phi_khac,
+            kh.ten_khach_hang, cd.dia_diem_giao_nhan,
+            c.phi_van_chuyen  AS c_phi_van_chuyen, cd.doanh_thu  AS cd_doanh_thu,
+            c.loai_cont, c.so_cont,
+            cd.is_thue_ngoai, cd.bien_so_xe_ngoai, cd.loai_hinh_xe,
+            xe.bien_so_xe AS bien_so_noi_bo, xe.loai_xe AS loai_xe_noi_bo, xe.tai_trong_thiet_ke,
+            COALESCE(c.phi_nang_ha_on, 0) AS phi_nang_ha_on, c.so_hoa_don_lift_on,
+            COALESCE(c.phi_nang_ha_off, 0) AS phi_nang_ha_off, c.so_hoa_don_lift_off,
+            COALESCE(c.phi_csht, 0) AS phi_csht, c.so_hoa_don_csht,
             (IFNULL(c.phi_to_khai, 0) + IFNULL(tk.phi_dich_vu_hq, 0)) AS phi_to_khai
         FROM to_khai_hai_quan tk
         LEFT JOIN khach_hang kh ON tk.khach_hang_id = kh.id
@@ -294,30 +278,24 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
         LEFT JOIN xe xe ON cd.xe_id = xe.id 
         LEFT JOIN to_khai_co co ON tk.id = co.to_khai_id
         WHERE tk.ngay_khai BETWEEN %s AND %s
-          AND (
-              UPPER(kh.ten_khach_hang) LIKE '%ICHIHIRO%' 
-              OR UPPER(kh.ten_khach_hang) LIKE '%ZHENGXING%'
-          )
+          AND UPPER(kh.ten_khach_hang) LIKE %s
+        ORDER BY tk.ngay_khai ASC, tk.id ASC, c.id ASC
     """
     
-    # Truyền từ khóa ICHIHIRO vào Params
-    params = [tu_ngay, den_ngay]
-    if khach_hang_id:
-        sql_tk += " AND tk.khach_hang_id = %s"
-        params.append(khach_hang_id)
-    sql_tk += " ORDER BY tk.ngay_khai ASC, tk.id ASC, c.id ASC"
+    # Truyền tham số từ khóa công ty vào SQL
+    params = (tu_ngay, den_ngay, f"%{tu_khoa_cong_ty.upper()}%")
+    df_raw = db.execute_query(sql_tk, params)
     
-    df_raw = db.execute_query(sql_tk, tuple(params))
     if not isinstance(df_raw, pd.DataFrame) or df_raw.empty:
         return None
 
     # Làm sạch các cột số liệu
-    numeric_cols_tk = ['phi_to_khai', 'phi_nang_ha_on', 'phi_nang_ha_off','phi_csht', 'tong_trong_luong', 'phi_van_chuyen', 'phi_khac']
+    numeric_cols_tk = ['phi_to_khai', 'phi_nang_ha_on', 'phi_nang_ha_off','phi_csht', 'tong_trong_luong', 'c_phi_van_chuyen', 'cd_doanh_thu', 'phi_khac']
     for col in numeric_cols_tk:
         if col in df_raw.columns:
             df_raw[col] = pd.to_numeric(df_raw[col], errors='coerce').fillna(0)
 
-    # 2. Truy vấn dữ liệu bảng C/O (Cũng chỉ lấy ICHIHIRO,ZHENGXING)
+    # 2. Truy vấn dữ liệu bảng C/O (Cũng lọc động theo tên công ty)
     sql_co = """
         SELECT 
             co.*, 
@@ -327,19 +305,11 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
         JOIN to_khai_hai_quan tk ON co.to_khai_id = tk.id
         JOIN khach_hang kh ON tk.khach_hang_id = kh.id
         WHERE co.ngay_co BETWEEN %s AND %s
-          AND (
-              UPPER(kh.ten_khach_hang) LIKE '%ICHIHIRO%' 
-              OR UPPER(kh.ten_khach_hang) LIKE '%ZHENGXING%'
-          )
+          AND UPPER(kh.ten_khach_hang) LIKE %s
+        ORDER BY co.ngay_co ASC
     """
-   # params_co = [tu_ngay, den_ngay, '%ICHIHIRO%']
-    params_co = [tu_ngay, den_ngay]
-    if khach_hang_id:
-        sql_co += " AND tk.khach_hang_id = %s"
-        params_co.append(khach_hang_id)
-    sql_co += " ORDER BY co.ngay_co ASC"
+    df_co_raw = db.execute_query(sql_co, params)
     
-    df_co_raw = db.execute_query(sql_co, tuple(params_co))
     if isinstance(df_co_raw, pd.DataFrame) and not df_co_raw.empty:
         for col_co in ['phi_co', 'phi_dvhq']:
             if col_co in df_co_raw.columns:
@@ -350,6 +320,16 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
     mm = dt_tu_ngay.strftime('%m')
     yyyy = dt_tu_ngay.strftime('%Y')
     mmm_eng = dt_tu_ngay.strftime('%b').upper()
+
+    # Hàm an toàn bẫy lỗi hiển thị chữ "nan"
+    def safe_str(val):
+        if pd.isna(val) or str(val).strip().lower() == 'nan': return ""
+        return str(val).strip()
+    
+    def safe_float(val):
+        if pd.isna(val) or str(val).strip().lower() == 'nan': return 0.0
+        try: return float(val)
+        except: return 0.0
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter', engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
@@ -411,16 +391,6 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
             ws.merge_range('R4:R5', 'PHÍ DVHQ\nCustoms declaration fee', fmt_header)
             ws.merge_range('S4:S5', 'PHÍ PHÁT SINH\nFees incurred', fmt_header)
             ws.merge_range('T4:T5', 'PHÂN LUỒNG\nSelectivity of customs declaration form', fmt_header)
-            
-            # Hàm an toàn xử lý triệt để lỗi "nan" của thư viện Pandas
-            def safe_str(val):
-                if pd.isna(val) or str(val).strip().lower() == 'nan': return ""
-                return str(val).strip()
-            
-            def safe_float(val):
-                if pd.isna(val) or str(val).strip().lower() == 'nan': return 0.0
-                try: return float(val)
-                except: return 0.0
                 
             row = 5
             stt = 1
@@ -440,12 +410,11 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
                         else:
                             ws.write(current_row, 0, stt, fmt_center)
                     
-                    # 1. BÓC TÁCH AN TOÀN
+                    # BÓC TÁCH AN TOÀN
                     cont_so = safe_str(r.get('so_cont'))
                     cont_loai = safe_str(r.get('loai_cont'))
                     is_thue_ngoai = safe_float(r.get('is_thue_ngoai'))
                     
-                    # 2. KIỂM TRA VÀ GÁN DỮ LIỆU XE TẢI
                     if not cont_so:
                         if is_thue_ngoai == 1:
                             hien_thi_so = safe_str(r.get('bien_so_xe_ngoai'))
@@ -458,14 +427,12 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
                                 hien_thi_loai = f"{val_tai:.1f} Tấn".replace('.0', '')
                             else:
                                 hien_thi_loai = safe_str(r.get('loai_xe_noi_bo')) or "Xe tải"
-                        
                         if cont_loai and cont_loai.upper() != 'KHÁC':
                              hien_thi_loai = cont_loai
                     else:
                         hien_thi_loai = cont_loai
                         hien_thi_so = cont_so
 
-                    # 3. KÉO CƯỚC VẬN CHUYỂN KÉP
                     phi_vc = safe_float(r.get('c_phi_van_chuyen'))
                     if phi_vc == 0:
                         phi_vc = safe_float(r.get('cd_doanh_thu'))
@@ -478,7 +445,7 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
                         safe_str(r.get('ma_loai_hinh')),
                         safe_str(r.get('so_kien')),
                         safe_float(r.get('tong_trong_luong')),
-                        hien_thi_loai  # Cột I: LOẠI CONT/XE
+                        hien_thi_loai 
                     ]
                     
                     for c_idx, val in enumerate(vals, start=1):
@@ -490,10 +457,7 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
                                 fmt_cell = fmt_money if c_idx == 7 else fmt_center
                                 ws.write(current_row, c_idx, val, fmt_cell)
                     
-                    # Cột J (index 9): SỐ CONT/XE 
                     ws.write(current_row, 9, hien_thi_so, fmt_center)
-                    
-                    # Các cột chi phí nâng hạ, cước vận chuyển, DVHQ
                     ws.write(current_row, 10, float(r.get('phi_nang_ha_on') or 0), fmt_money)
                     ws.write(current_row, 11, str(r.get('so_hoa_don_lift_on') or ''), fmt_center)
                     ws.write(current_row, 12, float(r.get('phi_nang_ha_off') or 0), fmt_money)
@@ -502,15 +466,12 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, khach_hang_id=None):
                     ws.write(current_row, 15, str(r.get('so_hoa_don_csht') or ''), fmt_center) 
                     ws.write(current_row, 16, phi_vc, fmt_money)
                     
-                    # Phí DVHQ đã được gộp cả Container và Xe Tải
                     phi_to_khai_val = float(r.get('phi_to_khai') or 0) / num_rows if num_rows > 0 else 0.0
                     ws.write(current_row, 17, phi_to_khai_val, fmt_money)
                     
-                    # Phí phát sinh (phi_khac)
                     phi_khac_val = float(r.get('phi_khac') or 0) / num_rows if num_rows > 0 else 0.0
                     ws.write(current_row, 18, phi_khac_val, fmt_money)
                     
-                    # Phân luồng
                     val_phan_luong = str(r.get('phan_luong') or '')
                     if i == 0:
                         if num_rows > 1:

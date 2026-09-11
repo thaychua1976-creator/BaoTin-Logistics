@@ -32,11 +32,42 @@ def get_idx(lst, val, default=0):
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>🏢 PHÂN HỆ QUẢN LÝ TỜ KHAI HẢI QUAN & CONTAINER</h3>", unsafe_allow_html=True)
 st.divider()
 
-tab_khai_hq, tab_danh_sach, tab_container = st.tabs([
-    "📋 KHAI BÁO TỜ KHAI MỚI", 
-    "🔍 DANH SÁCH & QUẢN LÝ TỜ KHAI", 
-    "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)"
-])
+#tab_khai_hq, tab_danh_sach, tab_container = st.tabs([
+#    "📋 KHAI BÁO TỜ KHAI MỚI", 
+#    "🔍 DANH SÁCH & QUẢN LÝ TỜ KHAI", 
+#    "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)"
+#])
+
+# --- KHỞI TẠO TAB VÀ NÚT REFRESH DÙNG CHUNG ---
+if "active_hq_tab" not in st.session_state:
+    st.session_state["active_hq_tab"] = "📋 KHAI BÁO TỜ KHAI MỚI"
+
+# Tạo giao diện chọn tab dạng button ngang thay cho st.tabs để dễ đặt nút refresh bên cạnh hoặc tích hợp sẵn
+col_t1, col_t2, col_t3, col_t_ref = st.columns([2.5, 2.5, 3, 1.2])
+
+with col_t1:
+    if st.button("📋 KHAI BÁO TỜ KHAI", use_container_width=True, type="primary" if st.session_state["active_hq_tab"] == "📋 KHAI BÁO TỜ KHAI MỚI" else "secondary"):
+        st.session_state["active_hq_tab"] = "📋 KHAI BÁO TỜ KHAI MỚI"
+        st.rerun()
+with col_t2:
+    if st.button("🔍 DANH SÁCH TỜ KHAI", use_container_width=True, type="primary" if st.session_state["active_hq_tab"] == "🔍 DANH SÁCH & QUẢN LÝ TỜ KHAI" else "secondary"):
+        st.session_state["active_hq_tab"] = "🔍 DANH SÁCH & QUẢN LÝ TỜ KHAI"
+        st.rerun()
+with col_t3:
+    if st.button("📦 QUẢN LÝ CONTAINER & PHÍ", use_container_width=True, type="primary" if st.session_state["active_hq_tab"] == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)" else "secondary"):
+        st.session_state["active_hq_tab"] = "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)"
+        st.rerun()
+
+with col_t_ref:
+    # Tận dụng hàm tao_tieu_de_kem_nut_refresh hoặc cơ chế làm sạch cache/rerun trực tiếp
+    if st.button("🔄 Làm mới", use_container_width=True, help="Tải lại toàn bộ dữ liệu hệ thống"):
+        clear_master_cache() # Xóa cache bộ nhớ đệm nếu có
+        st.rerun()
+
+st.divider()
+
+# Lấy tab đang hoạt động để hiển thị nội dung tương ứng
+active_tab = st.session_state["active_hq_tab"]
 
 # ==========================================
 # HÀM TRANSACTION BATCH CHO CONTAINER (Giữ nguyên)
@@ -61,7 +92,7 @@ def save_containers_batch_transaction(db_pool, link_col, parent_id, container_li
             loai_cont = str(item.get('loai_cont') or '40HC').strip()
             
             # Chỉ bỏ qua nếu không nhập Số Cont VÀ loại khai báo không phải là Xe Tải
-            loai_xe_tai = ["1T", "2T", "2T:", "3T", "4T", "5T", "8T", "15T", "22T", "Khác"]
+            loai_xe_tai = ["1T", "2T", "3T", "4T", "5T", "8T", "15T", "22T", "Khác"]
             if not so_cont and loai_cont not in loai_xe_tai:
                 continue
                 
@@ -154,7 +185,8 @@ def delete_container_transaction(db_pool, cont_id, user=current_user):
 # ==========================================
 # TAB 1: KHAI BÁO TỜ KHAI MỚI
 # ==========================================
-with tab_khai_hq:
+if active_tab == "📋 KHAI BÁO TỜ KHAI MỚI":
+   
     @st.fragment
     def vung_thao_tac_khai_hq():
         try:
@@ -390,8 +422,8 @@ with tab_khai_hq:
                 selected_phu_phi = st.multiselect("🏷️ Chọn Phụ Phí Đã Cấu Hình Cho Khách Này", options=list(dict_phu_phi.keys()), format_func=lambda x: dict_phu_phi[x])
 
                 cp1 = st.columns(1)
-                #phi_van_chuyen_lien_ket = cp1.text_input("Phí Vận Chuyển (Lấy từ Chuyến)", value="", placeholder="0", disabled=(loai_tk in ["Noi_Dia", "DHL"]))
-                phi_khac_nhap_tay = cp1.text_input("Phí Phát Sinh Khác (Gõ tay thêm nếu có)", value="", placeholder="0")
+                with cp1[0]:
+                    phi_khac_nhap_tay = st.text_input("Phí Phát Sinh Khác (Gõ tay thêm nếu có)", value="", placeholder="0")
                 ghi_chu = st.text_input("Ghi chú bổ sung")
                 
                 
@@ -469,7 +501,7 @@ with tab_khai_hq:
 # ==========================================
 # TAB 2: DANH SÁCH & QUẢN LÝ TỜ KHAI
 # ==========================================
-with tab_danh_sach:
+elif active_tab == "🔍 DANH SÁCH & QUẢN LÝ TỜ KHAI":
     tao_tieu_de_kem_nut_refresh("🔍 Danh sách Tờ Khai Hải Quan", "ref_tab_ds_hq")
     @st.fragment
     def vung_thao_tac_quan_ly_to_khai():
@@ -682,7 +714,8 @@ with tab_danh_sach:
 # ==========================================
 # CÁC TAB 3 VÀ 4 GIỮ NGUYÊN HOÀN TOÀN TỪ SOURCE CŨ
 # ==========================================
-with tab_container:
+elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
+    #tao_tieu_de_kem_nut_refresh("📦 Quản Lý Danh Sách Container & Phí", "ref_tab_cont_hq")
     @st.fragment
     def vung_thao_tac_quan_ly_container():
         try:
@@ -757,7 +790,7 @@ with tab_container:
                     
                     sc3, sc4 = st.columns(2)
 
-                    loai_cont_options = [None, "1T", "2T:","3T", "4T", "5T", "8T", "15T", "22T", "3X40", "1X40", "2X40", "1X20", "2X20","3X20", "4X40","1X45","2X45","3X45", "Khác"]
+                    loai_cont_options = [None, "1T", "2T","3T", "4T", "5T", "8T", "15T", "22T", "3X40", "1X40", "2X40", "1X20", "2X20","3X20", "4X40","1X45","2X45","3X45", "Khác"]
                     loai_cont_default = sc3.selectbox(
                         "Loại Container chung", 
                         options=loai_cont_options, 
@@ -805,7 +838,7 @@ with tab_container:
                     ghi_chu_input= p21.text_input("Ghi chú", value="")
 
                     raw_container_text = st.text_area(
-                        "Danh sách số Container*",
+                        "Số Container*",
                         placeholder="Nhập hoặc dán danh sách số container vào đây",
                         help="Hỗ trợ nhập liệu hàng loạt cho các lô hàng lớn."
                     )
@@ -816,10 +849,13 @@ with tab_container:
                             st.stop()
                         
                         # 1. Nhận diện Xe Tải dựa vào Loại Container
-                        loai_xe_tai = ["1T", "2T", "2T:", "3T", "4T", "5T", "8T", "15T", "22T", "Khác"]
+                        loai_xe_tai = ["1T", "2T", "2T", "3T", "4T", "5T", "8T", "15T", "22T", "Khác"]
                         is_truck = loai_cont_default in loai_xe_tai
 
                         # 2. Bỏ qua Validation nâng hạ nếu là Xe Tải
+                        if not loai_cont_default:
+                             st.error("❌ Vui lòng chọn loại cont 20,40.. or tải 1T,2T. ở mục Loại Container chung..")
+                             st.stop()
                         if not is_truck:
                             if parse_money_input(phi_dv_hq_input) <= 0:
                                 st.error("❌ Phí DVHQ không được để trống và > 0!")
