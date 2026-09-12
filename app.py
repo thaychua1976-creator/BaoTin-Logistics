@@ -13,14 +13,27 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+
 # =====================================================================
-# BƯỚC 2: CSS TÙY CHỈNH GIAO DIỆN (SỬ DỤNG CSS :has() ĐỂ TRỊ TẬN GỐC)
-# =====================================================================
-# =====================================================================
-# BƯỚC 2: CSS TÙY CHỈNH GIAO DIỆN (ĐÃ NÂNG CẤP MENU & ẨN HƯỚNG DẪN)
+# BƯỚC 2: CSS TÙY CHỈNH GIAO DIỆN (ĐÃ NÂNG CẤP MENU & TRÀN MÀN HÌNH)
 # =====================================================================
 st.markdown("""
     <style>
+        /* ===================================================== */
+        /* CSS ÉP TRÀN MÀN HÌNH VÀ BỎ KHOẢNG TRẮNG PHÍA TRÊN */
+        /* ===================================================== */
+        .block-container {
+            padding-top: 2.5rem !important;
+            padding-bottom: 1rem !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+            max-width: 98% !important;
+        }
+        
+        [data-testid="stAppViewBlockContainer"] {
+            padding-top: 2.5rem !important;
+        }
+
         /* Ẩn dòng chữ hướng dẫn Press Enter to submit */
         div[data-testid="InputInstructions"] {
             display: none !important;
@@ -52,14 +65,13 @@ st.markdown("""
             border-bottom: 2px solid #cbd5e1;
         }
         
-        /* 1.1 TÙY CHỈNH RIÊNG CHO MỤC "DANH MỤC QUẢN TRỊ" (Màu đỏ + Hiệu ứng nổi 3D) */
-        /* Giả định "DANH MỤC QUẢN TRỊ" là mục lớn thứ 2 trong navigation list */
+        /* 1.1 TÙY CHỈNH RIÊNG CHO MỤC "DANH MỤC QUẢN TRỊ" */
         [data-testid="stSidebarNav"] > ul > li:nth-child(2) > div {
-            color: #d32f2f !important; /* Màu đỏ đậm */
+            color: #d32f2f !important; 
             font-size: 17px !important;
             text-shadow: 1px 1px 0 #999, 
                          2px 2px 0 #777, 
-                         3px 3px 2px rgba(0,0,0,0.4) !important; /* Hiệu ứng chữ nổi 3D */
+                         3px 3px 2px rgba(0,0,0,0.4) !important; 
             border-bottom: 2px solid #d32f2f !important;
             padding-bottom: 8px !important;
             margin-top: 25px !important;
@@ -67,7 +79,7 @@ st.markdown("""
 
         /* 2. Mục con (Sub-items - Các trang chức năng) - Lùi vào trong */
         [data-testid="stSidebarNav"] ul li ul li {
-            margin-left: 25px !important; /* Đẩy lùi vào trong 25px */
+            margin-left: 25px !important; 
             border-left: 2px solid #e2e8f0;
         }
 
@@ -112,13 +124,7 @@ st.markdown("""
 # =====================================================================
 # BƯỚC 3: TIÊU ĐỀ TRANG CHỦ & KHỞI TẠO DATABASE
 # =====================================================================
-st.markdown("""
-    <div style='margin-top: -30px; margin-bottom: 20px;'>
-        
-        
-        
-    </div>
-""", unsafe_allow_html=True)
+
    #<h1 style='text-align: center; color: #0b5394; font-family: "Segoe UI", Arial, sans-serif; font-weight: 800; font-size: 34px; letter-spacing: 1px;'>
    #            🚚 HỆ THỐNG QUẢN LÝ LOGISTICS BẢO TÍN
    #</h1> 
@@ -160,10 +166,16 @@ if not st.session_state['logged_in']:
     
     col_l1, col_l2, col_l3 = st.columns([1, 1, 1])
     with col_l2:
-        # Bỏ st.form để nút mắt hoạt động Real-time
-        username = st.text_input("Tên đăng nhập", autocomplete="off")
+        # Hàm callback kích hoạt trạng thái đăng nhập khi người dùng ấn Enter
+        def trigger_login():
+            st.session_state['do_login'] = True
+
+        # Gắn sự kiện on_change để ấn Enter ở ô Tên đăng nhập cũng tự động gửi
+        username = st.text_input("Tên đăng nhập", autocomplete="off", on_change=trigger_login)
         
-        col_pw, col_eye = st.columns([9, 2])
+        # CĂN CHỈNH ĐÁY: Dùng vertical_alignment="bottom" để nút con mắt tự động nằm bằng ngang với ô nhập mật khẩu
+        col_pw, col_eye = st.columns([9, 2], vertical_alignment="bottom")
+        
         with col_pw:
             if not st.session_state['hien_mat_khau']:
                 css_masking = """
@@ -174,18 +186,22 @@ if not st.session_state['logged_in']:
                 </style>
                 """
                 st.markdown(css_masking, unsafe_allow_html=True)
-            password = st.text_input("Mật khẩu", autocomplete="off")
+            
+            # Gắn sự kiện on_change để ấn Enter sau khi nhập xong mật khẩu
+            password = st.text_input("Mật khẩu", autocomplete="off", on_change=trigger_login)
             
         with col_eye:
-            st.markdown("<br>", unsafe_allow_html=True) 
             icon = "👁️‍🗨️" if st.session_state['hien_mat_khau'] else "👁️"
             st.button(icon, on_click=toggle_password, help="Ẩn/Hiện mật khẩu", use_container_width=True)
             
         st.markdown("<br>", unsafe_allow_html=True)
         submit = st.button("Đăng Nhập", type="primary", use_container_width=True)
         
-        if submit:
-            # Truy vấn thêm trường ho_ten từ bảng users
+        # Chấp nhận thao tác Click nút "Đăng Nhập" HOẶC người dùng ấn phím Enter
+        if submit or st.session_state.get('do_login', False):
+            st.session_state['do_login'] = False # Reset lại cờ trạng thái
+            
+            # Truy vấn dữ liệu từ database
             sql = "SELECT id, role, password, nhan_vien_id, ho_ten FROM users WHERE username = %s"
             result = db.execute_query(sql, (username,))
             
@@ -245,7 +261,7 @@ else:
     page_quan_ly_co = st.Page("views/quan_ly_co.py", title="Quản lý CO", icon="🧑‍✈️")
     page_doi_xe    = st.Page("views/doi_xe.py", title="Quản lý Đội xe", icon="🚛")
     page_phap_ly_xe    = st.Page("views/phap_ly_xe.py", title="Quản lý pháp lý xe", icon="🚛")
-    page_tai_khoan = st.Page("views/tai_khoan.py", title="Quản lý Tài khoản", icon="👤")
+    page_tai_khoan = st.Page("views/tai_khoan.py", title="Quản lý tài khoản user", icon="👤")
     page_kinh_doanh_result= st.Page("views/kinh_doanh_result.py", title="Kết quả Kinh doanh", icon="📈")
     page_app_tai_xe = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", default=True)
     page_tool_zalo= st.Page("views/zalo_local_processor.py", title=" Lấy thông tin book từ Zalo", icon="🚛")

@@ -553,6 +553,8 @@ with tab3:
                                     st.success(message)
                                     time.sleep(1)
                                     st.session_state['mode_pp_t3_val'] = "👀 Xem danh sách & Xuất Excel"
+                                    # Thêm dòng này để ép Streamlit xóa trắng trạng thái form và selectbox
+                                    st.session_state['rate_reset_counter'] += 1
                                     st.rerun()
                                 else:
                                     st.error(message)

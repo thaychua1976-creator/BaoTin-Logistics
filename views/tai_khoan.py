@@ -67,7 +67,7 @@ def get_danh_sach_nhan_vien(database):
 nhan_vien_dict = get_danh_sach_nhan_vien(db)
 
 # Khởi tạo các Tab chức năng điều hướng
-tab1, tab2, tab3 = st.tabs(["📋 Danh sách Tài khoản", "➕ Tạo Tài khoản Mới", "🔧 Sửa & Xóa Tài khoản"])
+tab1, tab2, tab3 = st.tabs(["📋 Danh sách Tài khoản", "➕ Tạo Tài khoản Mới", "🔧 Sửa-Xóa-Reset Tài khoản"])
 
 # ==========================================
 # TAB 1: DANH SÁCH TÀI KHOẢN
@@ -265,8 +265,9 @@ with tab3:
                     )
                     
                     st.divider()
-                    b_save, b_del = st.columns(2)
+                    b_save, b_reset, b_del = st.columns(3)
                     
+                    # 1. NÚT LƯU CẬP NHẬT THÔNG TIN
                     if b_save.form_submit_button("🔄 Lưu Cập Nhật", type="primary"):
                         if edit_role[0] == "Tai_Xe" and edit_nv_id is None:
                             st.error("⚠️ Phân quyền 'Tài xế' bắt buộc phải được liên kết với một Hồ sơ Nhân viên!")
@@ -277,7 +278,6 @@ with tab3:
                             else:
                                 final_pass = us_data['password']
                             
-                            # Đóng gói dữ liệu kèm nhan_vien_id
                             user_data = {
                                 'id': int(selected_user_id),
                                 'ho_ten': edit_name.strip(),
@@ -289,24 +289,50 @@ with tab3:
                             
                             current_user = st.session_state.get('username', 'Admin_Chua_Dang_Nhap')
                             success, result = handle_user_transaction_with_audit(db.pool, "CAP_NHAT", user_data, current_user)
-                        
                                                 
                             if success:
-                                clear_master_cache() # Xóa cache sau khi sửa tài khoản
+                                clear_master_cache() 
                                 st.success(f"🎉 Đã cập nhật thành công tài khoản {us_data['username']}!")
                                 st.session_state["reset_edit_user"] += 1
                                 time.sleep(1)
                                 st.rerun()
                             else:
                                 st.error(f"⚠️ Lỗi xử lý dữ liệu: {result}")
+                                
+                    # 2. NÚT RESET MẬT KHẨU VỀ MẶC ĐỊNH (123)
+                    if b_reset.form_submit_button("🔑 Reset Mật khẩu (123)"):
+                        default_pass = "123"
+                        hashed_default = bcrypt.hashpw(default_pass.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+                        
+                        user_data = {
+                            'id': int(selected_user_id),
+                            'ho_ten': edit_name.strip(),
+                            'password': hashed_default, 
+                            'role': edit_role[0],
+                            'trang_thai': edit_status[0],
+                            'nhan_vien_id': edit_nv_id
+                        }
+                        
+                        current_user = st.session_state.get('username', 'Admin_Chua_Dang_Nhap')
+                        success, result = handle_user_transaction_with_audit(db.pool, "CAP_NHAT", user_data, current_user)
+                        
+                        if success:
+                            clear_master_cache()
+                            st.success(f"✅ Đã khôi phục mật khẩu tài khoản {us_data['username']} về mặc định là 123!")
+                            st.session_state["reset_edit_user"] += 1
+                            time.sleep(1.5)
+                            st.rerun()
+                        else:
+                            st.error(f"⚠️ Lỗi xử lý dữ liệu: {result}")
                     
-                    if b_del.form_submit_button("🗑️ XÓA VĨNH VIỄN TÀI KHOẢN"):
+                    # 3. NÚT XÓA VĨNH VIỄN
+                    if b_del.form_submit_button("🗑️ XÓA TÀI KHOẢN"):
                         user_data = {'id': int(selected_user_id)}
                         current_user = st.session_state.get('username', 'Admin_Chua_Dang_Nhap')
                         success, result = handle_user_transaction_with_audit(db.pool, "XOA", user_data, current_user)
                         
                         if success:
-                            clear_master_cache() # Xóa cache sau khi xóa tài khoản
+                            clear_master_cache() 
                             st.warning(f"🗑️ Đã xóa bỏ hoàn toàn tài khoản {us_data['username']} khỏi hệ thống!")
                             st.session_state["reset_edit_user"] += 1
                             time.sleep(1)

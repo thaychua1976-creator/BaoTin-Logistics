@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
-import io, time
+import io, time, re
 from map_service import MapService
 from trip_manager import save_trip_full_process, tao_khach_hang_nhanh, group_trips_transaction, update_trip_full_process, delete_trip_safe
 from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
@@ -538,15 +538,34 @@ with tab2:
                 if c_kh_sel and c_kh_sel != "NEW": khach_id_filter = int(c_kh_sel)
                 elif mode_action == "✏️ Sửa chuyến hiện tại": khach_id_filter = trip_data.get('khach_hang_id')
 
-                # --- CẢI TIẾN: BỔ SUNG LỌC THEO is_hang_tra_ve ---
+                # --- CẢI TIẾN: BỔ SUNG LỌC THEO CHIỀU HÀNG VÀ LOẠI PHƯƠNG TIỆN (XE MÁY) ---
                 is_hang_ve_db = bool(trip_data.get('is_hang_tra_ve', 0)) if mode_action == "✏️ Sửa chuyến hiện tại" else False
-                is_hang_ve_ui = st.checkbox("🔄 Lộ trình chở hàng về (Chỉ lọc các tuyến chiều về)", value=is_hang_ve_db, key=f"is_hang_ve_ui_{trip_suffix}")
+                is_xe_may_db = (trip_data.get('loai_hinh_xe') == 'Xe_May') if mode_action == "✏️ Sửa chuyến hiện tại" else False
+                
+                col_cb_lt1, col_cb_lt2 = st.columns(2)
+                is_hang_ve_ui = col_cb_lt1.checkbox("🔄 Lộ trình chở hàng về (Chỉ lọc các tuyến chiều về)", value=is_hang_ve_db, key=f"is_hang_ve_ui_{trip_suffix}")
+                is_xe_may_ui = col_cb_lt2.checkbox("🏍️ Lộ trình dành cho Xe Máy", value=is_xe_may_db, key=f"is_xe_may_ui_{trip_suffix}")
 
                 lo_trinh_opts = {None: "-- Vui lòng chọn lộ trình (Tạo mới nếu chưa có) --"}
                 if khach_id_filter:
                     flag_hang_ve = 1 if is_hang_ve_ui else 0
-                    # Truy vấn SQL kèm theo điều kiện is_hang_tra_ve để chống nhiễu dữ liệu
-                    sql_rates = "SELECT DISTINCT diem_di, diem_den FROM rate_cards WHERE khach_hang_id = %s AND is_hang_tra_ve = %s ORDER BY diem_di"
+                    
+                    # Tách logic SQL: Nếu check Xe Máy -> Chỉ lấy lộ trình Xe_May, ngược lại -> Lấy tất cả lộ trình trừ Xe_May
+                    if is_xe_may_ui:
+                        sql_rates = """
+                            SELECT DISTINCT diem_di, diem_den 
+                            FROM rate_cards 
+                            WHERE khach_hang_id = %s AND is_hang_tra_ve = %s AND phan_loai_phuong_tien = 'Xe_May' 
+                            ORDER BY diem_di
+                        """
+                    else:
+                        sql_rates = """
+                            SELECT DISTINCT diem_di, diem_den 
+                            FROM rate_cards 
+                            WHERE khach_hang_id = %s AND is_hang_tra_ve = %s AND (phan_loai_phuong_tien != 'Xe_May' OR phan_loai_phuong_tien IS NULL) 
+                            ORDER BY diem_di
+                        """
+                        
                     # Ứng dụng CACHE cho Lộ trình (Bảng giá) của Khách hàng
                     df_rates = get_cached_master_data(sql_rates, (khach_id_filter, flag_hang_ve))
                     if isinstance(df_rates, pd.DataFrame) and not df_rates.empty:
@@ -799,6 +818,7 @@ with tab2:
                         st.success(msg_success)
                         
                         # Cải tiến: Chỉ sinh ra thông báo gửi Zalo nếu trạng thái chuyến là "Tạo Mới"
+                        # Cải tiến: Chỉ sinh ra thông báo gửi Zalo nếu trạng thái chuyến là "Tạo Mới"
                         if STATUS_MAP[trang_thai_ui_value] == "Tao_Moi":
                             ma_chuyen_gui = result if mode_action == "➕ Tạo chuyến mới" else edit_trip_id_cast
                             if loai_hinh_xe == "🚀 Chạy Xe Công Ty":
@@ -815,8 +835,12 @@ with tab2:
                                     ten_tx_gui = ngoai_ten_tx
                                     sdt_tx_gui = ngoai_sdt_tx
                                     cccd_tx_gui = ngoai_cccd_tx
-                                    
-                            st.session_state["tn_tai_xe"] = f"🚛 Anh, em, chú, cậu vào:\n - Khách hàng: {ten_kh_val} giao,lấy hàng \n- Lộ trình: {diem_dau} ➡️ {diem_cuoi} \n- Mã chuyến: {ma_chuyen_gui}"
+                            # Rút gọn Tên Khách Hàng và Lộ Trình (Loại bỏ chữ Công ty TNHH / Cty TNHH)
+                            ten_kh_rut_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*', '', str(ten_kh_val)).strip()
+                            diem_dau_rut_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*', '', str(diem_dau)).strip()
+                            diem_cuoi_rut_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*', '', str(diem_cuoi)).strip()
+                            
+                            st.session_state["tn_tai_xe"] = f"🚛 Anh, em, chú, cậu vào:\n - Khách hàng: {ten_kh_rut_gon} giao, lấy hàng \n- Lộ trình: {diem_dau_rut_gon} ➡️ {diem_cuoi_rut_gon} \n- Mã chuyến: {ma_chuyen_gui}"
                             st.session_state["tn_khach"] = f"📦 THÔNG TIN TÀI XẾ\n- Tên tài xế: {ten_tx_gui}\n- SĐT: {sdt_tx_gui}\n- CCCD: {cccd_tx_gui}\n- Biển số xe: {bien_so_gui}"
 
                         st.session_state["tab2_mode_action"] = "➕ Tạo chuyến mới"
