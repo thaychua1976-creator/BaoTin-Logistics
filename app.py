@@ -1,5 +1,5 @@
 import streamlit as st
-import sys
+import sys,time
 import pandas as pd
 import bcrypt
 
@@ -170,8 +170,8 @@ if not st.session_state['logged_in']:
         def trigger_login():
             st.session_state['do_login'] = True
 
-        # Gắn sự kiện on_change để ấn Enter ở ô Tên đăng nhập cũng tự động gửi
-        username = st.text_input("Tên đăng nhập", autocomplete="off", on_change=trigger_login)
+        # không gắn Gắn sự kiện on_change:on_change=trigger_login để ấn Enter ở ô Tên đăng nhập cũng tự động gửi: vì sẽ gửi khi chưa điền pass
+        username = st.text_input("Tên đăng nhập", autocomplete="off")
         
         # CĂN CHỈNH ĐÁY: Dùng vertical_alignment="bottom" để nút con mắt tự động nằm bằng ngang với ô nhập mật khẩu
         col_pw, col_eye = st.columns([9, 2], vertical_alignment="bottom")
@@ -200,6 +200,11 @@ if not st.session_state['logged_in']:
         # Chấp nhận thao tác Click nút "Đăng Nhập" HOẶC người dùng ấn phím Enter
         if submit or st.session_state.get('do_login', False):
             st.session_state['do_login'] = False # Reset lại cờ trạng thái
+            # Thêm hiệu ứng loading và câu thông báo chờ
+            with st.spinner("Bạn vui lòng đợi tí, hệ thống đang tiến hành xác minh người sử dụng..."):
+                # Thêm import time (nếu trên đầu file chưa có) để tạo chút độ trễ ảo giúp người dùng kịp đọc thông báo (tùy chọn)
+                
+                time.sleep(1)
             
             # Truy vấn dữ liệu từ database
             sql = "SELECT id, role, password, nhan_vien_id, ho_ten FROM users WHERE username = %s"
@@ -224,6 +229,7 @@ if not st.session_state['logged_in']:
                     st.session_state['ho_ten'] = result.iloc[0]['ho_ten']
                     
                     st.success("Đăng nhập thành công! Đang chuyển hướng...") 
+                    time.sleep(0.5) # Dừng 0.5s để hiện câu success trước khi load lại trang
                     st.rerun() 
                 else:
                     st.error("❌ Sai mật khẩu!")
@@ -303,7 +309,7 @@ else:
         st.write("") 
         
         # --- BẮT ĐẦU: CHỨC NĂNG ĐỔI MẬT KHẨU CÁ NHÂN ---
-        with st.expander("🔑 Đổi mật khẩu "):
+        with st.expander("      🔑 Đổi mật khẩu     "):
             with st.form("form_change_password"):
                 old_pw = st.text_input("Mật khẩu hiện tại", type="password")
                 new_pw = st.text_input("Mật khẩu mới", type="password")

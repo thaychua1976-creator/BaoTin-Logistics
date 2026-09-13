@@ -51,7 +51,7 @@ hide_enter_submit_css = """
 """
 st.markdown(hide_enter_submit_css, unsafe_allow_html=True)
 
-st.markdown("<h3 style='text-align: center; color: #0b5394;'>📊 TRUNG TÂM BÁO CÁO THỐNG KÊ & XUẤT DỮ LIỆU EXCEL</h3>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align: center; color: #0b5394;'>📊 BÁO CÁO THỐNG KÊ & XUẤT DỮ LIỆU EXCEL</h3>", unsafe_allow_html=True)
 
 def render_tab_cong_no_khach_hang1(db):
     try:

@@ -37,11 +37,13 @@ st.markdown("<h3 style='text-align: center; color: #0b5394;'>💸 QUẢN LÝ BI�
 st.divider()
 
 # Khai báo giải nén chính xác 4 Tabs giao diện
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📝 1. Danh Sách & Sửa Bảng Giá", 
     "📥 2. Import Bảng Giá (Excel)",
     "🏷️ 3. Danh Sách & Sửa Phụ Phí",
-    "📥 4. Import Phụ Phí (Excel)"
+    "📥 4. Import Phụ Phí (Excel)",
+    "📥 5. Làm mới dữ liệu "
+
 ])
 
 
@@ -69,8 +71,15 @@ with tab1:
     st.divider()
 
     if chon_kh_id is None:
-        st.info("💡 Mẹo: Hãy chọn một Khách hàng cụ thể từ danh sách trên để xem bảng giá. Hệ thống sẽ tải dữ liệu cực nhanh!")
+        st.info("💡 Mẹo: Hãy chọn một Khách hàng...")
     else:
+        # Khởi tạo trạng thái trang hiện tại cho khách hàng được chọn
+        page_key = f"page_rate_{chon_kh_id}"
+        if page_key not in st.session_state:
+            st.session_state[page_key] = 1
+            
+        limit = 200 # Số lượng records tải mỗi lần
+        offset = (st.session_state[page_key] - 1) * limit
         sql_base = """
             SELECT r.id, kh.ten_khach_hang, r.diem_di, r.diem_den,r.khoang_cach, r.ten_bang_gia,
                    r.phan_loai_phuong_tien, r.loai_xe_quy_cach, r.gioi_han_kg, r.gioi_han_cbm,
@@ -81,13 +90,23 @@ with tab1:
         
         # Ứng dụng Cache gọi Bảng giá
         if chon_kh_id == "ALL":
-            st.warning("⚠️ Chế độ xem toàn bộ: Giao diện web chỉ hiển thị 500 dòng mới nhất để đảm bảo tốc độ. Hãy dùng nút 'Xuất Excel' bên dưới để lấy toàn bộ dữ liệu.")
+            st.warning("⚠️ Chế độ xem toàn bộ: Giao diện web chỉ hiển thị 500 dòng mới nhất...")
             df_rates_ui = get_cached_master_data(sql_base + " ORDER BY r.id DESC LIMIT 500")
             df_rates_export = get_cached_master_data(sql_base + " ORDER BY r.id DESC")
             file_export_name = f"Bang_Gia_TatCa_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
         else:
-            df_rates_ui = get_cached_master_data(sql_base + " WHERE r.khach_hang_id = %s ORDER BY r.id DESC", (chon_kh_id,))
-            df_rates_export = df_rates_ui 
+            # Đếm tổng số dòng để chia trang
+            sql_count = "SELECT COUNT(id) as total FROM rate_cards WHERE khach_hang_id = %s"
+            total_rows = get_cached_master_data(sql_count, (chon_kh_id,)).iloc[0]['total']
+            total_pages = max(1, (total_rows + limit - 1) // limit)
+            
+            # Truy vấn có Limit & Offset cho giao diện
+            sql_paged = sql_base + f" WHERE r.khach_hang_id = %s ORDER BY r.id DESC LIMIT {limit} OFFSET {offset}"
+            df_rates_ui = get_cached_master_data(sql_paged, (chon_kh_id,))
+            
+            # Truy vấn riêng cho Xuất Excel (Tải toàn bộ)
+            df_rates_export = get_cached_master_data(sql_base + " WHERE r.khach_hang_id = %s ORDER BY r.id DESC", (chon_kh_id,))
+            
             clean_name = "".join([c if c.isalnum() else "_" for c in kh_opts[chon_kh_id]])
             file_export_name = f"Bang_Gia_{clean_name}_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx"
 
@@ -183,6 +202,20 @@ with tab1:
                         if col in df_display.columns:
                             df_display[col] = pd.to_numeric(df_display[col], errors='coerce').fillna(0).apply(lambda x: f"{x:,.0f}")
                     st.dataframe(df_display, use_container_width=True, hide_index=True)
+                
+                    # Giao diện điều khiển Lazy Load / Pagination
+                    if chon_kh_id != "ALL" and total_pages > 1:
+                        c_prev, c_page, c_next = st.columns([1, 2, 1])
+                    
+                        if c_prev.button("⬅️ Trang trước", disabled=(st.session_state[page_key] <= 1)):
+                            st.session_state[page_key] -= 1
+                            st.rerun()
+                            
+                        c_page.markdown(f"<div style='text-align: center; margin-top: 8px;'><b>Trang {st.session_state[page_key]} / {total_pages}</b> (Tổng: {total_rows} dòng)</div>", unsafe_allow_html=True)
+                        
+                        if c_next.button("Trang tiếp ➡️", disabled=(st.session_state[page_key] >= total_pages)):
+                            st.session_state[page_key] += 1
+                            st.rerun()
                     
                     st.markdown("<br>", unsafe_allow_html=True)
                     
@@ -581,6 +614,8 @@ with tab3:
                                 st.success(message)
                                 time.sleep(1)
                                 st.session_state['mode_pp_t3_val'] = "👀 Xem danh sách & Xuất Excel"
+                                # Thêm dòng này để ép Streamlit xóa trắng trạng thái form và selectbox
+                                st.session_state['rate_reset_counter'] += 1
                                 st.rerun()
                             else:
                                 st.error(message)
@@ -621,3 +656,13 @@ with tab4:
                     st.error(f"❌ File Excel không hợp lệ. Chi tiết lỗi: {e}")
             else:
                 st.warning("⚠️ Vui lòng chọn file Excel trước khi bấm xác nhận!")
+###################################################################
+with tab5:
+    # --- ĐẶT NÚT LÀM MỚI CẠNH CÁC TAB CHO GỌN GÀNG GIAO DIỆN ---
+    col_tabs, col_btn_refresh = st.columns([9, 2], vertical_alignment="bottom")
+
+    with col_btn_refresh:
+        if st.button("🔄 Làm mới dữ liệu", use_container_width=True, help="Xóa bộ nhớ đệm và tải lại dữ liệu mới nhất"):
+            clear_master_cache()
+            st.rerun()
+    st.divider()

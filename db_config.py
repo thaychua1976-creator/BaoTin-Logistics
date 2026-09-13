@@ -32,7 +32,7 @@ class Database:
             pool_name = f"baotin_tms_pool_{int(time.time())}"
             self.pool = pooling.MySQLConnectionPool(
                 pool_name=pool_name,
-                pool_size=10,
+                pool_size=6,
                 **db_config
             )
         except mysql.connector.Error as err:

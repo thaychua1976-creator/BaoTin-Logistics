@@ -181,15 +181,26 @@ def send_zalo_gmf_message(group_id, message_text):
 def tao_tieu_de_kem_nut_refresh(tieu_de, key_duy_nhat):
     """
     Hàm tạo tiêu đề Tab kèm nút Refresh đồng bộ.
-    - tieu_de: Tên của Tab (vd: "Quản lý Chuyến đi")
-    - key_duy_nhat: Mã định danh để Streamlit không bị lỗi trùng nút (vd: "ref_tab1")
+    Đã nâng cấp: Xóa sạch Master Cache và rác Session State.
     """
     col_title, col_btn = st.columns([4, 1])
     with col_title:
         st.markdown(f"#### {tieu_de}")
     with col_btn:
-        # Bắt buộc phải có tham số key để phân biệt nút ở các tab khác nhau
         if st.button("🔄 Làm mới dữ liệu", key=key_duy_nhat, use_container_width=True):
+            # 1. Xóa toàn bộ Data Cache tĩnh (Bảng giá, Danh mục...)
+            st.cache_data.clear()
+            
+            # 2. Quét và xóa toàn bộ DataFrame đang lưu tạm trong RAM
+            keys_to_clear = [k for k in st.session_state.keys() if k.startswith("df_") or k.startswith("cache_")]
+            for k in keys_to_clear:
+                del st.session_state[k]
+                
+            # 3. Kích hoạt lại các Counter để reset Form trống
+            for counter in ["form_reset_counter", "reset_chuyen_form", "reset_sqt", "reset_file_upload"]:
+                if counter in st.session_state:
+                    st.session_state[counter] += 1
+                    
             st.rerun()
     st.divider()
 ###############################################################

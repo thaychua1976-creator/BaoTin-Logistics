@@ -24,7 +24,7 @@ st.markdown("### 💰 BẢNG CẤU HÌNH PHỤ CẤP SẢN LƯỢNG TÀI XẾ")
 st.info("💡 Hướng dẫn: Click đúp vào ô số tiền để sửa trực tiếp (như dùng Excel). Nhấn nút LƯU ở dưới cùng để chốt dữ liệu.")
 
 # 🔄 NÚT LÀM MỚI DỮ LIỆU TỔNG THỂ (XÓA CACHE CHỦ ĐỘNG)
-col_rf1, col_rf2 = st.columns([6, 1])
+col_rf1, col_rf2 = st.columns([2, 1])
 with col_rf2:
     if st.button("🔄 Làm mới dữ liệu", use_container_width=True):
         clear_master_cache()

@@ -53,8 +53,6 @@ tab1, tab2, tab3,tab4 = st.tabs([
 # HÀM LÕI: ĐỘNG CƠ LUẬT TÍNH PHỤ PHÍ (RULE ENGINE) - DÙNG CHUNG CHO TAB 1 & TAB 3
 # =========================================================================
 
-
-
 def clean_money_val(val):
     if val is None or pd.isna(val) or str(val).strip() == "": return 0.0
     if isinstance(val, (int, float)): return float(val)
@@ -389,34 +387,38 @@ with tab1:
             if "reset_chuyen_form" not in st.session_state: 
                 st.session_state["reset_chuyen_form"] = 0
 
-            # Dữ liệu chuyến đi đang thay đổi liên tục -> Không dùng Cache
-            sql_load = """
-                SELECT cd.id, cd.ngay_chuyen_di, cd.ten_khach_hang, cd.khach_hang_id, cd.xe_id,
-                    COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) AS bien_so_xe, 
-                    CAST(x.tai_trong_thiet_ke AS FLOAT) AS tai_trong,
-                    x.quy_cach_thung, cd.ghi_chu,
-                    COALESCE(nv.ho_ten, cd.tai_xe_ngoai_ten) AS ten_tai_xe, 
-                    cd.trang_thai_chuyen, cd.doanh_thu, cd.dia_diem_giao_nhan,
-                    cd.cong_chuyen, cd.tien_them,
-                    cd.phi_hai_quan, cd.phi_boc_xep, cd.phi_khac, cd.ghi_chu_quyet_toan,
-                    cd.is_gop_chuyen, cd.stt_chuyen_ghep, cd.is_ve_khuya, cd.khoi_luong_kg, cd.the_tich_cbm, cd.is_hang_tra_ve,
-                    cd.is_thue_ngoai, cd.chi_phi_thue_ngoai, cd.hinh_thuc_thanh_toan_ngoai
-                FROM chuyen_di cd
-                LEFT JOIN xe x ON cd.xe_id = x.id
-                LEFT JOIN chuyen_di_tai_xe ctx ON cd.id = ctx.chuyen_di_id AND ctx.loai_tai_xe = 'Tai_Chinh'
-                LEFT JOIN nhan_vien nv ON ctx.tai_xe_id = nv.id
-                WHERE cd.trang_thai_chuyen IN ('Quyet_Toan','Tao_Moi','Dang_Di')
-                   OR (cd.trang_thai_chuyen = 'Hoan_Thanh' AND (cd.doanh_thu IS NULL OR cd.doanh_thu = 0))
-                ORDER BY cd.ngay_chuyen_di DESC
+            # [TỐI ƯU TỐC ĐỘ]: Cache danh sách vào Session State theo cờ reset_chuyen_form
+            cache_key_cd = f"df_cd_cache_{st.session_state['reset_chuyen_form']}"
+            if cache_key_cd not in st.session_state:
+                sql_load = """
+                    SELECT cd.id, cd.ngay_chuyen_di, cd.ten_khach_hang, cd.khach_hang_id, cd.xe_id,
+                        COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) AS bien_so_xe, 
+                        CAST(x.tai_trong_thiet_ke AS FLOAT) AS tai_trong,
+                        x.quy_cach_thung, cd.ghi_chu,
+                        COALESCE(nv.ho_ten, cd.tai_xe_ngoai_ten) AS ten_tai_xe, 
+                        cd.trang_thai_chuyen, cd.doanh_thu, cd.dia_diem_giao_nhan,
+                        cd.cong_chuyen, cd.tien_them,
+                        cd.phi_hai_quan, cd.phi_boc_xep, cd.phi_khac, cd.ghi_chu_quyet_toan,
+                        cd.is_gop_chuyen, cd.stt_chuyen_ghep, cd.is_ve_khuya, cd.khoi_luong_kg, cd.the_tich_cbm, cd.is_hang_tra_ve,
+                        cd.is_thue_ngoai, cd.chi_phi_thue_ngoai, cd.hinh_thuc_thanh_toan_ngoai
+                    FROM chuyen_di cd
+                    LEFT JOIN xe x ON cd.xe_id = x.id
+                    LEFT JOIN chuyen_di_tai_xe ctx ON cd.id = ctx.chuyen_di_id AND ctx.loai_tai_xe = 'Tai_Chinh'
+                    LEFT JOIN nhan_vien nv ON ctx.tai_xe_id = nv.id
+                    WHERE cd.trang_thai_chuyen IN ('Quyet_Toan','Tao_Moi','Dang_Di')
+                       OR (cd.trang_thai_chuyen = 'Hoan_Thanh' AND (cd.doanh_thu IS NULL OR cd.doanh_thu = 0))
+                    ORDER BY cd.ngay_chuyen_di DESC
+                """
+                st.session_state[cache_key_cd] = db.execute_query(sql_load)
                 
-            """
-            df_cd = db.execute_query(sql_load)
+            df_cd = st.session_state[cache_key_cd]
 
             if isinstance(df_cd, pd.DataFrame) and not df_cd.empty:
-                trip_options = {
-                    row['id']: f"Mã: {row['id']} | Ngày: {row['ngay_chuyen_di']} | Khách: {row['ten_khach_hang']} | Xe: {row['bien_so_xe']} | TX: {row['ten_tai_xe']}"
-                    for _, row in df_cd.iterrows()
-                }
+                # [CẬP NHẬT] Rút gọn tên công ty TNHH
+                trip_options = {}
+                for _, row in df_cd.iterrows():
+                    ten_kh_rut_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*', '', str(row['ten_khach_hang'])).strip()
+                    trip_options[row['id']] = f"Mã: {row['id']} | Ngày: {row['ngay_chuyen_di']} | Khách: {ten_kh_rut_gon} | Xe: {row['bien_so_xe']} | TX: {row['ten_tai_xe']}"
                 
                 cd_id = st.selectbox(
                     "🔍 Chọn chuyến đi đang chờ quyết toán:", 
@@ -454,7 +456,7 @@ with tab1:
                 loai_cont_default = "Thường"
                 chieu_cont_default = "Không phân biệt"
                 
-                import re
+               
                 match_cont = re.search(r'\[CONT:.*?\| LOAI:\s*(.*?)\s*\| CHIEU:\s*(.*?)\s*\]', db_ghi_chu)
                 if match_cont:
                     loai_cont_default = match_cont.group(1).strip()
@@ -529,8 +531,9 @@ with tab1:
                             WHERE khach_hang_id = %s
                             ORDER BY id DESC
                         """
-                        df_rc = db.execute_query(sql_rc, (kh_id_qt,))
-                        db_raw_prices = [] 
+                        # [TỐI ƯU TỐC ĐỘ]: Gọi hàm Cache đã định nghĩa thay vì query trực tiếp
+                        df_rc = get_cached_master_data(sql_rc, (kh_id_qt,))
+                        db_raw_prices = []
                         
                         if isinstance(df_rc, pd.DataFrame) and not df_rc.empty:
                             matched_rc_rows = []
@@ -997,19 +1000,30 @@ with tab1:
                                         is_ok, msg = settle_trip_transaction(db.pool, data_dict_thu_cong, 'Hoan_Thanh', cd_id)
                                     
                                 if is_ok:
-                                    st.session_state["reset_chuyen_form"] += 1
                                     st.success("🎉 THÀNH CÔNG! Đã cập nhật và chốt chuyến đi!")
+                                    
+                                    # [BỔ SUNG] Dọn dẹp data cache cũ để giải phóng RAM
+                                    old_cache = f"df_cd_cache_{st.session_state['reset_chuyen_form']}"
+                                    if old_cache in st.session_state:
+                                        del st.session_state[old_cache]
+                                        
+                                    st.session_state["reset_chuyen_form"] += 1
                                     time.sleep(2)
                                     st.rerun()
                                 else: st.error(f"❌ Lỗi Database: {msg}")
                         except Exception as ex: st.error(f"❌ Lỗi xử lý: {ex}")
 
                     if submit_xoa:
-                        # Ràng buộc sử dụng hàm Transaction xóa an toàn
                         success, msg = delete_trip_safe(db.pool, cd_id)
                         if success:
-                            st.session_state["reset_chuyen_form"] += 1
                             st.success("✅ Đã xóa chuyến đi thành công!")
+                            
+                            # [BỔ SUNG] Dọn dẹp cache sau khi xóa
+                            old_cache = f"df_cd_cache_{st.session_state['reset_chuyen_form']}"
+                            if old_cache in st.session_state:
+                                del st.session_state[old_cache]
+                                
+                            st.session_state["reset_chuyen_form"] += 1
                             time.sleep(1)
                             st.rerun()
                         else: st.error(f"❌ Lỗi xóa chuyến: {msg}")
@@ -1101,7 +1115,10 @@ with tab2:
                     dict_trips = {}
                     for _, row in df_trips.iterrows():
                         tag = "[NGOÀI]" if row['is_thue_ngoai'] == 1 else "[NỘI BỘ]"
-                        label = f"Mã: {row['id']} {tag} | Khách: {row['ten_khach_hang']} | Lộ trình: {row['dia_diem_giao_nhan']}"
+                        # [CẬP NHẬT] Rút gọn tên công ty TNHH
+                        ten_kh_rut_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*', '', str(row['ten_khach_hang'])).strip()
+                        lo_trinh_rut_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*', '', str(row['dia_diem_giao_nhan'])).strip()
+                        label = f"Mã: {row['id']} {tag} | Khách: {ten_kh_rut_gon} | Lộ trình: {lo_trinh_rut_gon}"
                         dict_trips[row['id']] = label
                         
                     chuyen_can_sua = st.selectbox(
@@ -1192,6 +1209,12 @@ with tab2:
                                     
                                     if is_ok:
                                         st.success(f"✅ Đã cập nhật thành công quyết toán cho chuyến {chuyen_can_sua}!")
+                                        
+                                        # [BỔ SUNG] Xóa rác của selectbox và buộc load lại DB
+                                        select_key = f"chon_chuyen_sua_{st.session_state['reset_sqt']}"
+                                        if select_key in st.session_state:
+                                            del st.session_state[select_key]
+                                            
                                         st.session_state["reset_sqt"] += 1
                                         time.sleep(1.2) 
                                         st.rerun()
@@ -1207,6 +1230,7 @@ with tab2:
 # TAB 3: 🤖 TỰ ĐỘNG QUYẾT TOÁN & EXCEL TOOLS
 # ==========================================
 with tab3:
+    tao_tieu_de_kem_nut_refresh("📋 Quyết toán và cập nhật chi phí chuyến đi", "ref_tab3")
     @st.fragment
     def vung_thao_tac_quyet_toan_auto():
         try:
@@ -1216,23 +1240,27 @@ with tab3:
                 
             st.markdown("##### 📋 Danh sách chuyến đi chờ Quyết toán (Hoặc rỗng doanh thu)")
             
-            sql_pending = """
-                SELECT cd.id AS 'MA_CHUYEN', cd.ngay_chuyen_di AS 'NGAY_CHAY', cd.ten_khach_hang AS 'KHACH_HANG',
-                    COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) AS 'BIEN_SO',
-                    COALESCE(nv.ho_ten, cd.tai_xe_ngoai_ten) AS 'TAI_XE',
-                    cd.dia_diem_giao_nhan AS 'LO_TRINH',
-                    cd.doanh_thu AS 'DOANH_THU_HIEN_TAI',
-                    cd.trang_thai_chuyen AS 'TRANG_THAI'
-                FROM chuyen_di cd
-                LEFT JOIN xe x ON cd.xe_id = x.id
-                LEFT JOIN chuyen_di_tai_xe ctx ON cd.id = ctx.chuyen_di_id AND ctx.loai_tai_xe = 'Tai_Chinh'
-                LEFT JOIN nhan_vien nv ON ctx.tai_xe_id = nv.id
-                WHERE cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di', 'Quyet_Toan')
-                OR (cd.trang_thai_chuyen = 'Hoan_Thanh' AND (cd.doanh_thu IS NULL OR cd.doanh_thu <= 0))
-                ORDER BY cd.ngay_chuyen_di ASC
-            """
-            # Data giao dịch thay đổi liên tục -> Không dùng Cache
-            df_pending = db.execute_query(sql_pending)
+            # [TỐI ƯU TỐC ĐỘ]: Tránh truy vấn lại DB khi upload file
+            cache_key_pending = f"df_pending_{st.session_state['reset_file_upload']}"
+            if cache_key_pending not in st.session_state:
+                sql_pending = """
+                    SELECT cd.id AS 'MA_CHUYEN', cd.ngay_chuyen_di AS 'NGAY_CHAY', cd.ten_khach_hang AS 'KHACH_HANG',
+                        COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) AS 'BIEN_SO',
+                        COALESCE(nv.ho_ten, cd.tai_xe_ngoai_ten) AS 'TAI_XE',
+                        cd.dia_diem_giao_nhan AS 'LO_TRINH',
+                        cd.doanh_thu AS 'DOANH_THU_HIEN_TAI',
+                        cd.trang_thai_chuyen AS 'TRANG_THAI'
+                    FROM chuyen_di cd
+                    LEFT JOIN xe x ON cd.xe_id = x.id
+                    LEFT JOIN chuyen_di_tai_xe ctx ON cd.id = ctx.chuyen_di_id AND ctx.loai_tai_xe = 'Tai_Chinh'
+                    LEFT JOIN nhan_vien nv ON ctx.tai_xe_id = nv.id
+                    WHERE cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di', 'Quyet_Toan')
+                    OR (cd.trang_thai_chuyen = 'Hoan_Thanh' AND (cd.doanh_thu IS NULL OR cd.doanh_thu <= 0))
+                    ORDER BY cd.ngay_chuyen_di ASC
+                """
+                st.session_state[cache_key_pending] = db.execute_query(sql_pending)
+                
+            df_pending = st.session_state[cache_key_pending]
             
             if isinstance(df_pending, pd.DataFrame) and not df_pending.empty:
                 df_display = df_pending.copy()
@@ -1761,6 +1789,12 @@ with tab3:
                                  
                             if closed_count > 0:
                                 st.success(f"🎉 TUYỆT VỜI! Đã chốt {closed_count} chuyến thành công! Danh sách File sẽ tự động dọn dẹp...")
+                                
+                                # [BỔ SUNG] Xóa nguyên bộ Dataframe Pending khổng lồ khỏi RAM
+                                old_pending_cache = f"df_pending_{st.session_state['reset_file_upload']}"
+                                if old_pending_cache in st.session_state:
+                                    del st.session_state[old_pending_cache]
+                                    
                                 st.session_state["reset_file_upload"] += 1
                                 time.sleep(2.5)
                                 st.rerun()
@@ -1816,6 +1850,14 @@ with tab4:
                 
                 if isinstance(df_kq, pd.DataFrame) and not df_kq.empty:
                     df_kq['Doanh Thu'] = pd.to_numeric(df_kq['Doanh Thu'], errors='coerce').fillna(0)
+                    
+                    # [CẬP NHẬT] Cắt bỏ Công ty TNHH trên toàn bộ cột Khách Hàng của bảng hiển thị
+                    df_kq['Khách Hàng'] = df_kq['Khách Hàng'].astype(str).apply(
+                        lambda x: re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*', '', x).strip()
+                    )
+                    df_kq['Lộ Trình'] = df_kq['Lộ Trình'].astype(str).apply(
+                                            lambda x: re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*', '', x).strip()
+                                        )
                     df_loi = df_kq[df_kq['Doanh Thu'] <= 0]
                     
                     if not df_loi.empty:

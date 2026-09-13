@@ -23,7 +23,42 @@ def clear_master_cache():
     get_cached_master_data.clear()
 # ---------------------------------
 
-hide_enter_submit_css = "<style>div[data-testid='InputInstructions'] { display: none !important; visibility: hidden !important; }</style>"
+hide_enter_submit_css = """
+<style>
+    /* Ẩn hướng dẫn Enter của Streamlit */
+    div[data-testid='InputInstructions'] { display: none !important; visibility: hidden !important; }
+    
+    /* 1. Kéo tịnh tiến đều tất cả các Tiêu đề (h4, h5) trên toàn bộ App */
+    h4, h5 { 
+        padding-top: 0.8rem !important; 
+        padding-bottom: 0.2rem !important; 
+        margin-top: 0px !important; 
+        margin-bottom: 5px !important; /* Trả lại 5px để không bị đè vào ô input bên dưới */
+        line-height: 1.2 !important;
+    }
+    
+    /* 2. Ép khoảng cách các khối div chứa markdown sát lại nhau */
+    [data-testid="stMarkdownContainer"] {
+        margin-bottom: -5px !important;
+    }
+    
+    /* 3. Tối ưu khoảng cách các đường kẻ ngang (Divider) */
+    hr { 
+        margin-top: 5px !important; 
+        margin-bottom: 12px !important; 
+    }
+    
+    /* 4. Ép các dòng bên trong khối Form xích lại gần nhau hơn */
+    div[data-testid="stForm"] > div { 
+        gap: 0.5rem !important; 
+    }
+    
+    /* 5. Giảm khoảng cách mặc định của các khối block-container */
+    .block-container {
+        gap: 0.5rem !important;
+    }
+</style>
+"""
 st.markdown(hide_enter_submit_css, unsafe_allow_html=True)
 
 STATUS_MAP = {"Tạo Mới": "Tao_Moi", "Đang Đi": "Dang_Di", "Quyết Toán": "Quyet_Toan", "Hoàn Thành": "Hoan_Thanh", "Hủy Chuyến": "Huy_Chuyen"}
@@ -34,10 +69,26 @@ with st.container():
     st.markdown("##### 🔍 Bộ lọc điều kiện thống kê")
     c_date1, c_date2, c_driver = st.columns([1, 1, 2])
     today = datetime.date.today()
-    tu_ngay = c_date1.date_input("Từ ngày", value=today.replace(day=1), format="DD/MM/YYYY")
-    den_ngay = c_date2.date_input("Đến ngày", value=today, format="DD/MM/YYYY")
     
-    # Ứng dụng Cache
+    # Sử dụng Session State để giữ giá trị ngày, tránh query lại vô ích
+    if "filter_tu_ngay" not in st.session_state:
+        st.session_state["filter_tu_ngay"] = today.replace(day=1)
+    if "filter_den_ngay" not in st.session_state:
+        st.session_state["filter_den_ngay"] = today
+        
+    tu_ngay = c_date1.date_input("Từ ngày", value=st.session_state["filter_tu_ngay"], format="DD/MM/YYYY")
+    den_ngay = c_date2.date_input("Đến ngày", value=st.session_state["filter_den_ngay"], format="DD/MM/YYYY")
+    
+    # Kiểm tra xem ngày có bị thay đổi không, nếu có thì xóa cache của Session State
+    if tu_ngay != st.session_state["filter_tu_ngay"] or den_ngay != st.session_state["filter_den_ngay"]:
+        st.session_state["filter_tu_ngay"] = tu_ngay
+        st.session_state["filter_den_ngay"] = den_ngay
+        # Xóa các DataFrame lưu trong session để ép query lại
+        for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]:
+            if key in st.session_state:
+                del st.session_state[key]
+    
+    # Ứng dụng Cache Master Data cho danh mục ít đổi
     df_tx_filter = get_cached_master_data("SELECT id, ho_ten FROM nhan_vien WHERE loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu') ORDER BY ho_ten")
     tx_options = {0: "✨ Tất cả tài xế (Mặc định)"}
     if isinstance(df_tx_filter, pd.DataFrame) and not df_tx_filter.empty:
@@ -45,7 +96,7 @@ with st.container():
     tai_xe_duoc_chon = c_driver.selectbox("Chọn Tài xế thống kê", options=list(tx_options.keys()), format_func=lambda x: tx_options[x], index=0)
 
 st.divider()
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📋 Danh sách chuyến", "➕ Tạo/Sửa chuyến thủ công", "➕ Tạo chuyến theo file", "📊 Chuyến đi trong ngày", "📊 Chuyến theo ngày chọn", "⚠️ Cảnh báo Xe tồn đọng"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📋 Ghép chuyến", "➕ Tạo/Sửa chuyến ", "➕ Tạo chuyến theo file", "📊 Chuyến đi trong ngày", "📊 Chuyến theo ngày chọn", "⚠️ Cảnh báo Xe tồn đọng"])
 
 # Ứng dụng Cache lấy toàn bộ Danh mục dùng chung
 df_xe_full = get_cached_master_data("SELECT id, bien_so_xe,loai_xe, tai_trong_thiet_ke, tai_xe_co_dinh_id FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'")
@@ -65,16 +116,24 @@ if isinstance(df_kh_full, pd.DataFrame) and not df_kh_full.empty:
 
 with tab1:
     try:
-        tao_tieu_de_kem_nut_refresh("📋 Danh sách chuyến đi trong ngày", "ref_tab1")
+        tao_tieu_de_kem_nut_refresh("📋 Danh sách chuyến đi trong ngày và ghép chuyến", "ref_tab1")
         
         @st.fragment
         def vung_thao_tac_hien_thi_chuyen_di():
             with st.expander("🔗 NGHIỆP VỤ GHÉP CHUYẾN / CHUYẾN TIẾP NỐI (Dành cho Điều Phối)", expanded=True):
                 st.markdown("💡 **Hướng dẫn:** Bôi đen (chọn) các chuyến đi của **cùng một xe** theo đúng thứ tự lấy hàng.")
+                
+                # CẬP NHẬT: Cho phép hiển thị và ghép cả xe nội bộ lẫn xe thuê ngoài
                 sql_ghep = """
-                    SELECT cd.id, cd.ngay_chuyen_di, cd.dia_diem_giao_nhan, COALESCE(kh.ten_khach_hang, cd.ten_khach_hang) as ten_khach, x.bien_so_xe, cd.xe_id
-                    FROM chuyen_di cd JOIN xe x ON cd.xe_id = x.id LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id
-                    WHERE cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') AND cd.is_gop_chuyen = 0 AND cd.is_thue_ngoai = 0 ORDER BY cd.xe_id, cd.id ASC
+                    SELECT cd.id, cd.ngay_chuyen_di, cd.dia_diem_giao_nhan, 
+                           COALESCE(kh.ten_khach_hang, cd.ten_khach_hang) as ten_khach, 
+                           COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) as bien_so_xe, 
+                           COALESCE(CAST(cd.xe_id AS CHAR), cd.bien_so_xe_ngoai) as identifier_xe
+                    FROM chuyen_di cd 
+                    LEFT JOIN xe x ON cd.xe_id = x.id 
+                    LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id
+                    WHERE cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') AND cd.is_gop_chuyen = 0 
+                    ORDER BY identifier_xe, cd.id ASC
                 """
                 df_ghep = db.execute_query(sql_ghep)
                 if isinstance(df_ghep, pd.DataFrame) and not df_ghep.empty:
@@ -84,12 +143,16 @@ with tab1:
                     if st.button("🔗 XÁC NHẬN GHÉP CHUYẾN", type="primary", key="btn_xac_nhan_ghep_tab1"):
                         if len(chuyen_duoc_chon) < 2: 
                             st.warning("⚠️ Chọn ít nhất 2 chuyến.")
-                        elif len(df_ghep[df_ghep['id'].isin(chuyen_duoc_chon)]['xe_id'].unique()) > 1: 
+                        # SỬA LỖI: Kiểm tra trùng xe dựa trên identifier_xe thay vì chỉ xe_id (để bắt được cả xe ngoài)
+                        elif len(df_ghep[df_ghep['id'].isin(chuyen_duoc_chon)]['identifier_xe'].unique()) > 1: 
                             st.error("❌ Các chuyến không cùng xe!")
                         else:
                             success, msg = group_trips_transaction(db.pool, chuyen_duoc_chon, st.session_state.get('username', 'Admin'))
                             if success:
                                 st.success(msg)
+                                # Dọn rác cache để Tab Khác cập nhật ngay lập tức
+                                for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]:
+                                    st.session_state.pop(key, None)
                                 time.sleep(1.2)
                                 st.rerun()
                             else: 
@@ -142,59 +205,53 @@ with tab2:
             trip_data = {}
             so_cont_val, so_seal_val, loai_cont_val, chieu_cont_val = "", "", "40HC", "Nhập"
             ghi_chu_thucong_val = ""
-            default_nghiep_vu_idx = 0 # 0 = Xe Tải, 1 = Container
+            default_nghiep_vu_idx = 0 
+            
+            # [TỐI ƯU UI] Bố trí Chọn Hành Động và Phân Loại Nghiệp Vụ lên cùng 1 hàng
             col_mode1, col_mode2 = st.columns(2)
-            # --- CHỌN CHẾ ĐỘ THAO TÁC ---
-            mode_action = st.radio(
-                "📌 Chọn hành động:", 
-                ["➕ Tạo chuyến mới", "✏️ Sửa chuyến hiện tại", "🗑️ Xóa chuyến đi"], 
-                horizontal=True, 
-                key=f"tab2_mode_action_{st.session_state['form_reset_counter']}"
-            )
+            
+            with col_mode1:
+                mode_action = st.radio(
+                    "📌 Chọn hành động:", 
+                    ["➕ Tạo chuyến mới", "✏️ Sửa chuyến hiện tại", "🗑️ Xóa chuyến đi"], 
+                    horizontal=True, 
+                    key=f"tab2_mode_action_{st.session_state['form_reset_counter']}"
+                )
 
-            # Lấy trước dữ liệu chuyến nếu đang ở mode Sửa
-            if mode_action == "✏️ Sửa chuyến hiện tại":
-                sql_edit_list = "SELECT id, ngay_chuyen_di, COALESCE(ten_khach_hang, 'Khách Lẻ') as ten_khach_hang FROM chuyen_di WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') ORDER BY id DESC"
-                df_trips = db.execute_query(sql_edit_list)
-                
-                if isinstance(df_trips, pd.DataFrame) and not df_trips.empty:
-                    trip_options = {r['id']: f"Mã chuyến {r['id']} | Ngày: {r['ngay_chuyen_di']} | Khách: {r['ten_khach_hang']}" for _, r in df_trips.iterrows()}
-                    edit_trip_id = st.selectbox("🔍 Chọn chuyến đi cần sửa", options=list(trip_options.keys()), format_func=lambda x: trip_options[x], key=f"selectbox_edit_trip_{st.session_state['form_reset_counter']}")
+                if mode_action == "✏️ Sửa chuyến hiện tại":
+                    sql_edit_list = "SELECT id, ngay_chuyen_di, COALESCE(ten_khach_hang, 'Khách Lẻ') as ten_khach_hang FROM chuyen_di WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') ORDER BY id DESC"
+                    df_trips = db.execute_query(sql_edit_list)
                     
-                    if edit_trip_id:
-                        df_detail = db.execute_query("SELECT * FROM chuyen_di WHERE id=%s", (edit_trip_id,))
-                        if isinstance(df_detail, pd.DataFrame) and not df_detail.empty:
-                            trip_data = df_detail.iloc[0].to_dict()
-                            df_tx_assigned = db.execute_query("SELECT tai_xe_id FROM chuyen_di_tai_xe WHERE chuyen_di_id=%s AND loai_tai_xe='Tai_Chinh'", (edit_trip_id,))
-                            if isinstance(df_tx_assigned, pd.DataFrame) and not df_tx_assigned.empty:
-                               trip_data['tai_xe_id_assigned'] = int(float(df_tx_assigned.iloc[0]['tai_xe_id']))
-                            db_ghi_chu = trip_data.get('ghi_chu', '') or ''
-                            ghi_chu_thucong_val = db_ghi_chu
-                            
-                            # [QUAN TRỌNG] Quét Regex ngay từ đây để xác định loại nghiệp vụ
-                            import re
-                            match = re.search(r'\[CONT:\s*(.*?)\s*\|\s*SEAL:\s*(.*?)\s*\|\s*LOAI:\s*(.*?)\s*\|\s*CHIEU:\s*(.*?)\s*\]', db_ghi_chu)
-                            
-                            if match:
-                                so_cont_val = match.group(1).strip()
-                                so_seal_val = match.group(2).strip()
-                                loai_cont_val = match.group(3).strip()
-                                chieu_cont_val = match.group(4).strip()
-                                ghi_chu_thucong_val = db_ghi_chu.replace(match.group(0), "").strip()
-                                default_nghiep_vu_idx = 1 # Chuyển mặc định sang Container
+                    if isinstance(df_trips, pd.DataFrame) and not df_trips.empty:
+                        trip_options = {r['id']: f"Mã chuyến {r['id']} | Ngày: {r['ngay_chuyen_di']} | Khách: {r['ten_khach_hang']}" for _, r in df_trips.iterrows()}
+                        edit_trip_id = st.selectbox("🔍 Chọn chuyến đi cần sửa", options=list(trip_options.keys()), format_func=lambda x: trip_options[x], key=f"selectbox_edit_trip_{st.session_state['form_reset_counter']}")
+                        
+                        if edit_trip_id:
+                            df_detail = db.execute_query("SELECT * FROM chuyen_di WHERE id=%s", (edit_trip_id,))
+                            if isinstance(df_detail, pd.DataFrame) and not df_detail.empty:
+                                trip_data = df_detail.iloc[0].to_dict()
+                                df_tx_assigned = db.execute_query("SELECT tai_xe_id FROM chuyen_di_tai_xe WHERE chuyen_di_id=%s AND loai_tai_xe='Tai_Chinh'", (edit_trip_id,))
+                                if isinstance(df_tx_assigned, pd.DataFrame) and not df_tx_assigned.empty:
+                                   trip_data['tai_xe_id_assigned'] = int(float(df_tx_assigned.iloc[0]['tai_xe_id']))
+                                db_ghi_chu = trip_data.get('ghi_chu', '') or ''
+                                ghi_chu_thucong_val = db_ghi_chu
+                                
+                                match = re.search(r'\[CONT:\s*(.*?)\s*\|\s*SEAL:\s*(.*?)\s*\|\s*LOAI:\s*(.*?)\s*\|\s*CHIEU:\s*(.*?)\s*\]', db_ghi_chu)
+                                if match:
+                                    so_cont_val, so_seal_val, loai_cont_val, chieu_cont_val = match.group(1).strip(), match.group(2).strip(), match.group(3).strip(), match.group(4).strip()
+                                    ghi_chu_thucong_val = db_ghi_chu.replace(match.group(0), "").strip()
+                                    default_nghiep_vu_idx = 1 
 
-            # [ĐÃ SỬA] Đưa trip_suffix lên trước để làm key định danh động
             trip_suffix = f"edit_{edit_trip_id}_{st.session_state['form_reset_counter']}" if edit_trip_id else f"new_{st.session_state['form_reset_counter']}"
 
-            # --- RENDER RADIO BUTTON PHÂN LOẠI NGHIỆP VỤ (VỚI INDEX ĐÃ TÍNH TOÁN) ---
-            kieu_nghiep_vu = st.radio(
-                "🚛 Phân loại nghiệp vụ:", 
-                ["Nghiệp vụ Xe Tải", "Nghiệp vụ Container"], 
-                horizontal=True, 
-                index=default_nghiep_vu_idx,
-                # [QUAN TRỌNG] Gắn trip_suffix vào key để ép Streamlit reset giao diện khi chọn chuyến khác
-                key=f"tab2_kieu_nghiep_vu_{trip_suffix}"
-            )
+            with col_mode2:
+                kieu_nghiep_vu = st.radio(
+                    "🚛 Phân loại nghiệp vụ:", 
+                    ["Nghiệp vụ Xe Tải", "Nghiệp vụ Container"], 
+                    horizontal=True, 
+                    index=default_nghiep_vu_idx,
+                    key=f"tab2_kieu_nghiep_vu_{trip_suffix}"
+                )
 
             # ================= CHẾ ĐỘ: XÓA CHUYẾN ĐI =================
             if mode_action == "🗑️ Xóa chuyến đi":
@@ -227,6 +284,9 @@ with tab2:
                                     
                             if success:
                                 st.success(f"✅ Đã xóa thành công chuyến đi mã {delete_trip_id}!")
+                                # Dọn rác cache 
+                                for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]:
+                                    st.session_state.pop(key, None)
                                 st.session_state["form_reset_counter"] += 1
                                 time.sleep(1.2)
                                 st.rerun()
@@ -354,6 +414,10 @@ with tab2:
                 )
 
                 c_xe_sel, tx_id_assign = None, None
+                
+                # --- NEW: BIẾN LƯU TRỮ TRẠNG THÁI CHỌN XE NGOÀI ĐANG CHẠY ---
+                chon_xe_ngoai_dang_chay = "NEW"
+                df_ngoai_ban = None
                 
                 if loai_hinh_xe == "🚀 Chạy Xe Công Ty":
                     st.markdown("##### 🚛 Thông tin Xe & Tài xế Nội bộ")
@@ -527,6 +591,28 @@ with tab2:
                         else:
                             st.info("Hiện không có xe nội bộ nào đang chạy.")
 
+                # --- NEW: HIỂN THỊ XE NGOÀI ĐANG CHẠY ĐỂ HỖ TRỢ GHÉP CHUYẾN ---
+                else:
+                    st.markdown("##### 🤝 Chọn Xe Ngoài Đang Chạy (Nghiệp vụ Ghép Chuyến)")
+                    sql_ngoai_ban = """
+                        SELECT DISTINCT bien_so_xe_ngoai, ten_doi_tac_ngoai, loai_doi_tac_ngoai, loai_hinh_xe, tai_xe_ngoai_ten, tai_xe_ngoai_cccd, tai_xe_ngoai_sdt
+                        FROM chuyen_di
+                        WHERE is_thue_ngoai = 1 AND trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') AND bien_so_xe_ngoai IS NOT NULL AND bien_so_xe_ngoai != ''
+                    """
+                    df_ngoai_ban = db.execute_query(sql_ngoai_ban)
+                    
+                    ngoai_opts = {"NEW": "✨ -- Không ghép chuyến / Tạo xe ngoài mới (Nhập ở Bước 4) --"}
+                    if isinstance(df_ngoai_ban, pd.DataFrame) and not df_ngoai_ban.empty:
+                        for _, r in df_ngoai_ban.iterrows():
+                            ngoai_opts[r['bien_so_xe_ngoai']] = f"🔄 [ĐANG CHẠY] BSX: {r['bien_so_xe_ngoai']} | Nhà xe: {r['ten_doi_tac_ngoai']} | TX: {r['tai_xe_ngoai_ten']}"
+                    
+                    chon_xe_ngoai_dang_chay = st.selectbox(
+                        "🔗 Chọn Xe Ngoài có sẵn để tự động điền thông tin:", 
+                        options=list(ngoai_opts.keys()), 
+                        format_func=lambda x: ngoai_opts[x], 
+                        key=f"chon_xe_ngoai_{trip_suffix}"
+                    )
+
                 st.divider()
 
                 # ====================================================================
@@ -614,11 +700,33 @@ with tab2:
                     
                     if loai_hinh_xe == "🤝 Thuê Xe Ngoài": 
                         st.markdown("##### 🤝 Chi tiết phương tiện & Tài xế thuê ngoài")
+                        
+                        # --- CẬP NHẬT: TỰ ĐỘNG ĐIỀN THÔNG TIN NẾU CHỌN GHÉP XE NGOÀI Ở BƯỚC 2 ---
+                        def_bs, def_dt, def_loai_dt, def_lh, def_tx, def_cccd, def_sdt = "", "", "Nha_Xe", "Xe_Tai", "", "", ""
+                        
+                        if mode_action == "✏️ Sửa chuyến hiện tại" and trip_data.get('is_thue_ngoai') == 1:
+                            def_bs = str(trip_data.get('bien_so_xe_ngoai') or "")
+                            def_dt = str(trip_data.get('ten_doi_tac_ngoai') or "")
+                            def_loai_dt = str(trip_data.get('loai_doi_tac_ngoai') or "Nha_Xe")
+                            def_lh = str(trip_data.get('loai_hinh_xe') or "Xe_Tai")
+                            def_tx = str(trip_data.get('tai_xe_ngoai_ten') or "")
+                            def_cccd = str(trip_data.get('tai_xe_ngoai_cccd') or "")
+                            def_sdt = str(trip_data.get('tai_xe_ngoai_sdt') or "")
+                        elif chon_xe_ngoai_dang_chay != "NEW" and df_ngoai_ban is not None:
+                            row_sel = df_ngoai_ban[df_ngoai_ban['bien_so_xe_ngoai'] == chon_xe_ngoai_dang_chay].iloc[0]
+                            def_bs = str(row_sel['bien_so_xe_ngoai'] or "")
+                            def_dt = str(row_sel['ten_doi_tac_ngoai'] or "")
+                            def_loai_dt = str(row_sel['loai_doi_tac_ngoai'] or "Nha_Xe")
+                            def_lh = str(row_sel['loai_hinh_xe'] or "Xe_Tai")
+                            def_tx = str(row_sel['tai_xe_ngoai_ten'] or "")
+                            def_cccd = str(row_sel['tai_xe_ngoai_cccd'] or "")
+                            def_sdt = str(row_sel['tai_xe_ngoai_sdt'] or "")
+
                         nx1, nx2, nx3 = st.columns(3)
-                        ngoai_bien_so = nx1.text_input("Biển số xe thực tế*", value=trip_data.get('bien_so_xe_ngoai') or '')
-                        ngoai_ten_doi_tac = nx2.text_input("Tên Nhà xe / Chủ xe*", value=trip_data.get('ten_doi_tac_ngoai') or '')
+                        ngoai_bien_so = nx1.text_input("Biển số xe thực tế*", value=def_bs)
+                        ngoai_ten_doi_tac = nx2.text_input("Tên Nhà xe / Chủ xe*", value=def_dt)
                         dt_opts = ["Nha_Xe", "Tu_Nhan"]
-                        ngoai_loai_dt = nx3.selectbox("Loại đối tác", dt_opts, index=get_idx(dt_opts, trip_data.get('loai_doi_tac_ngoai', 'Nha_Xe')))
+                        ngoai_loai_dt = nx3.selectbox("Loại đối tác", dt_opts, index=get_idx(dt_opts, def_loai_dt))
                         
                         nx_lh1, nx_ten = st.columns(2)
                         lh_opts = ["Container", "Xe_Tai", "Xe_May"]
@@ -626,7 +734,7 @@ with tab2:
                         if kieu_nghiep_vu == "Nghiệp vụ Container":
                             def_lh_idx = lh_opts.index("Container")
                         else:
-                            def_lh_idx = lh_opts.index(trip_data.get('loai_hinh_xe', 'Xe_Tai')) if trip_data.get('loai_hinh_xe') in lh_opts else 1
+                            def_lh_idx = lh_opts.index(def_lh) if def_lh in lh_opts else 1
                         
                         ngoai_loai_hinh_xe = nx_lh1.selectbox(
                             "Phân loại phương tiện ngoài*", 
@@ -634,11 +742,11 @@ with tab2:
                             index=def_lh_idx,
                             format_func=lambda x: "📦 Xe Container" if x == "Container" else ("🚛 Xe Tải" if x == "Xe_Tai" else "🏍️ Xe Máy")
                         )
-                        ngoai_ten_tx = nx_ten.text_input("Họ tên Tài xế ngoài*", value=trip_data.get('tai_xe_ngoai_ten') or '')
+                        ngoai_ten_tx = nx_ten.text_input("Họ tên Tài xế ngoài*", value=def_tx)
                         
                         nx4, nx5 = st.columns(2)
-                        ngoai_cccd_tx = nx4.text_input("CCCD Tài xế ngoài*", value=trip_data.get('tai_xe_ngoai_cccd') or '')
-                        ngoai_sdt_tx = nx5.text_input("SĐT Tài xế ngoài*", value=trip_data.get('tai_xe_ngoai_sdt') or '')
+                        ngoai_cccd_tx = nx4.text_input("CCCD Tài xế ngoài*", value=def_cccd)
+                        ngoai_sdt_tx = nx5.text_input("SĐT Tài xế ngoài*", value=def_sdt)
                         st.divider()
 
                     st.markdown("#### 4. Ngày khởi hành & Chi tiết bổ sung")
@@ -664,7 +772,8 @@ with tab2:
                         tt_opts = ["Cong_No", "Tien_Mat"]
                         ngoai_thanh_toan = nx8.selectbox("Hình thức thanh toán ngoài", options=tt_opts, index=get_idx(tt_opts, trip_data.get('hinh_thuc_thanh_toan_ngoai', 'Cong_No')), format_func=lambda x: "Công nợ tháng" if x=="Cong_No" else "Tiền mặt")
                     
-                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    # [TỐI ƯU UI] Đã xóa thẻ <br> để đẩy nút bấm lên sát form nhập liệu
                     st.markdown("""
                         <style>
                             div[data-testid="stForm"] button[kind="primary"] {
@@ -674,7 +783,8 @@ with tab2:
                                 font-weight: 800 !important;
                                 font-size: 16px !important;
                                 border-radius: 8px !important;
-                                padding: 10px 0px !important;
+                                padding: 6px 0px !important; /* Đã thu gọn padding trên/dưới từ 10px xuống 6px */
+                                margin-top: -10px !important; /* Kéo nút trồi lên trên 1 chút */
                                 box-shadow: 0 4px 6px rgba(211, 47, 47, 0.3) !important;
                                 transition: all 0.3s ease !important;
                             }
@@ -816,6 +926,9 @@ with tab2:
                     
                     if success:
                         st.success(msg_success)
+                        # Dọn rác cache danh sách chuyến đi
+                        for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]:
+                            st.session_state.pop(key, None)
                         
                         # Cải tiến: Chỉ sinh ra thông báo gửi Zalo nếu trạng thái chuyến là "Tạo Mới"
                         # Cải tiến: Chỉ sinh ra thông báo gửi Zalo nếu trạng thái chuyến là "Tạo Mới"
@@ -837,8 +950,8 @@ with tab2:
                                     cccd_tx_gui = ngoai_cccd_tx
                             # Rút gọn Tên Khách Hàng và Lộ Trình (Loại bỏ chữ Công ty TNHH / Cty TNHH)
                             ten_kh_rut_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*', '', str(ten_kh_val)).strip()
-                            diem_dau_rut_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*', '', str(diem_dau)).strip()
-                            diem_cuoi_rut_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*', '', str(diem_cuoi)).strip()
+                            diem_dau_rut_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*', '', str(diem_dau)).strip()
+                            diem_cuoi_rut_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*|cong ty\s*', '', str(diem_cuoi)).strip()
                             
                             st.session_state["tn_tai_xe"] = f"🚛 Anh, em, chú, cậu vào:\n - Khách hàng: {ten_kh_rut_gon} giao, lấy hàng \n- Lộ trình: {diem_dau_rut_gon} ➡️ {diem_cuoi_rut_gon} \n- Mã chuyến: {ma_chuyen_gui}"
                             st.session_state["tn_khach"] = f"📦 THÔNG TIN TÀI XẾ\n- Tên tài xế: {ten_tx_gui}\n- SĐT: {sdt_tx_gui}\n- CCCD: {cccd_tx_gui}\n- Biển số xe: {bien_so_gui}"
@@ -1202,91 +1315,130 @@ with tab3:
     except Exception as e:
         st.error(f"❌ Lỗi tải Tab3 : {e}")
 # ---------------------------------------------------------
-# TAB 4: DANH SÁCH CHUYẾN ĐI TRONG NGÀY
+# TAB 4: BẢNG ĐIỀU PHỐI CHUYẾN ĐI TRONG NGÀY (DẠNG KANBAN HTML CARDS)
 # ---------------------------------------------------------
 with tab4:
     try:
-        tao_tieu_de_kem_nut_refresh("📋 Quản lý danh sách chuyến đi", "ref_ds_chuyen")
+        tao_tieu_de_kem_nut_refresh("🗂️ Bảng điều phối chuyến đi trong ngày", "ref_ds_chuyen")
+        
         @st.fragment
         def vung_thao_tac_quan_ly_chuyen_di():
             try:
                 ngay_hom_nay = datetime.date.today().strftime('%Y-%m-%d')
                 
-                # 1. TRUY VẤN XE NỘI BỘ
-                sql_list_noibo = """
-                    SELECT cd.id AS 'Mã chuyến đi', cd.ngay_chuyen_di AS 'Ngày', cd.ten_khach_hang AS 'Khách hàng',
-                        x.bien_so_xe AS 'Biển Số', nv.ho_ten AS 'Tài Xế', cd.dia_diem_giao_nhan AS 'Lộ trình', 
-                        cd.khoi_luong_kg AS 'Trọng tải (kg)',                    
-                        cd.ghi_chu AS 'Ghi chú', cd.trang_thai_chuyen AS 'Trạng thái'
+                # 1. Truy vấn các chuyến đi trong ngày từ bảng chuyen_di
+                sql_kanban = """
+                    SELECT 
+                        cd.id AS ma_chuyen, 
+                        cd.ngay_chuyen_di, 
+                        COALESCE(kh.ten_khach_hang, cd.ten_khach_hang) AS khach_hang,
+                        COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai, 'Chưa gán xe') AS bien_so, 
+                        COALESCE(nv.ho_ten, cd.tai_xe_ngoai_ten, 'Chưa gán TX') AS tai_xe, 
+                        cd.dia_diem_giao_nhan AS lo_trinh, 
+                        cd.khoi_luong_kg AS trong_tai, 
+                        cd.trang_thai_chuyen AS trang_thai,
+                        cd.is_gop_chuyen,
+                        cd.is_thue_ngoai,
+                        cd.xe_id
                     FROM chuyen_di cd 
-                    JOIN xe x ON cd.xe_id = x.id
+                    LEFT JOIN xe x ON cd.xe_id = x.id
+                    LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id
                     LEFT JOIN chuyen_di_tai_xe cdtx ON cd.id = cdtx.chuyen_di_id AND cdtx.loai_tai_xe = 'Tai_Chinh'
                     LEFT JOIN nhan_vien nv ON cdtx.tai_xe_id = nv.id 
                     WHERE cd.ngay_chuyen_di = %s
                     ORDER BY cd.id DESC
                 """
-                df_noibo = db.execute_query(sql_list_noibo, (ngay_hom_nay,))
+                df_kanban = db.execute_query(sql_kanban, (ngay_hom_nay,))
 
-                # 2. TRUY VẤN XE THUÊ NGOÀI
-                sql_list_ngoai = """
-                    SELECT cd.id AS 'Mã chuyến đi', cd.ngay_chuyen_di AS 'Ngày', cd.ten_khach_hang AS 'Khách hàng',
-                        cd.bien_so_xe_ngoai AS 'Biển Số', cd.tai_xe_ngoai_ten AS 'Tài Xế', cd.dia_diem_giao_nhan AS 'Lộ trình', 
-                        cd.khoi_luong_kg AS 'Trọng tải (kg)', 
-                        cd.ghi_chu AS 'Ghi chú', cd.trang_thai_chuyen AS 'Trạng thái'
-                    FROM chuyen_di cd 
-                    WHERE cd.ngay_chuyen_di = %s AND (cd.xe_id IS NULL OR cd.is_thue_ngoai = 1)
-                    ORDER BY cd.id DESC
-                """
-                df_ngoai = db.execute_query(sql_list_ngoai, (ngay_hom_nay,))
+                # 2. Truy vấn danh sách toàn bộ xe đang hoạt động trong hệ thống để lọc xe trống
+                sql_all_xe = "SELECT id, bien_so_xe, tai_trong_thiet_ke FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'"
+                df_all_xe = db.execute_query(sql_all_xe)
 
-                has_noibo = isinstance(df_noibo, pd.DataFrame) and not df_noibo.empty
-                has_ngoai = isinstance(df_ngoai, pd.DataFrame) and not df_ngoai.empty
-
-                if has_noibo or has_ngoai:
-                    df_combined = pd.concat([df_noibo, df_ngoai], ignore_index=True) if (has_noibo and has_ngoai) else (df_noibo if has_noibo else df_ngoai)
+                if (isinstance(df_kanban, pd.DataFrame) and not df_kanban.empty) or (isinstance(df_all_xe, pd.DataFrame) and not df_all_xe.empty):
+                    st.markdown("##### 🚛 TIẾN ĐỘ VẬN HÀNH TRONG NGÀY & TRẠNG THÁI ĐẦU XE")
                     
-                    st.markdown("##### 📊 Tổng quan hoạt động trong ngày")
-                    so_chuyen_tao_moi = len(df_combined[df_combined['Trạng thái'] == 'Tao_Moi'])
-                    so_chuyen_dang_di = len(df_combined[df_combined['Trạng thái'] == 'Dang_Di'])
-                    so_chuyen_cho_qt = len(df_combined[df_combined['Trạng thái'] == 'Quyet_Toan'])
-                    so_chuyen_hoan_thanh = len(df_combined[df_combined['Trạng thái'] == 'Hoan_Thanh'])
+                    # Chia 4 cột tương ứng: Tạo Mới, Chờ Quyết Toán, Hoàn Thành, Xe Trống (Đã loại bỏ cột Đang Đi)
+                    c_tao_moi, c_quyet_toan, c_hoan_thanh, c_xe_trong = st.columns(4)
                     
-                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-                    col_m1.metric("Tạo Mới (Chưa chạy)", f"{so_chuyen_tao_moi} Chuyến")
-                    col_m2.metric("Đang Đi", f"{so_chuyen_dang_di} Chuyến")
-                    col_m3.metric("Chờ Quyết Toán", f"{so_chuyen_cho_qt} Chuyến")
-                    col_m4.metric("Đã Hoàn Thành", f"{so_chuyen_hoan_thanh} Chuyến")
+                    # Hàm render Card HTML cho chuyến đi
+                    def render_kanban_card(row, border_color, bg_color):
+                        is_ghep = row.get('is_gop_chuyen', 0) == 1
+                        is_ngoai = row.get('is_thue_ngoai', 0) == 1
+                        
+                        badge_ghep = f"<span style='font-size: 10px; background-color: #ffecb3; padding: 2px 5px; border-radius: 4px; color: #f57f17; font-weight: bold; margin-left: 4px;'>🔗 Ghép</span>" if is_ghep else ""
+                        badge_xe = f"<span style='font-size: 10px; background-color: #fce4ec; padding: 2px 5px; border-radius: 4px; color: #c2185b; font-weight: bold; margin-left: 4px;'>🤝 Ngoài</span>" if is_ngoai else f"<span style='font-size: 10px; background-color: #e3f2fd; padding: 2px 5px; border-radius: 4px; color: #1565c0; font-weight: bold; margin-left: 4px;'>🏢 Cty</span>"
+                        
+                        trong_tai = float(row['trong_tai']) if pd.notna(row['trong_tai']) else 0
+                        
+                        return (
+                            f"<div style='background-color: {bg_color}; border-left: 6px solid {border_color}; padding: 10px; border-radius: 8px; margin-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); font-family: sans-serif;'>"
+                            f"<div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 1px solid #ddd; padding-bottom: 4px;'>"
+                            f"<span style='font-size: 13px; font-weight: 900; color: #333;'>#{row['ma_chuyen']} - {row['bien_so']}</span>"
+                            f"<div>{badge_xe}{badge_ghep}</div>"
+                            f"</div>"
+                            f"<div style='font-size: 11px; color: #444; line-height: 1.5;'>"
+                            f"🧑‍✈️ TX: <b>{row['tai_xe']}</b><br>"
+                            f"🏢 KH: <b>{row['khach_hang']}</b><br>"
+                            f"📍 Tuyến: <b>{row['lo_trinh']}</b><br>"
+                            f"📦 Tải hàng: <span style='color: #d32f2f; font-weight: bold;'>{trong_tai:,.0f} KG</span>"
+                            f"</div></div>"
+                        )
+
+                    # Hàm render Card HTML cho xe trống
+                    def render_empty_vehicle_card(xe_row, border_color, bg_color):
+                        tai_trong_xe = float(xe_row['tai_trong_thiet_ke']) if pd.notna(xe_row['tai_trong_thiet_ke']) else 0
+                        return (
+                            f"<div style='background-color: {bg_color}; border-left: 6px solid {border_color}; padding: 10px; border-radius: 8px; margin-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); font-family: sans-serif;'>"
+                            f"<div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 1px solid #ddd; padding-bottom: 4px;'>"
+                            f"<span style='font-size: 13px; font-weight: 900; color: #2e7d32;'>🚛 {xe_row['bien_so_xe']}</span>"
+                            f"<span style='font-size: 10px; background-color: #c8e6c9; padding: 2px 5px; border-radius: 4px; color: #2e7d32; font-weight: bold;'>Trống</span>"
+                            f"</div>"
+                            f"<div style='font-size: 11px; color: #444; line-height: 1.5;'>"
+                            f"⚖️ Tải trọng TK: <b>{tai_trong_xe:g} Tấn</b><br>"
+                            f"🟢 Trạng thái: <b>Sẵn sàng nhận chuyến</b>"
+                            f"</div></div>"
+                        )
+
+                    df_kanban = df_kanban if isinstance(df_kanban, pd.DataFrame) else pd.DataFrame()
                     
-                    st.divider()
-                    
-                    st.markdown("#### 🚛 Danh sách chuyến xe Nội bộ")
-                    if has_noibo:
-                        df_nb_display = df_noibo.copy()
-                        df_nb_display['Ngày'] = pd.to_datetime(df_nb_display['Ngày']).dt.strftime('%d/%m/%Y')
-                        for col_money in ['Lương chuyến', 'Thưởng thêm', 'Doanh thu']:
-                            if col_money in df_nb_display.columns:
-                                df_nb_display[col_money] = df_nb_display[col_money].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
-                        st.dataframe(df_nb_display, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("Không có chuyến xe nội bộ nào trong ngày hôm nay.")
+                    # Xác định tập hợp các xe nội bộ đã có phát sinh chuyến trong ngày hôm nay (bao gồm cả trạng thái Tạo Mới, Đang Đi, Quyết Toán, Hoàn Thành)
+                    xe_da_co_chuyen = []
+                    if not df_kanban.empty:
+                        xe_da_co_chuyen = df_kanban['xe_id'].dropna().unique().tolist()
 
-                    st.markdown("<br>", unsafe_allow_html=True)
+                    # Đổ dữ liệu vào từng cột tương ứng (Gộp nội dung Đang Đi vào Tạo Mới hoặc hiển thị chung nếu cần, hoặc lọc riêng theo yêu cầu bỏ cột Đang Đi)
+                    with c_tao_moi:
+                        # Gộp cả Tao_Moi và Dang_Di vào chung một cột quản lý ban đầu nếu muốn, hoặc chỉ lấy Tao_Moi tùy ý. Ở đây gom chung các chuyến đang thực hiện (Tao_Moi hoặc Dang_Di) vào cột Tạo Mới/Đang Thực Hiện
+                        df_tm = df_kanban[df_kanban['trang_thai'].isin(['Tao_Moi', 'Dang_Di'])] if not df_kanban.empty else pd.DataFrame()
+                        st.markdown(f"<h6 style='text-align: center; color: #f57f17; background-color: #fff9c4; padding: 6px; border-radius: 5px;'>🟡 TẠO MỚI / ĐANG CHẠY ({len(df_tm)})</h6>", unsafe_allow_html=True)
+                        for _, row in df_tm.iterrows():
+                            st.markdown(render_kanban_card(row, "#fbc02d", "#fffde7"), unsafe_allow_html=True)
 
-                    st.markdown("#### 🤝 Danh sách chuyến xe Thuê ngoài")
-                    if has_ngoai:
-                        df_ng_display = df_ngoai.copy()
-                        df_ng_display['Ngày'] = pd.to_datetime(df_ng_display['Ngày']).dt.strftime('%d/%m/%Y')
-                        for col_money in ['Lương chuyến', 'Thưởng thêm', 'Doanh thu', 'Phí Thuê Ngoài']:
-                            if col_money in df_ng_display.columns:
-                                df_ng_display[col_money] = df_ng_display[col_money].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
-                        st.dataframe(df_ng_display, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("Không có chuyến xe thuê ngoài nào trong ngày hôm nay.")
+                    with c_quyet_toan:
+                        df_qt = df_kanban[df_kanban['trang_thai'] == 'Quyet_Toan'] if not df_kanban.empty else pd.DataFrame()
+                        st.markdown(f"<h6 style='text-align: center; color: #6a1b9a; background-color: #e1bee7; padding: 6px; border-radius: 5px;'>🟣 CHỜ QUYẾT TOÁN ({len(df_qt)})</h6>", unsafe_allow_html=True)
+                        for _, row in df_qt.iterrows():
+                            st.markdown(render_kanban_card(row, "#8e24aa", "#f3e5f5"), unsafe_allow_html=True)
 
+                    with c_hoan_thanh:
+                        df_ht = df_kanban[df_kanban['trang_thai'] == 'Hoan_Thanh'] if not df_kanban.empty else pd.DataFrame()
+                        st.markdown(f"<h6 style='text-align: center; color: #2e7d32; background-color: #c8e6c9; padding: 6px; border-radius: 5px;'>🟢 HOÀN THÀNH ({len(df_ht)})</h6>", unsafe_allow_html=True)
+                        for _, row in df_ht.iterrows():
+                            st.markdown(render_kanban_card(row, "#388e3c", "#e8f5e9"), unsafe_allow_html=True)
+
+                    with c_xe_trong:
+                        df_trong = pd.DataFrame()
+                        if isinstance(df_all_xe, pd.DataFrame) and not df_all_xe.empty:
+                            df_trong = df_all_xe[~df_all_xe['id'].isin(xe_da_co_chuyen)]
+                        st.markdown(f"<h6 style='text-align: center; color: #2e7d32; background-color: #f1f8e9; padding: 6px; border-radius: 5px;'>🟢 XE TRỐNG ({len(df_trong)})</h6>", unsafe_allow_html=True)
+                        for _, xe_row in df_trong.iterrows():
+                            st.markdown(render_empty_vehicle_card(xe_row, "#4caf50", "#f9fbe7"), unsafe_allow_html=True)
                 else:
-                    st.info(f"Chưa có dữ liệu chuyến đi nào trong ngày hôm nay ({ngay_hom_nay}).")
+                    st.info(f"📭 Chưa có dữ liệu chuyến đi hoặc phương tiện nào được khởi tạo trong ngày hôm nay ({ngay_hom_nay}).")
+                    
             except Exception as e:
-                st.error(f"Lỗi truy xuất danh sách hôm nay: {e}")
+                st.error(f"Lỗi truy xuất danh sách Kanban: {e}")
+                
         vung_thao_tac_quan_ly_chuyen_di()
     except Exception as e:
         st.error(f"❌ Lỗi tải Tab 4: {e}")
@@ -1335,81 +1487,95 @@ with tab5:
             
             if btn_tra_cuu:
                 try:
-                    sql_search_nb = """
-                        SELECT cd.id AS 'Mã chuyến đi', cd.ngay_chuyen_di AS 'Ngày', cd.ten_khach_hang AS 'Khách hàng',
-                            x.bien_so_xe AS 'Biển Số', nv.ho_ten AS 'Tài Xế', cd.dia_diem_giao_nhan AS 'Lộ trình', 
-                            cd.khoi_luong_kg AS 'Trọng tải (kg)',cd.ghi_chu AS 'Ghi chú', cd.trang_thai_chuyen AS 'Trạng thái'
-                        FROM chuyen_di cd 
-                        JOIN xe x ON cd.xe_id = x.id
-                        LEFT JOIN chuyen_di_tai_xe cdtx ON cd.id = cdtx.chuyen_di_id AND cdtx.loai_tai_xe = 'Tai_Chinh'
-                        LEFT JOIN nhan_vien nv ON cdtx.tai_xe_id = nv.id 
-                        WHERE cd.ngay_chuyen_di >= %s AND cd.ngay_chuyen_di <= %s
-                    """
-                    params_nb = [tu_ngay.strftime('%Y-%m-%d'), den_ngay.strftime('%Y-%m-%d')]
-                    
-                    if loc_trang_thai != "Tất cả":
-                        sql_search_nb += " AND cd.trang_thai_chuyen = %s"
-                        params_nb.append(status_mapping[loc_trang_thai])
-                    if loc_tai_xe != 0:
-                        sql_search_nb += " AND cdtx.tai_xe_id = %s"
-                        params_nb.append(loc_tai_xe)
+                    # Gắn cờ loading
+                    with st.spinner("Đang truy xuất dữ liệu..."):
+                        sql_search_nb = """
+                            SELECT cd.id AS 'Mã chuyến đi', cd.ngay_chuyen_di AS 'Ngày', cd.ten_khach_hang AS 'Khách hàng',
+                                x.bien_so_xe AS 'Biển Số', nv.ho_ten AS 'Tài Xế', cd.dia_diem_giao_nhan AS 'Lộ trình', 
+                                cd.khoi_luong_kg AS 'Trọng tải (kg)',cd.ghi_chu AS 'Ghi chú', cd.trang_thai_chuyen AS 'Trạng thái'
+                            FROM chuyen_di cd 
+                            JOIN xe x ON cd.xe_id = x.id
+                            LEFT JOIN chuyen_di_tai_xe cdtx ON cd.id = cdtx.chuyen_di_id AND cdtx.loai_tai_xe = 'Tai_Chinh'
+                            LEFT JOIN nhan_vien nv ON cdtx.tai_xe_id = nv.id 
+                            WHERE cd.ngay_chuyen_di >= %s AND cd.ngay_chuyen_di <= %s
+                        """
+                        params_nb = [tu_ngay.strftime('%Y-%m-%d'), den_ngay.strftime('%Y-%m-%d')]
                         
-                    sql_search_nb += " ORDER BY cd.ngay_chuyen_di DESC, cd.id DESC"
-                    df_search_nb = db.execute_query(sql_search_nb, tuple(params_nb))
-
-                    sql_search_ngoai = """
-                        SELECT cd.id AS 'Mã chuyến đi', cd.ngay_chuyen_di AS 'Ngày', cd.ten_khach_hang AS 'Khách hàng',
-                            cd.bien_so_xe_ngoai AS 'Biển Số', cd.tai_xe_ngoai_ten AS 'Tài Xế', cd.dia_diem_giao_nhan AS 'Lộ trình', 
-                            cd.khoi_luong_kg AS 'Trọng tải (kg)', 
-                            cd.ghi_chu AS 'Ghi chú', cd.trang_thai_chuyen AS 'Trạng thái'
-                        FROM chuyen_di cd 
-                        WHERE cd.ngay_chuyen_di >= %s AND cd.ngay_chuyen_di <= %s AND (cd.xe_id IS NULL OR cd.is_thue_ngoai = 1)
-                    """
-                    params_ngoai = [tu_ngay.strftime('%Y-%m-%d'), den_ngay.strftime('%Y-%m-%d')]
-                    
-                    if loc_trang_thai != "Tất cả":
-                        sql_search_ngoai += " AND cd.trang_thai_chuyen = %s"
-                        params_ngoai.append(status_mapping[loc_trang_thai])
-                    
-                    if loc_tai_xe != 0:
-                        sql_search_ngoai += " AND 1 = 0" 
+                        if loc_trang_thai != "Tất cả":
+                            sql_search_nb += " AND cd.trang_thai_chuyen = %s"
+                            params_nb.append(status_mapping[loc_trang_thai])
+                        if loc_tai_xe != 0:
+                            sql_search_nb += " AND cdtx.tai_xe_id = %s"
+                            params_nb.append(loc_tai_xe)
+                            
+                        sql_search_nb += " ORDER BY cd.ngay_chuyen_di DESC, cd.id DESC"
                         
-                    sql_search_ngoai += " ORDER BY cd.ngay_chuyen_di DESC, cd.id DESC"
-                    df_search_ngoai = db.execute_query(sql_search_ngoai, tuple(params_ngoai))
+                        # Lưu kết quả vào Session State
+                        st.session_state["df_search_nb"] = db.execute_query(sql_search_nb, tuple(params_nb))
 
-                    has_nb = isinstance(df_search_nb, pd.DataFrame) and not df_search_nb.empty
-                    has_ng = isinstance(df_search_ngoai, pd.DataFrame) and not df_search_ngoai.empty
-
-                    if has_nb or has_ng:
-                        total_len = (len(df_search_nb) if has_nb else 0) + (len(df_search_ngoai) if has_ng else 0)
-                        st.success(f"✅ Tìm thấy tổng cộng **{total_len}** chuyến đi thỏa mãn điều kiện.")
-
-                        st.markdown("#### 🚛 Danh sách chuyến xe Nội bộ")
-                        if has_nb:
-                            df_search_nb['Ngày'] = pd.to_datetime(df_search_nb['Ngày']).dt.strftime('%d/%m/%Y')
-                            for col_money in ['Lương chuyến', 'Thưởng thêm', 'Doanh thu']:
-                                if col_money in df_search_nb.columns:
-                                    df_search_nb[col_money] = df_search_nb[col_money].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
-                            st.dataframe(df_search_nb, use_container_width=True, hide_index=True)
-                        else:
-                            st.info("Không tìm thấy chuyến xe nội bộ nào phù hợp bộ lọc.")
-
-                        st.markdown("<br>", unsafe_allow_html=True)
-
-                        st.markdown("#### 🤝 Danh sách chuyến xe Thuê ngoài")
-                        if has_ng:
-                            df_search_ngoai['Ngày'] = pd.to_datetime(df_search_ngoai['Ngày']).dt.strftime('%d/%m/%Y')
-                            for col_money in ['Lương chuyến', 'Thưởng thêm', 'Doanh thu', 'Phí Thuê Ngoài']:
-                                if col_money in df_search_ngoai.columns:
-                                    df_search_ngoai[col_money] = df_search_ngoai[col_money].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
-                            st.dataframe(df_search_ngoai, use_container_width=True, hide_index=True)
-                        else:
-                            st.info("Không tìm thấy chuyến xe thuê ngoài nào phù hợp bộ lọc.")
-                    else:
-                        st.warning("📭 Không có dữ liệu chuyến đi nào khớp với bộ lọc bạn vừa chọn.")
+                        sql_search_ngoai = """
+                            SELECT cd.id AS 'Mã chuyến đi', cd.ngay_chuyen_di AS 'Ngày', cd.ten_khach_hang AS 'Khách hàng',
+                                cd.bien_so_xe_ngoai AS 'Biển Số', cd.tai_xe_ngoai_ten AS 'Tài Xế', cd.dia_diem_giao_nhan AS 'Lộ trình', 
+                                cd.khoi_luong_kg AS 'Trọng tải (kg)', 
+                                cd.ghi_chu AS 'Ghi chú', cd.trang_thai_chuyen AS 'Trạng thái'
+                            FROM chuyen_di cd 
+                            WHERE cd.ngay_chuyen_di >= %s AND cd.ngay_chuyen_di <= %s AND (cd.xe_id IS NULL OR cd.is_thue_ngoai = 1)
+                        """
+                        params_ngoai = [tu_ngay.strftime('%Y-%m-%d'), den_ngay.strftime('%Y-%m-%d')]
                         
+                        if loc_trang_thai != "Tất cả":
+                            sql_search_ngoai += " AND cd.trang_thai_chuyen = %s"
+                            params_ngoai.append(status_mapping[loc_trang_thai])
+                        
+                        if loc_tai_xe != 0:
+                            sql_search_ngoai += " AND 1 = 0" 
+                            
+                        sql_search_ngoai += " ORDER BY cd.ngay_chuyen_di DESC, cd.id DESC"
+                        
+                        # Lưu kết quả vào Session State
+                        st.session_state["df_search_ngoai"] = db.execute_query(sql_search_ngoai, tuple(params_ngoai))
                 except Exception as e:
                     st.error(f"Lỗi hệ thống khi tra cứu dữ liệu: {e}")
+
+            # ĐƯA PHẦN HIỂN THỊ RA NGOÀI NÚT BẤM
+            # Nếu có dữ liệu trong Session State, luôn luôn hiển thị nó (bất chấp việc vừa đổi Tab)
+            if "df_search_nb" in st.session_state and "df_search_ngoai" in st.session_state:
+                df_search_nb = st.session_state["df_search_nb"]
+                df_search_ngoai = st.session_state["df_search_ngoai"]
+                
+                has_nb = isinstance(df_search_nb, pd.DataFrame) and not df_search_nb.empty
+                has_ng = isinstance(df_search_ngoai, pd.DataFrame) and not df_search_ngoai.empty
+
+                if has_nb or has_ng:
+                    total_len = (len(df_search_nb) if has_nb else 0) + (len(df_search_ngoai) if has_ng else 0)
+                    st.success(f"✅ Tìm thấy tổng cộng **{total_len}** chuyến đi thỏa mãn điều kiện.")
+
+                    st.markdown("#### 🚛 Danh sách chuyến xe Nội bộ")
+                    if has_nb:
+                        # Copy để tránh warning SettingWithCopy của Pandas
+                        df_hien_thi_nb = df_search_nb.copy()
+                        df_hien_thi_nb['Ngày'] = pd.to_datetime(df_hien_thi_nb['Ngày']).dt.strftime('%d/%m/%Y')
+                        for col_money in ['Lương chuyến', 'Thưởng thêm', 'Doanh thu']:
+                            if col_money in df_hien_thi_nb.columns:
+                                df_hien_thi_nb[col_money] = df_hien_thi_nb[col_money].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
+                        st.dataframe(df_hien_thi_nb, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Không tìm thấy chuyến xe nội bộ nào phù hợp bộ lọc.")
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+
+                    st.markdown("#### 🤝 Danh sách chuyến xe Thuê ngoài")
+                    if has_ng:
+                        df_hien_thi_ng = df_search_ngoai.copy()
+                        df_hien_thi_ng['Ngày'] = pd.to_datetime(df_hien_thi_ng['Ngày']).dt.strftime('%d/%m/%Y')
+                        for col_money in ['Lương chuyến', 'Thưởng thêm', 'Doanh thu', 'Phí Thuê Ngoài']:
+                            if col_money in df_hien_thi_ng.columns:
+                                df_hien_thi_ng[col_money] = df_hien_thi_ng[col_money].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
+                        st.dataframe(df_hien_thi_ng, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Không tìm thấy chuyến xe thuê ngoài nào phù hợp bộ lọc.")
+                else:
+                    st.warning("📭 Không có dữ liệu chuyến đi nào khớp với bộ lọc bạn vừa chọn.")
         vung_thao_tac_tra_cuu_chuyen_di()
     except Exception as e:
         st.error(f"❌ Lỗi tải Tab 5: {e}")
@@ -1423,39 +1589,45 @@ with tab6:
         def vung_thao_tac_canh_bao_chuyen_di():
             st.markdown("##### 🚨 Danh sách Chuyến đi chưa chốt sổ (Đã qua ngày)")
             st.info("Bảng này thống kê các chuyến đi có lịch chạy trước ngày hôm nay nhưng hệ thống vẫn ghi nhận là chưa hoàn thành.")
-            
             try:
-                tx_clause_2 = ""
-                params_bc2 = [f"{tu_ngay.strftime('%Y-%m-%d')} 00:00:00", f"{den_ngay.strftime('%Y-%m-%d')} 23:59:59"]
-                
-                if tai_xe_duoc_chon != 0:
-                    tx_clause_2 = "AND cdtx.tai_xe_id = %s"
-                    params_bc2.append(tai_xe_duoc_chon)
+                # KIỂM TRA CACHE TRƯỚC: Nếu chưa có trong session hoặc người dùng đổi tài xế, mới query lại
+                if "df_canh_bao" not in st.session_state or st.session_state.get("last_cb_driver") != tai_xe_duoc_chon:
+                    
+                    tx_clause_2 = ""
+                    params_bc2 = [f"{tu_ngay.strftime('%Y-%m-%d')} 00:00:00", f"{den_ngay.strftime('%Y-%m-%d')} 23:59:59"]
+                    
+                    if tai_xe_duoc_chon != 0:
+                        tx_clause_2 = "AND cdtx.tai_xe_id = %s"
+                        params_bc2.append(tai_xe_duoc_chon)
 
-                sql_canh_bao = f"""
-                    SELECT 
-                        cd.id AS 'Mã chuyến đi', 
-                        cd.ngay_chuyen_di AS 'Ngày Chạy', 
-                        COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) AS 'Biển Số Xe',
-                        cd.khoi_luong_kg AS 'Trọng tải (kg)', 
-                        COALESCE(nv.ho_ten, cd.tai_xe_ngoai_ten) AS 'Tài Xế', 
-                        cd.ten_khach_hang AS 'Khách Hàng',
-                        cd.dia_diem_giao_nhan AS 'Lộ Trình', 
-                        cd.trang_thai_chuyen AS 'Trạng Thái HT',
-                        DATEDIFF(CURDATE(), DATE(cd.ngay_chuyen_di)) AS 'Số Ngày Trễ'
-                    FROM chuyen_di cd
-                    LEFT JOIN xe x ON cd.xe_id = x.id
-                    LEFT JOIN chuyen_di_tai_xe cdtx ON cd.id = cdtx.chuyen_di_id AND cdtx.loai_tai_xe = 'Tai_Chinh'
-                    LEFT JOIN nhan_vien nv ON cdtx.tai_xe_id = nv.id
-                    WHERE cd.trang_thai_chuyen NOT IN ('Hoan_Thanh', 'Huy_Chuyen')
-                    AND cd.ngay_chuyen_di >= %s 
-                    AND cd.ngay_chuyen_di <= %s
-                    AND DATE(cd.ngay_chuyen_di) < CURDATE()
-                    {tx_clause_2}
-                    ORDER BY cd.ngay_chuyen_di ASC
-                """
-                
-                df_canh_bao = db.execute_query(sql_canh_bao, tuple(params_bc2))
+                    sql_canh_bao = f"""
+                        SELECT 
+                            cd.id AS 'Mã chuyến đi', 
+                            cd.ngay_chuyen_di AS 'Ngày Chạy', 
+                            COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) AS 'Biển Số Xe',
+                            cd.khoi_luong_kg AS 'Trọng tải (kg)', 
+                            COALESCE(nv.ho_ten, cd.tai_xe_ngoai_ten) AS 'Tài Xế', 
+                            cd.ten_khach_hang AS 'Khách Hàng',
+                            cd.dia_diem_giao_nhan AS 'Lộ Trình', 
+                            cd.trang_thai_chuyen AS 'Trạng Thái HT',
+                            DATEDIFF(CURDATE(), DATE(cd.ngay_chuyen_di)) AS 'Số Ngày Trễ'
+                        FROM chuyen_di cd
+                        LEFT JOIN xe x ON cd.xe_id = x.id
+                        LEFT JOIN chuyen_di_tai_xe cdtx ON cd.id = cdtx.chuyen_di_id AND cdtx.loai_tai_xe = 'Tai_Chinh'
+                        LEFT JOIN nhan_vien nv ON cdtx.tai_xe_id = nv.id
+                        WHERE cd.trang_thai_chuyen NOT IN ('Hoan_Thanh', 'Huy_Chuyen')
+                        AND cd.ngay_chuyen_di >= %s 
+                        AND cd.ngay_chuyen_di <= %s
+                        AND DATE(cd.ngay_chuyen_di) < CURDATE()
+                        {tx_clause_2}
+                        ORDER BY cd.ngay_chuyen_di ASC
+                    """
+                    
+                    st.session_state["df_canh_bao"] = db.execute_query(sql_canh_bao, tuple(params_bc2))
+                    st.session_state["last_cb_driver"] = tai_xe_duoc_chon
+
+                # Lấy dữ liệu từ Session State
+                df_canh_bao = st.session_state["df_canh_bao"]
                 
                 if isinstance(df_canh_bao, pd.DataFrame) and not df_canh_bao.empty:
                     df_canh_bao['Ngày Chạy'] = pd.to_datetime(df_canh_bao['Ngày Chạy']).dt.strftime('%d/%m/%Y')
