@@ -216,7 +216,13 @@ def rule_engine_calc(kh_id, tai_trong_xe_tan, doanh_thu, facts, db_instance):
                         elif ldk == "qua_tai_cont" and facts.get('is_overload_cont'):
                             tien_item = tinh_tien_goc(gia, loai, doanh_thu)
                             ly_do = "Quá tải cont"
-                            
+                        # THÊM MỚI: Xử lý phụ phí Xe máy cồng kềnh (Đọc từ JSON)
+                        elif ldk == "xe_may" and facts.get('is_xe_may_cong_kenh'):
+                            nghiep_vu = str(dk.get('nghiep_vu', '')).strip().lower()
+                            if nghiep_vu == "cong_kenh":
+                                tien_item = tinh_tien_goc(gia, loai, doanh_thu)
+                                ly_do = "Xe máy chở cồng kềnh/nặng"
+
                         elif ldk == "phu_phi_khac" or "khác khu" in ten_pp.lower() or "khac khu" in ten_pp.lower():
                             if facts.get('is_giao_khac_khu'):
                                 tien_item = tinh_tien_goc(gia, loai, doanh_thu)
@@ -253,6 +259,11 @@ def rule_engine_calc(kh_id, tai_trong_xe_tan, doanh_thu, facts, db_instance):
                     elif facts.get('is_huy_chuyen') and ("huỷ" in tl or "hủy" in tl):
                         tien_item = tinh_tien_goc(gia, loai, doanh_thu)
                         ly_do = "Hủy chuyến"
+                    # THÊM MỚI: Dự phòng trường hợp cấu hình nhập bằng Text thuần
+                    elif facts.get('is_xe_may_cong_kenh') and ("cồng kềnh" in tl or "cong kenh" in tl or "hàng nặng" in tl):
+                        tien_item = tinh_tien_goc(gia, loai, doanh_thu)
+                        ly_do = "Xe máy chở cồng kềnh/nặng"
+
                     elif facts.get('is_chu_nhat') and ("chủ nhật" in tl or "chu nhat" in tl):
                         tien_item = tinh_tien_goc(gia, loai, doanh_thu)
                         ly_do = "Phụ thu Chủ Nhật"
@@ -797,27 +808,33 @@ with tab1:
 
                     st.divider()
                     st.markdown("##### 🤖 2. Khai báo phát sinh (AI sẽ tự động tính ra Phụ phí)")
-                    c_f1, c_f2, c_f3 = st.columns(3)
-                    f_km = c_f1.number_input("🛣️ Số KM đi lố (Phát sinh)",
-                                              min_value=0.0, value=None, 
-                                              placeholder="0", step=1.0, format="%g")
+                    
+                    # Nhóm 1: Các dữ liệu nhập số (4 cột)
+                    c_f1, c_f2, c_f3, c_f4 = st.columns(4)
+                    f_km = c_f1.number_input("🛣️ Số KM đi lố", min_value=0.0, value=None, placeholder="0", step=1.0, format="%g")
                     f_diem = c_f2.number_input("📍 Số điểm giao thêm", min_value=0, value=None, placeholder="0", step=1)
                     f_neo_xe = c_f3.number_input("⏳ Số ngày neo xe tải", min_value=0, value=None, placeholder="0", step=1)
-
-                    c_f4, c_f5, c_f6, c_f7 = st.columns(4)
                     f_neo_cont = c_f4.number_input("🧊 Số ngày neo Cont", min_value=0, value=None, placeholder="0", step=1)
-                    f_huy = c_f5.checkbox("❌ Khách Hủy chuyến")
-                    f_boc = c_f6.checkbox("📦 Có bốc xếp")
-                    f_overload_cont = c_f7.checkbox("🛂 Quá tải container")
 
-                    c_f8, c_f9, c_f10, c_f11, c_f12 = st.columns(5)
-                    f_seal = c_f8.checkbox("🔒 Lấy Seal/Cont sớm 1 ngày")
-                    f_khac_khu = c_f9.checkbox("🏢 Giao khác khu nội bộ")
+                    # Nhóm 2: Các tính chất của hàng hóa / chuyến đi (4 cột)
+                    c_f5, c_f6, c_f7, c_f8 = st.columns(4)
+                    f_boc = c_f5.checkbox("📦 Có bốc xếp")
+                    f_overload_cont = c_f6.checkbox("🛂 Quá tải Cont")
+                    f_xe_may_cong_kenh = c_f7.checkbox("🛵 Xe máy cồng kềnh") # <--- CHECKBOX MỚI
+                    f_huy = c_f8.checkbox("❌ Khách Hủy chuyến")
+
+                    # Nhóm 3: Các phụ phí địa lý & Cảng (4 cột)
+                    c_f9, c_f10, c_f11, c_f12 = st.columns(4)
+                    f_seal = c_f9.checkbox("🔒 Lấy Seal sớm 1 ngày")
+                    f_khac_khu = c_f10.checkbox("🏢 Giao khác khu")
+                    f_lam_hang_cang = c_f11.checkbox("📦 Có làm hàng cảng")
                     cang_opts = ["", "Dong_Nai", "Hiep_Phuoc", "VICT", "Cai_Mep"]
-                    f_cang = c_f10.selectbox("⚓ Nâng hạ/Qua cảng", options=cang_opts)
+                    f_cang = c_f12.selectbox("⚓ Nâng hạ/Qua cảng", options=cang_opts)
+                    
+                    # Nhóm 4: Xử lý Cont Rỗng (Cấp 1/4 layout để Dropdown không bị ép chữ)
+                    c_f13, c_f14 = st.columns([1, 3])
                     cont_rong_opts = ["Không", "Lấy Cont rỗng", "Hạ Cont rỗng", "Lấy Cont rỗng trái tuyến", "Hạ Cont rỗng trái tuyến"]
-                    f_cont_rong = c_f11.selectbox("🔄 Xử lý Cont rỗng", options=cont_rong_opts)
-                    f_lam_hang_cang = c_f12.checkbox("📦 Có làm hàng cảng")
+                    f_cont_rong = c_f13.selectbox("🔄 Xử lý Cont rỗng", options=cont_rong_opts)
                     
                     st.divider()
                     selected_tc_ids = []
@@ -933,11 +950,12 @@ with tab1:
                                 'so_ngay_neo_xe': f_neo_xe or 0, 'so_ngay_neo_cont': f_neo_cont or 0,
                                 'is_huy_chuyen': f_huy, 'is_boc_xep': f_boc,
                                 'is_ve_khuya': bool(row_sel.get('is_ve_khuya', 0)),
-                                'is_overload_cont': f_overload_cont, 'cang_nang_ha': f_cang,
+                                'is_overload_cont': f_overload_cont, 
+                                'is_xe_may_cong_kenh': f_xe_may_cong_kenh, # <--- BỔ SUNG BIẾN NÀY
+                                'cang_nang_ha': f_cang,
                                 'chieu_cont': 'nhap' if chieu_cont_ui == "Nhập" else ('xuat' if chieu_cont_ui == "Xuất" else ''),
                                 'is_lay_seal_som': f_seal, 'is_giao_khac_khu': f_khac_khu,
                                 'is_cont_rong': (f_cont_rong != "Không"),
-                                # SỬA LỖI: Nhận diện linh hoạt từ khoá "trái tuyến"
                                 'is_cont_rong_trai_tuyen': ("trái tuyến" in f_cont_rong.lower()),
                                 'loai_cont_rong_text': f_cont_rong,
                                 'is_lam_hang_cang': f_lam_hang_cang,
@@ -1283,13 +1301,13 @@ with tab3:
                         "DS_PHU_CAP_TAI_XE": "",
                         "IS_HANG_VE": 0,
                         "IS_VE_KHUYA": 0,
-                        "PHI_HAI_QUAN": 0,
                         "PHI_BOC_XEP": 0,
                         "PHI_KHAC": 0,
                         "SO_KM_PHAT_SINH": 0,
                         "SO_DIEM_GIAO_THEM": 0,
                         "IS_HUY_CHUYEN": 0,
-                        "IS_BAO_CHUYEN": 0,          
+                        "IS_BAO_CHUYEN": 0,
+                        "XE_MAY_CONG_KENH": 0,          
                         "LOAI_XE_BAO": "Xe Tải",     
                         "IS_BOC_XEP": 0,
                         "IS_OVERLOAD_CONT": 0,
@@ -1311,7 +1329,7 @@ with tab3:
                     "DOANH_THU_CHUYEN": 2000000,  
                     "CHI_PHI_THUE_NGOAI": 0, 
                     "PHI_HAI_QUAN": 0, "PHI_BOC_XEP": 100000, "PHI_KHAC": 0,
-                    "IS_HANG_VE": 0,
+                    "IS_HANG_VE": 0, "XE_MAY_CONG_KENH": 0,   # <--- THÊM VÀO ĐÂY NỮA
                     "DS_PHU_CAP_TAI_XE": "1, 3 (Hoặc gõ chữ: Bốc xếp, Về khuya)",
                     "SO_KM_PHAT_SINH": 15, "SO_DIEM_GIAO_THEM": 1,
                     "SO_NGAY_NEO_XE": 0, "SO_NGAY_NEO_XE_NHA_MAY": 0, "SO_NGAY_NEO_CONT": 0,
@@ -1667,6 +1685,7 @@ with tab3:
                                         'is_boc_xep': parse_excel_bool(r.get('IS_BOC_XEP')),
                                         'is_ve_khuya': parse_excel_bool(r.get('IS_VE_KHUYA')),
                                         'is_overload_cont': parse_excel_bool(r.get('IS_OVERLOAD_CONT')),
+                                        'is_xe_may_cong_kenh': parse_excel_bool(r.get('XE_MAY_CONG_KENH')), # <--- BỔ SUNG CỜ NÀY CHO TAB 3
                                         'cang_nang_ha': str(r.get('CANG_NANG_HA', '')).strip() if pd.notna(r.get('CANG_NANG_HA')) else "",
                                         'chieu_cont': chieu_val,
                                         'is_lay_seal_som': parse_excel_bool(r.get('LAY_SEAL_SOM')),
