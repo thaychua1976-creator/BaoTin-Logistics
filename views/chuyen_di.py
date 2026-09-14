@@ -65,36 +65,6 @@ STATUS_MAP = {"Tạo Mới": "Tao_Moi", "Đang Đi": "Dang_Di", "Quyết Toán":
 
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>📝 PHÂN HỆ QUẢN LÝ VÀ ĐIỀU PHỐI CHUYẾN ĐI NÂNG CAO</h3>", unsafe_allow_html=True)
 
-with st.container():
-    st.markdown("##### 🔍 Bộ lọc điều kiện thống kê")
-    c_date1, c_date2, c_driver = st.columns([1, 1, 2])
-    today = datetime.date.today()
-    
-    # Sử dụng Session State để giữ giá trị ngày, tránh query lại vô ích
-    if "filter_tu_ngay" not in st.session_state:
-        st.session_state["filter_tu_ngay"] = today.replace(day=1)
-    if "filter_den_ngay" not in st.session_state:
-        st.session_state["filter_den_ngay"] = today
-        
-    tu_ngay = c_date1.date_input("Từ ngày", value=st.session_state["filter_tu_ngay"], format="DD/MM/YYYY")
-    den_ngay = c_date2.date_input("Đến ngày", value=st.session_state["filter_den_ngay"], format="DD/MM/YYYY")
-    
-    # Kiểm tra xem ngày có bị thay đổi không, nếu có thì xóa cache của Session State
-    if tu_ngay != st.session_state["filter_tu_ngay"] or den_ngay != st.session_state["filter_den_ngay"]:
-        st.session_state["filter_tu_ngay"] = tu_ngay
-        st.session_state["filter_den_ngay"] = den_ngay
-        # Xóa các DataFrame lưu trong session để ép query lại
-        for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]:
-            if key in st.session_state:
-                del st.session_state[key]
-    
-    # Ứng dụng Cache Master Data cho danh mục ít đổi
-    df_tx_filter = get_cached_master_data("SELECT id, ho_ten FROM nhan_vien WHERE loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu') ORDER BY ho_ten")
-    tx_options = {0: "✨ Tất cả tài xế (Mặc định)"}
-    if isinstance(df_tx_filter, pd.DataFrame) and not df_tx_filter.empty:
-        for _, r in df_tx_filter.iterrows(): tx_options[r['id']] = r['ho_ten']
-    tai_xe_duoc_chon = c_driver.selectbox("Chọn Tài xế thống kê", options=list(tx_options.keys()), format_func=lambda x: tx_options[x], index=0)
-
 st.divider()
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📋 Ghép chuyến", "➕ Tạo/Sửa chuyến ", "➕ Tạo chuyến theo file", "📊 Chuyến đi trong ngày", "📊 Chuyến theo ngày chọn", "⚠️ Cảnh báo Xe tồn đọng"])
 
@@ -1603,16 +1573,32 @@ with tab6:
         def vung_thao_tac_canh_bao_chuyen_di():
             st.markdown("##### 🚨 Danh sách Chuyến đi chưa chốt sổ (Đã qua ngày)")
             st.info("Bảng này thống kê các chuyến đi có lịch chạy trước ngày hôm nay nhưng hệ thống vẫn ghi nhận là chưa hoàn thành.")
+            
+            # ĐƯA BỘ LỌC VÀO TRONG TAB 6 ĐỂ ĐỘC LẬP HOÀN TOÀN
+            c_date1, c_date2, c_driver = st.columns([1, 1, 2])
+            today = datetime.date.today()
+            
+            tu_ngay_cb = c_date1.date_input("Từ ngày", value=today.replace(day=1), format="DD/MM/YYYY", key="tu_ngay_cb")
+            den_ngay_cb = c_date2.date_input("Đến ngày", value=today, format="DD/MM/YYYY", key="den_ngay_cb")
+            
+            sql_tx_list = "SELECT id, ho_ten FROM nhan_vien WHERE loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu') ORDER BY ho_ten"
+            df_tx_filter = get_cached_master_data(sql_tx_list)
+            tx_options_cb = {0: "✨ Tất cả tài xế (Mặc định)"}
+            if isinstance(df_tx_filter, pd.DataFrame) and not df_tx_filter.empty:
+                for _, r in df_tx_filter.iterrows(): tx_options_cb[r['id']] = r['ho_ten']
+                
+            tai_xe_cb = c_driver.selectbox("Lọc theo Tài xế", options=list(tx_options_cb.keys()), format_func=lambda x: tx_options_cb[x], key="tx_cb")
+            st.divider()
+
             try:
-                # KIỂM TRA CACHE TRƯỚC: Nếu chưa có trong session hoặc người dùng đổi tài xế, mới query lại
-                if "df_canh_bao" not in st.session_state or st.session_state.get("last_cb_driver") != tai_xe_duoc_chon:
+                if "df_canh_bao" not in st.session_state or st.session_state.get("last_cb_driver") != tai_xe_cb or st.session_state.get("last_tu_ngay") != tu_ngay_cb or st.session_state.get("last_den_ngay") != den_ngay_cb:
                     
                     tx_clause_2 = ""
-                    params_bc2 = [f"{tu_ngay.strftime('%Y-%m-%d')} 00:00:00", f"{den_ngay.strftime('%Y-%m-%d')} 23:59:59"]
+                    params_bc2 = [f"{tu_ngay_cb.strftime('%Y-%m-%d')} 00:00:00", f"{den_ngay_cb.strftime('%Y-%m-%d')} 23:59:59"]
                     
-                    if tai_xe_duoc_chon != 0:
+                    if tai_xe_cb != 0:
                         tx_clause_2 = "AND cdtx.tai_xe_id = %s"
-                        params_bc2.append(tai_xe_duoc_chon)
+                        params_bc2.append(tai_xe_cb)
 
                     sql_canh_bao = f"""
                         SELECT 
@@ -1638,9 +1624,10 @@ with tab6:
                     """
                     
                     st.session_state["df_canh_bao"] = db.execute_query(sql_canh_bao, tuple(params_bc2))
-                    st.session_state["last_cb_driver"] = tai_xe_duoc_chon
+                    st.session_state["last_cb_driver"] = tai_xe_cb
+                    st.session_state["last_tu_ngay"] = tu_ngay_cb
+                    st.session_state["last_den_ngay"] = den_ngay_cb
 
-                # Lấy dữ liệu từ Session State
                 df_canh_bao = st.session_state["df_canh_bao"]
                 
                 if isinstance(df_canh_bao, pd.DataFrame) and not df_canh_bao.empty:
