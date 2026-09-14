@@ -747,10 +747,12 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
             # THÊM MỚI: Dictionary lưu trữ mức phí của tờ khai
             dict_phi_hq_tk = {0: 0}
             try:
-                df_tk_cont = db.execute_query("SELECT id, so_to_khai, loai_to_khai,phi_dich_vu_hq FROM to_khai_hai_quan ORDER BY id DESC LIMIT 100")
+                df_tk_cont = db.execute_query("SELECT id, so_to_khai, loai_to_khai, phi_dich_vu_hq FROM to_khai_hai_quan ORDER BY id DESC LIMIT 100")
                 if isinstance(df_tk_cont, pd.DataFrame) and not df_tk_cont.empty:
-                    dict_tk_cont.update({r['id']: f"Tờ khai: {r['so_to_khai']} ({r['loai_to_khai']})" for _, r in df_tk_cont.iterrows()})
-                    dict_phi_hq_tk[r['id']] = float(r['phi_dich_vu_hq'] or 0.0)
+                    # [FIX]: Cần phải dùng vòng lặp để add từng key-value vào cả 2 dict
+                    for _, r in df_tk_cont.iterrows():
+                        dict_tk_cont[r['id']] = f"Tờ khai: {r['so_to_khai']} ({r['loai_to_khai']})"
+                        dict_phi_hq_tk[r['id']] = float(r['phi_dich_vu_hq'] or 0.0)
             except Exception:
                 pass
 
