@@ -1791,7 +1791,7 @@ with tab3:
                                                 'cong_chuyen': parse_excel_money(r.get('TIEN_CONG_TAI_XE', 0)),
                                                 'doanh_thu': doanh_thu_chuyen,
                                                 'chi_phi_thue_ngoai': chi_phi_thue_ngoai_val,
-                                                'phi_hai_quan': parse_excel_money(r.get('PHI_HAI_QUAN')),
+                                                #'phi_hai_quan': parse_excel_money(r.get('PHI_HAI_QUAN')),
                                                 'phi_boc_xep': parse_excel_money(r.get('PHI_BOC_XEP')),
                                                 'phi_khac': tong_phi_khac_final,
                                                 'tien_them': tien_them_final,
