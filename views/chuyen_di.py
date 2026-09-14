@@ -1574,7 +1574,6 @@ with tab6:
             st.markdown("##### 🚨 Danh sách Chuyến đi chưa chốt sổ (Đã qua ngày)")
             st.info("Bảng này thống kê các chuyến đi có lịch chạy trước ngày hôm nay nhưng hệ thống vẫn ghi nhận là chưa hoàn thành.")
             
-            # ĐƯA BỘ LỌC VÀO TRONG TAB 6 ĐỂ ĐỘC LẬP HOÀN TOÀN
             c_date1, c_date2, c_driver = st.columns([1, 1, 2])
             today = datetime.date.today()
             
@@ -1592,7 +1591,6 @@ with tab6:
 
             try:
                 if "df_canh_bao" not in st.session_state or st.session_state.get("last_cb_driver") != tai_xe_cb or st.session_state.get("last_tu_ngay") != tu_ngay_cb or st.session_state.get("last_den_ngay") != den_ngay_cb:
-                    
                     tx_clause_2 = ""
                     params_bc2 = [f"{tu_ngay_cb.strftime('%Y-%m-%d')} 00:00:00", f"{den_ngay_cb.strftime('%Y-%m-%d')} 23:59:59"]
                     
@@ -1632,12 +1630,10 @@ with tab6:
                 
                 if isinstance(df_canh_bao, pd.DataFrame) and not df_canh_bao.empty:
                     df_canh_bao['Ngày Chạy'] = pd.to_datetime(df_canh_bao['Ngày Chạy']).dt.strftime('%d/%m/%Y')
-                    
                     st.error(f"⚠️ PHÁT HIỆN **{len(df_canh_bao)}** CHUYẾN ĐI QUÁ HẠN CHƯA QUYẾT TOÁN!")
                     
                     def highlight_tre(val):
-                        color = '#ffcccc' if isinstance(val, (int, float)) and val > 0 else ''
-                        return f'background-color: {color}'
+                        return 'background-color: #ffcccc' if isinstance(val, (int, float)) and val > 0 else ''
                     
                     try:
                         styled_df = df_canh_bao.style.map(highlight_tre, subset=['Số Ngày Trễ'])
@@ -1649,29 +1645,14 @@ with tab6:
                         
                     st.dataframe(styled_df, use_container_width=True, hide_index=True)
                     
-                    st.markdown("##### 📥 Xuất danh sách cần xử lý gấp")
                     excel_buffer_cb = io.BytesIO()
                     with pd.ExcelWriter(excel_buffer_cb, engine='xlsxwriter') as writer_cb:
                         df_canh_bao.to_excel(writer_cb, sheet_name='Canh_Bao_Xe_Ton', index=False)
-                        worksheet_cb = writer_cb.sheets['Canh_Bao_Xe_Ton']
-                        
-                        header_format_cb = writer_cb.book.add_format({
-                            'bold': True, 'font_color': 'white', 'bg_color': '#cc0000', 'border': 1
-                        })
-                        
-                        for col_num, col_name in enumerate(df_canh_bao.columns):
-                            worksheet_cb.write(0, col_num, col_name, header_format_cb)
-                        
-                        for idx, col in enumerate(df_canh_bao):
-                            series = df_canh_bao[col].astype(str)
-                            max_len = max(series.map(len).max() if not series.empty else 0, len(str(col))) + 2
-                            worksheet_cb.set_column(idx, idx, min(max_len, 50))
                     
                     st.download_button(
                         label="🚨 TẢI FILE EXCEL CẢNH BÁO TỒN ĐỌNG",
                         data=excel_buffer_cb.getvalue(),
                         file_name=f"Canh_Bao_Chuyen_Ton_Dong_{datetime.date.today().strftime('%d%m%Y')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         type="primary"
                     )
                 else:
@@ -1679,6 +1660,98 @@ with tab6:
                     
             except Exception as e:
                 st.error(f"⚠️ Chi tiết lỗi truy vấn Cảnh báo: {e}")
+
+            st.divider()
+            
+            # --- TÍNH NĂNG MỚI: CẬP NHẬT TRẠNG THÁI CHUYẾN HOÀN THÀNH ---
+            st.markdown("##### ⚡ Cập nhật nhanh giải phóng xe trống")
+            st.info("Ép chuyển các chuyến đi sang trạng thái **Hoàn Thành** để giải phóng đầu xe tiếp tục nhận chuyến mới. Khâu quyết toán sẽ được xử lý độc lập sau.")
+            
+            c_up1, c_up2 = st.columns(2)
+            with c_up1:
+                st.markdown("**1. Khai báo mã đơn lẻ**")
+                ma_chuyen_up = st.number_input("Nhập Mã chuyến đi cần chốt:", min_value=0, step=1, key="nhap_ma_chuyen")
+                btn_up_single = st.button("✅ Xác nhận Hoàn Thành chuyến này", type="primary", use_container_width=True)
+            
+            with c_up2:
+                st.markdown("**2. Cập nhật hàng loạt bằng Excel**")
+                file_up = st.file_uploader("Tải lên file (Bắt buộc chứa cột 'Mã chuyến đi')", type=["xlsx", "xls"])
+                btn_up_bulk = st.button("🚀 Thực thi chuyển đổi hàng loạt", type="primary", use_container_width=True, disabled=(file_up is None))
+
+            # Xử lý Logic Database Transaction & Audit Log
+            if btn_up_single or btn_up_bulk:
+                ds_ma_chuyen = []
+                
+                if btn_up_single:
+                    if ma_chuyen_up > 0: ds_ma_chuyen.append(ma_chuyen_up)
+                    else: st.warning("⚠️ Vui lòng nhập Mã chuyến đi hợp lệ (lớn hơn 0).")
+                
+                if btn_up_bulk and file_up is not None:
+                    try:
+                        df_up = pd.read_excel(file_up)
+                        # Hỗ trợ nhận diện nhiều kiểu đặt tên cột phổ biến
+                        col_name = next((col for col in df_up.columns if str(col).strip().lower() in ['mã chuyến đi', 'ma_chuyen_di', 'id', 'mã chuyến']), None)
+                        
+                        if col_name:
+                            # Lọc bỏ NaN/Null và ép kiểu Int an toàn
+                            ds_ma_chuyen = df_up[col_name].dropna().astype(int).unique().tolist()
+                        else:
+                            st.error("❌ File Excel không hợp lệ. Phải có cột mang tên 'Mã chuyến đi'.")
+                    except Exception as e:
+                        st.error(f"❌ Xảy ra lỗi khi phân tích file Excel: {e}")
+                        
+                if ds_ma_chuyen:
+                    conn = db.pool.get_connection()
+                    if conn:
+                        try:
+                            conn.autocommit = False
+                            cursor = conn.cursor()
+                            nguoi_dung = st.session_state.get('username', 'He_Thong')
+                            
+                            thanh_tien_trinh = st.progress(0)
+                            tong_so = len(ds_ma_chuyen)
+                            thanh_cong = 0
+                            
+                            for i, ma_cd in enumerate(ds_ma_chuyen):
+                                cursor.execute("SELECT trang_thai_chuyen FROM chuyen_di WHERE id = %s", (ma_cd,))
+                                row = cursor.fetchone()
+                                
+                                if row:
+                                    tt_hien_tai = row[0]
+                                    # Bẫy lỗi: Chặn cập nhật đè lên các chuyến đã đóng luồng
+                                    if tt_hien_tai in ['Hoan_Thanh', 'Huy_Chuyen', 'Quyet_Toan']:
+                                        st.warning(f"⚠️ Bỏ qua chuyến #{ma_cd}: Đang ở trạng thái '{tt_hien_tai}'.")
+                                    else:
+                                        cursor.execute("UPDATE chuyen_di SET trang_thai_chuyen = 'Hoan_Thanh' WHERE id = %s", (ma_cd,))
+                                        if cursor.rowcount > 0:
+                                            # Ghi Audit Log vào lich_su_thao_tac
+                                            chi_tiet = f'{{"trang_thai_cu": "{tt_hien_tai}", "trang_thai_moi": "Hoan_Thanh", "ghi_chu": "Cập nhật nhanh giải phóng đầu xe"}}'
+                                            cursor.execute("INSERT INTO lich_su_thao_tac (chuyen_di_id, nguoi_dung, hanh_dong, chi_tiet) VALUES (%s, %s, 'CAP_NHAT_Nhanh_Hoan_Thanh', %s)", (ma_cd, nguoi_dung, chi_tiet))
+                                            thanh_cong += 1
+                                else:
+                                    st.error(f"❌ Từ chối: Không tồn tại chuyến đi mã #{ma_cd} trong hệ thống.")
+                                    
+                                thanh_tien_trinh.progress(min((i + 1) / tong_so, 1.0))
+                                
+                            conn.commit()
+                            
+                            if thanh_cong > 0:
+                                st.success(f"🎉 Hoàn tất! Đã chuyển đổi {thanh_cong}/{tong_so} chuyến sang trạng thái Hoàn Thành.")
+                                # Xóa cache các DataFrame để ép ứng dụng query lại dữ liệu mới nhất
+                                for key in ["df_canh_bao", "df_search_nb", "df_search_ngoai", "last_cb_driver"]:
+                                    st.session_state.pop(key, None)
+                                time.sleep(2)
+                                st.rerun()
+                            elif tong_so > 0:
+                                st.info("Không có chuyến đi nào được thay đổi do không thỏa mãn điều kiện cập nhật.")
+                                
+                        except Exception as e:
+                            conn.rollback()
+                            st.error(f"❌ Lỗi giao dịch Database (Transaction Rollback): {e}")
+                        finally:
+                            cursor.close()
+                            conn.close()
+
         vung_thao_tac_canh_bao_chuyen_di()
     except Exception as e:
         st.error(f"❌ Lỗi tải Tab 6: {e}")
