@@ -66,7 +66,7 @@ STATUS_MAP = {"Tạo Mới": "Tao_Moi", "Đang Đi": "Dang_Di", "Quyết Toán":
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>📝 PHÂN HỆ QUẢN LÝ VÀ ĐIỀU PHỐI CHUYẾN ĐI NÂNG CAO</h3>", unsafe_allow_html=True)
 
 st.divider()
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📋 Ghép chuyến", "➕ Tạo/Sửa chuyến ", "➕ Tạo chuyến theo file", "📊 Chuyến đi trong ngày", "📊 Chuyến theo ngày chọn", "⚠️ Chuyển trạng thái xe - Cảnh báo Xe tồn đọng"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["➕ Tạo/Sửa chuyến ","📋 Ghép chuyến", "➕ Tạo chuyến theo file", "📊 Chuyến đi trong ngày", "📊 Chuyến theo ngày chọn", "⚠️ Chuyển trạng thái xe - Cảnh báo Xe tồn đọng"])
 
 # Ứng dụng Cache lấy toàn bộ Danh mục dùng chung
 df_xe_full = get_cached_master_data("SELECT id, bien_so_xe,loai_xe, tai_trong_thiet_ke, tai_xe_co_dinh_id FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'")
@@ -84,83 +84,13 @@ if isinstance(df_kh_full, pd.DataFrame) and not df_kh_full.empty:
         kh_opts[int(r['id'])] = f"MST: {mst} — {r['ten_khach_hang']}"
         kh_diachi_map[int(r['id'])] = str(r['dia_chi']) if pd.notna(r.get('dia_chi')) else ""
 
-with tab1:
-    try:
-        tao_tieu_de_kem_nut_refresh("📋 Danh sách chuyến đi trong ngày và ghép chuyến", "ref_tab1")
-        
-        @st.fragment
-        def vung_thao_tac_hien_thi_chuyen_di():
-            with st.expander("🔗 NGHIỆP VỤ GHÉP CHUYẾN / CHUYẾN TIẾP NỐI (Dành cho Điều Phối)", expanded=True):
-                st.markdown("💡 **Hướng dẫn:** Bôi đen (chọn) các chuyến đi của **cùng một xe** theo đúng thứ tự lấy hàng.")
-                
-                # CẬP NHẬT: Cho phép hiển thị và ghép cả xe nội bộ lẫn xe thuê ngoài
-                sql_ghep = """
-                    SELECT cd.id, cd.ngay_chuyen_di, cd.dia_diem_giao_nhan, 
-                           COALESCE(kh.ten_khach_hang, cd.ten_khach_hang) as ten_khach, 
-                           COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) as bien_so_xe, 
-                           COALESCE(CAST(cd.xe_id AS CHAR), cd.bien_so_xe_ngoai) as identifier_xe
-                    FROM chuyen_di cd 
-                    LEFT JOIN xe x ON cd.xe_id = x.id 
-                    LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id
-                    WHERE cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') AND cd.is_gop_chuyen = 0 
-                    ORDER BY identifier_xe, cd.id ASC
-                """
-                df_ghep = db.execute_query(sql_ghep)
-                if isinstance(df_ghep, pd.DataFrame) and not df_ghep.empty:
-                    ghep_opts = {r['id']: f"🚛 Xe: {r['bien_so_xe']} | Mã chuyến: {r['id']} | Khách: {r['ten_khach']} | Lộ trình: {r['dia_diem_giao_nhan']}" for _, r in df_ghep.iterrows()}
-                    chuyen_duoc_chon = st.multiselect("📌 Click để chọn các chuyến đi cần ghép:", options=list(ghep_opts.keys()), format_func=lambda x: ghep_opts[x], key="multiselect_ghep_chuyen_tab1")
-                    
-                    if st.button("🔗 XÁC NHẬN GHÉP CHUYẾN", type="primary", key="btn_xac_nhan_ghep_tab1"):
-                        if len(chuyen_duoc_chon) < 2: 
-                            st.warning("⚠️ Chọn ít nhất 2 chuyến.")
-                        # SỬA LỖI: Kiểm tra trùng xe dựa trên identifier_xe thay vì chỉ xe_id (để bắt được cả xe ngoài)
-                        elif len(df_ghep[df_ghep['id'].isin(chuyen_duoc_chon)]['identifier_xe'].unique()) > 1: 
-                            st.error("❌ Các chuyến không cùng xe!")
-                        else:
-                            success, msg = group_trips_transaction(db.pool, chuyen_duoc_chon, st.session_state.get('username', 'Admin'))
-                            if success:
-                                st.success(msg)
-                                # Dọn rác cache để Tab Khác cập nhật ngay lập tức
-                                for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]:
-                                    st.session_state.pop(key, None)
-                                time.sleep(1.2)
-                                st.rerun()
-                            else: 
-                                st.error(f"Lỗi: {msg}")
-                else: 
-                    st.info("📭 Không có chuyến đi nội bộ khả dụng để ghép.")
-                    
-            st.divider()
-            
-            try:
-                sql_list = """
-                    SELECT cd.ma_chuyen_ghep AS 'Mã Nhóm', cd.stt_chuyen_ghep AS 'STT', cd.id AS 'Mã chuyến đi', cd.ngay_chuyen_di AS 'Ngày', 
-                    COALESCE(kh.ten_khach_hang, cd.ten_khach_hang) AS 'Khách hàng', COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) AS 'Biển Số', 
-                    cd.khoi_luong_kg AS 'Trọng tải (kg)', cd.dia_diem_giao_nhan AS 'Lộ trình', cd.trang_thai_chuyen AS 'Trạng thái'
-                    FROM chuyen_di cd LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id LEFT JOIN xe x ON cd.xe_id = x.id
-                    WHERE cd.ngay_chuyen_di = %s ORDER BY cd.ma_chuyen_ghep DESC, cd.stt_chuyen_ghep ASC, cd.id DESC
-                """
-                df_chuyen = db.execute_query(sql_list, (datetime.date.today().strftime('%Y-%m-%d'),))
-                
-                if isinstance(df_chuyen, pd.DataFrame) and not df_chuyen.empty:
-                    st.dataframe(df_chuyen, use_container_width=True, hide_index=True)
-                else: 
-                    st.info("Chưa có dữ liệu chuyến đi trong ngày hôm nay.")
-                    
-            except Exception as e: 
-                st.error(f"Lỗi tải danh sách chuyến: {e}")
-                
-        vung_thao_tac_hien_thi_chuyen_di()
-    except Exception as e:
-        st.error(f"❌ Lỗi tải Tab1: {e}")
-
-
+####################################
 # ==========================================
 # TAB 2: ĐĂNG KÝ, SỬA & XÓA CHUYẾN ĐI THỦ CÔNG
 # ==========================================
-with tab2:
+with tab1:
     try:
-        tao_tieu_de_kem_nut_refresh("📋 Đăng ký & Quản lý chuyến đi thủ công", "ref_tab2")
+        tao_tieu_de_kem_nut_refresh("📋 Đăng ký & Quản lý chuyến đi thủ công", "ref_tab1")
         
         @st.fragment
         def vung_thao_tac_chuyen_di():
@@ -185,7 +115,7 @@ with tab2:
                     "📌 Chọn hành động:", 
                     ["➕ Tạo chuyến mới", "✏️ Sửa chuyến hiện tại", "🗑️ Xóa chuyến đi"], 
                     horizontal=True, 
-                    key=f"tab2_mode_action_{st.session_state['form_reset_counter']}"
+                    key=f"tab1_mode_action_{st.session_state['form_reset_counter']}"
                 )
 
                 if mode_action == "✏️ Sửa chuyến hiện tại":
@@ -220,7 +150,7 @@ with tab2:
                     ["Nghiệp vụ Xe Tải", "Nghiệp vụ Container"], 
                     horizontal=True, 
                     index=default_nghiep_vu_idx,
-                    key=f"tab2_kieu_nghiep_vu_{trip_suffix}"
+                    key=f"tab1_kieu_nghiep_vu_{trip_suffix}"
                 )
 
             # ================= CHẾ ĐỘ: XÓA CHUYẾN ĐI =================
@@ -287,10 +217,10 @@ with tab2:
                 st.markdown("#### 1. Thông tin Khách hàng dịch vụ")
                 kh_opts_keys = list(kh_opts.keys())
                 default_kh_idx = get_idx(kh_opts_keys, trip_data.get('khach_hang_id'), 0) if mode_action == "✏️ Sửa chuyến hiện tại" else 0
-                diachi_input_key = f"tab2_dia_chi_kh_input_{trip_suffix}"
+                diachi_input_key = f"tab1_dia_chi_kh_input_{trip_suffix}"
                 
                 def on_khach_hang_change():
-                    selected_kh = st.session_state.get(f"tab2_c_kh_sel_{trip_suffix}")
+                    selected_kh = st.session_state.get(f"tab1_c_kh_sel_{trip_suffix}")
                     if selected_kh and selected_kh != "NEW" and selected_kh != 0:
                         st.session_state[diachi_input_key] = kh_diachi_map.get(selected_kh, "")
                     else:
@@ -301,7 +231,7 @@ with tab2:
                     options=kh_opts_keys, 
                     index=default_kh_idx, 
                     format_func=lambda x: kh_opts[x], 
-                    key=f"tab2_c_kh_sel_{trip_suffix}",
+                    key=f"tab1_c_kh_sel_{trip_suffix}",
                     on_change=on_khach_hang_change
                 )
                 
@@ -380,7 +310,7 @@ with tab2:
                     options=["🚀 Chạy Xe Công Ty", "🤝 Thuê Xe Ngoài"], 
                     index=is_ngoai_val, 
                     horizontal=True, 
-                    key=f"tab2_loai_hinh_xe_{trip_suffix}"
+                    key=f"tab1_loai_hinh_xe_{trip_suffix}"
                 )
 
                 c_xe_sel, tx_id_assign = None, None
@@ -926,7 +856,7 @@ with tab2:
                             st.session_state["tn_tai_xe"] = f"🚛 Anh, em, chú, cậu vào:\n - Khách hàng: {ten_kh_rut_gon} giao, lấy hàng \n- Lộ trình: {diem_dau_rut_gon} ➡️ {diem_cuoi_rut_gon} \n- Mã chuyến: {ma_chuyen_gui}"
                             st.session_state["tn_khach"] = f"📦 THÔNG TIN TÀI XẾ\n- Tên tài xế: {ten_tx_gui}\n- SĐT: {sdt_tx_gui}\n- CCCD: {cccd_tx_gui}\n- Biển số xe: {bien_so_gui}"
 
-                        st.session_state["tab2_mode_action"] = "➕ Tạo chuyến mới"
+                        st.session_state["tab1_mode_action"] = "➕ Tạo chuyến mới"
                         st.session_state["api_km"] = 0.0
                         if diachi_input_key in st.session_state: del st.session_state[diachi_input_key]
                         st.session_state["form_reset_counter"] += 1
@@ -966,7 +896,81 @@ with tab2:
 
         vung_thao_tac_chuyen_di()
     except Exception as e:
-        st.error(f"❌ Lỗi tải Tab 2: {e}")
+        st.error(f"❌ Lỗi tải Tab 1: {e}")
+##################################
+
+with tab2:
+    try:
+        tao_tieu_de_kem_nut_refresh("📋 Danh sách chuyến đi trong ngày và ghép chuyến", "ref_tab2")
+        
+        @st.fragment
+        def vung_thao_tac_hien_thi_chuyen_di():
+            with st.expander("🔗 NGHIỆP VỤ GHÉP CHUYẾN / CHUYẾN TIẾP NỐI (Dành cho Điều Phối)", expanded=True):
+                st.markdown("💡 **Hướng dẫn:** Bôi đen (chọn) các chuyến đi của **cùng một xe** theo đúng thứ tự lấy hàng.")
+                
+                # CẬP NHẬT: Cho phép hiển thị và ghép cả xe nội bộ lẫn xe thuê ngoài
+                sql_ghep = """
+                    SELECT cd.id, cd.ngay_chuyen_di, cd.dia_diem_giao_nhan, 
+                           COALESCE(kh.ten_khach_hang, cd.ten_khach_hang) as ten_khach, 
+                           COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) as bien_so_xe, 
+                           COALESCE(CAST(cd.xe_id AS CHAR), cd.bien_so_xe_ngoai) as identifier_xe
+                    FROM chuyen_di cd 
+                    LEFT JOIN xe x ON cd.xe_id = x.id 
+                    LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id
+                    WHERE cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') AND cd.is_gop_chuyen = 0 
+                    ORDER BY identifier_xe, cd.id ASC
+                """
+                df_ghep = db.execute_query(sql_ghep)
+                if isinstance(df_ghep, pd.DataFrame) and not df_ghep.empty:
+                    ghep_opts = {r['id']: f"🚛 Xe: {r['bien_so_xe']} | Mã chuyến: {r['id']} | Khách: {r['ten_khach']} | Lộ trình: {r['dia_diem_giao_nhan']}" for _, r in df_ghep.iterrows()}
+                    chuyen_duoc_chon = st.multiselect("📌 Click để chọn các chuyến đi cần ghép:", options=list(ghep_opts.keys()), format_func=lambda x: ghep_opts[x], key="multiselect_ghep_chuyen_tab2")
+                    
+                    if st.button("🔗 XÁC NHẬN GHÉP CHUYẾN", type="primary", key="btn_xac_nhan_ghep_tab2"):
+                        if len(chuyen_duoc_chon) < 2: 
+                            st.warning("⚠️ Chọn ít nhất 2 chuyến.")
+                        # SỬA LỖI: Kiểm tra trùng xe dựa trên identifier_xe thay vì chỉ xe_id (để bắt được cả xe ngoài)
+                        elif len(df_ghep[df_ghep['id'].isin(chuyen_duoc_chon)]['identifier_xe'].unique()) > 1: 
+                            st.error("❌ Các chuyến không cùng xe!")
+                        else:
+                            success, msg = group_trips_transaction(db.pool, chuyen_duoc_chon, st.session_state.get('username', 'Admin'))
+                            if success:
+                                st.success(msg)
+                                # Dọn rác cache để Tab Khác cập nhật ngay lập tức
+                                for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]:
+                                    st.session_state.pop(key, None)
+                                time.sleep(1.2)
+                                st.rerun()
+                            else: 
+                                st.error(f"Lỗi: {msg}")
+                else: 
+                    st.info("📭 Không có chuyến đi nội bộ khả dụng để ghép.")
+                    
+            st.divider()
+            
+            try:
+                sql_list = """
+                    SELECT cd.ma_chuyen_ghep AS 'Mã Nhóm', cd.stt_chuyen_ghep AS 'STT', cd.id AS 'Mã chuyến đi', cd.ngay_chuyen_di AS 'Ngày', 
+                    COALESCE(kh.ten_khach_hang, cd.ten_khach_hang) AS 'Khách hàng', COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) AS 'Biển Số', 
+                    cd.khoi_luong_kg AS 'Trọng tải (kg)', cd.dia_diem_giao_nhan AS 'Lộ trình', cd.trang_thai_chuyen AS 'Trạng thái'
+                    FROM chuyen_di cd LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id LEFT JOIN xe x ON cd.xe_id = x.id
+                    WHERE cd.ngay_chuyen_di = %s ORDER BY cd.ma_chuyen_ghep DESC, cd.stt_chuyen_ghep ASC, cd.id DESC
+                """
+                df_chuyen = db.execute_query(sql_list, (datetime.date.today().strftime('%Y-%m-%d'),))
+                
+                if isinstance(df_chuyen, pd.DataFrame) and not df_chuyen.empty:
+                    st.dataframe(df_chuyen, use_container_width=True, hide_index=True)
+                else: 
+                    st.info("Chưa có dữ liệu chuyến đi trong ngày hôm nay.")
+                    
+            except Exception as e: 
+                st.error(f"Lỗi tải danh sách chuyến: {e}")
+                
+        vung_thao_tac_hien_thi_chuyen_di()
+    except Exception as e:
+        st.error(f"❌ Lỗi tải Tab2: {e}")
+
+
+
 # Tạo file auto book theo file
 ###################################
 with tab3:
@@ -1670,13 +1674,12 @@ with tab6:
             c_up1, c_up2 = st.columns(2)
             with c_up1:
                 st.markdown("**1. Khai báo mã đơn lẻ**")
-                # Sử dụng text_input kết hợp placeholder để tránh dính số 0 mặc định của number_input
                 ma_chuyen_str = st.text_input("Nhập Mã chuyến đi cần chốt:", value="", placeholder="VD: 1025", key="nhap_ma_chuyen_str")
                 btn_up_single = st.button("✅ Xác nhận Hoàn Thành chuyến này", type="primary", use_container_width=True)
             
             with c_up2:
                 st.markdown("**2. Cập nhật hàng loạt bằng Excel**")
-                file_up = st.file_uploader("Tải lên file (Bắt buộc chứa cột 'Mã chuyến đi')", type=["xlsx", "xls"])
+                file_up = st.file_uploader("Tải lên file (Bắt buộc chứa cột 'Mã chuyến đi')", type=["xlsx", "xls"], key="file_uploader_up_trang_thai")
                 btn_up_bulk = st.button("🚀 Thực thi chuyển đổi hàng loạt", type="primary", use_container_width=True, disabled=(file_up is None))
 
             # Xử lý Logic Database Transaction & Audit Log
@@ -1684,7 +1687,6 @@ with tab6:
                 ds_ma_chuyen = []
                 
                 if btn_up_single:
-                    # Bẫy validation: Kiểm tra trống hoặc không phải số nguyên dương
                     cleaned_ma = ma_chuyen_str.strip()
                     if not cleaned_ma:
                         st.error("❌ Vui lòng nhập Mã chuyến đi trước khi bấm xác nhận!")
@@ -1740,6 +1742,11 @@ with tab6:
                             
                             if thanh_cong > 0:
                                 st.success(f"🎉 Hoàn tất! Đã chuyển đổi {thanh_cong}/{tong_so} chuyến sang trạng thái Hoàn Thành.")
+                                
+                                # XÓA TRẮNG TEXT INPUT VÀ FILE UPLOADER SAU KHI CẬP NHẬT THÀNH CÔNG
+                                st.session_state["nhap_ma_chuyen_str"] = ""
+                                st.session_state.pop("file_uploader_up_trang_thai", None)
+                                
                                 for key in ["df_canh_bao", "df_search_nb", "df_search_ngoai", "last_cb_driver"]:
                                     st.session_state.pop(key, None)
                                 time.sleep(2)
