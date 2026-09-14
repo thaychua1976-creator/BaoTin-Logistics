@@ -1717,16 +1717,26 @@ with tab3:
                                     
                                     # Sử dụng tc_dict lấy từ cache ngoài vòng lặp
                                     if ds_phu_cap_str and ds_phu_cap_str.lower() not in ['nan', '']:
+                                        # [FIX 1]: Xóa đuôi .0 do Pandas tự ép kiểu số nguyên thành float (VD: '1.0' -> '1')
+                                        ds_phu_cap_str = re.sub(r'\.0\b', '', ds_phu_cap_str)
+                                        
                                         items = [x.strip() for x in ds_phu_cap_str.split(',')]
                                         for item in items:
+                                            item_lower = item.lower()
+                                            item_unaccent = unidecode_vn(item_lower) # Lấy hàm xóa dấu có sẵn
+                                            
                                             if item in tc_dict:
                                                 selected_tc_ids_excel.append(tc_dict[item])
+                                            elif item_lower in tc_dict:
+                                                selected_tc_ids_excel.append(tc_dict[item_lower])
                                             else:
-                                                item_lower = item.lower()
+                                                # [FIX 2]: Dò tìm gần đúng (Hỗ trợ gõ không dấu)
                                                 for k_name, v_id in tc_dict.items():
-                                                    if not k_name.isdigit() and item_lower in k_name:
-                                                        selected_tc_ids_excel.append(v_id)
-                                                        break
+                                                    if not k_name.isdigit():
+                                                        k_name_unaccent = unidecode_vn(k_name)
+                                                        if item_lower in k_name or item_unaccent in k_name_unaccent:
+                                                            selected_tc_ids_excel.append(v_id)
+                                                            break
                                                         
                                     if matched_khoang_cach > 0:
                                         try:
