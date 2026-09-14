@@ -66,7 +66,7 @@ STATUS_MAP = {"Tạo Mới": "Tao_Moi", "Đang Đi": "Dang_Di", "Quyết Toán":
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>📝 PHÂN HỆ QUẢN LÝ VÀ ĐIỀU PHỐI CHUYẾN ĐI NÂNG CAO</h3>", unsafe_allow_html=True)
 
 st.divider()
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📋 Ghép chuyến", "➕ Tạo/Sửa chuyến ", "➕ Tạo chuyến theo file", "📊 Chuyến đi trong ngày", "📊 Chuyến theo ngày chọn", "⚠️ Cảnh báo Xe tồn đọng"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📋 Ghép chuyến", "➕ Tạo/Sửa chuyến ", "➕ Tạo chuyến theo file", "📊 Chuyến đi trong ngày", "📊 Chuyến theo ngày chọn", "⚠️ Chuyển trạng thái xe - Cảnh báo Xe tồn đọng"])
 
 # Ứng dụng Cache lấy toàn bộ Danh mục dùng chung
 df_xe_full = get_cached_master_data("SELECT id, bien_so_xe,loai_xe, tai_trong_thiet_ke, tai_xe_co_dinh_id FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'")
