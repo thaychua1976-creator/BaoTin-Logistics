@@ -260,7 +260,7 @@ else:
     # Khai báo đường dẫn đến các trang chức năng
     page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", default=True)
     page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝")
-    page_bao_cao   = st.Page("views/bao_cao.py", title="Báo cáo & Thống kê", icon="📊")
+    page_bao_cao   = st.Page("views/bao_cao.py", title="Thông kê lương & Công Nợ KH", icon="📊")
     page_nhan_vien = st.Page("views/nhan_vien.py", title="Quản lý Nhân viên", icon="🧑‍✈️")
     page_khach_hang = st.Page("views/khach_hang.py", title="Quản lý Khách hàng", icon="🧑")
     page_to_khai_hq = st.Page("views/khai_bao_hq.py", title="Khai báo Hải Quan", icon="🧑‍✈️")
