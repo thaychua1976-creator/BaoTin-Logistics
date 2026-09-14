@@ -744,10 +744,13 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
             # ---------------------------
 
             dict_tk_cont = {0: "-- Không liên kết tờ khai hải quan --"}
+            # THÊM MỚI: Dictionary lưu trữ mức phí của tờ khai
+            dict_phi_hq_tk = {0: 0}
             try:
-                df_tk_cont = db.execute_query("SELECT id, so_to_khai, loai_to_khai FROM to_khai_hai_quan ORDER BY id DESC LIMIT 100")
+                df_tk_cont = db.execute_query("SELECT id, so_to_khai, loai_to_khai,phi_dich_vu_hq FROM to_khai_hai_quan ORDER BY id DESC LIMIT 100")
                 if isinstance(df_tk_cont, pd.DataFrame) and not df_tk_cont.empty:
                     dict_tk_cont.update({r['id']: f"Tờ khai: {r['so_to_khai']} ({r['loai_to_khai']})" for _, r in df_tk_cont.iterrows()})
+                    dict_phi_hq_tk[r['id']] = float(r['phi_dich_vu_hq'] or 0.0)
             except Exception:
                 pass
 
@@ -762,6 +765,10 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
                 key_select_chuyen = f"select_cd_batch_{st.session_state['form_tao_cont_key']}"
                 key_phi_van_chuyen = f"input_phi_van_chuyen_batch_{st.session_state['form_tao_cont_key']}"
 
+                # THÊM MỚI: Định danh Key cho Tờ khai và Text input Phí DVHQ
+                key_select_to_khai = f"select_tk_batch_{st.session_state['form_tao_cont_key']}"
+                key_phi_dvhq_batch = f"input_phi_dvhq_batch_{st.session_state['form_tao_cont_key']}"
+
                 # Hàm callback được gọi khi người dùng đổi lựa chọn Chuyến đi
                 def on_change_chuyen_di_batch():
                     # Lấy ID chuyến đi vừa được chọn
@@ -773,9 +780,19 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
                         st.session_state[key_phi_van_chuyen] = f"{int(doanh_thu):,}"
                     else:
                         st.session_state[key_phi_van_chuyen] = "0"
+                        
+                # THÊM MỚI: Hàm callback khi thay đổi lựa chọn Tờ Khai
+                def on_change_to_khai_batch():
+                    selected_tk_id = st.session_state[key_select_to_khai]
+                    phi_hq = dict_phi_hq_tk.get(selected_tk_id, 0)
+                    if phi_hq > 0:
+                        st.session_state[key_phi_dvhq_batch] = f"{int(phi_hq):,}"
+                    else:
+                        st.session_state[key_phi_dvhq_batch] = "0"
+
                 sc1, sc2 = st.columns(2)
                                     
-                                    # Bổ sung key và on_change vào selectbox
+                # Bổ sung key và on_change vào selectbox
                 cd_id_val = sc1.selectbox(
                               "Liên kết Chuyến Đi", 
                                options=list(dict_cd_cont.keys()), 
@@ -784,7 +801,15 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
                                on_change=on_change_chuyen_di_batch
                                )
                                     # --------------------------------------------------------
-                tk_id_val = sc2.selectbox("Liên kết Tờ Khai Hải Quan", options=list(dict_tk_cont.keys()), format_func=lambda x: dict_tk_cont[x])
+                
+                # CẬP NHẬT: Gắn key và callback vào selectbox Tờ khai
+                tk_id_val = sc2.selectbox(
+                    "Liên kết Tờ Khai Hải Quan", 
+                    options=list(dict_tk_cont.keys()), 
+                    format_func=lambda x: dict_tk_cont[x],
+                    key=key_select_to_khai,
+                    on_change=on_change_to_khai_batch
+                )
                 
                 with st.form(key=st.session_state["form_tao_cont_key"], clear_on_submit=False):
                     
@@ -797,7 +822,13 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
                         index=None, 
                         format_func=lambda x: "-- Vui lòng chọn loại container --" if x is None else x
                     )
-                    phi_dv_hq_input = sc4.text_input("Phí DV Hải Quan (Cho mỗi cont trong lô)", value="", placeholder="0")
+                    
+                    # CẬP NHẬT: Gắn key nhận sự kiện Callback cho Phí DVHQ
+                    phi_dv_hq_input = sc4.text_input(
+                        "Phí DV Hải Quan (Cho mỗi cont trong lô)", 
+                        placeholder="0",
+                        key=key_phi_dvhq_batch
+                    )
                     
                     st.markdown("**💰 Khai Báo Phí Nâng / Hạ Theo Lô Container**")
                     p1, p2, p3, p4 = st.columns(4)
@@ -854,7 +885,7 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
 
                         # 2. Bỏ qua Validation nâng hạ nếu là Xe Tải
                         if not loai_cont_default:
-                             st.error("❌ Vui lòng chọn loại cont 20,40.. or tải 1T,2T. ở mục Loại Container chung..")
+                             st.error("❌ Vui lòng chọn loại cont 20HC,40HC.. or tải 1T,2T. ở mục Loại Container chung..")
                              st.stop()
                         if not is_truck:
                             if parse_money_input(phi_dv_hq_input) <= 0:
@@ -994,7 +1025,7 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
                             with st.form(f"form_edit_cont_hq_{selected_cont_id}", clear_on_submit=False):
                                 e_so_cont = st.text_input("Số Container*", value=cont_info['so_cont'])
                                 
-                                loai_list = ["", "1T", "2T", "3T", "4T", "5T", "8T", "15T", "22T", "3X40", "1X40", "2X40", "1X20", "2X20","3X20", "4X40","1X45","2X45","3X45", "20DC", "40HC", "45RF", "Khác"]
+                                loai_list = ["", "1T", "2T", "3T", "4T", "5T", "8T", "15T", "22T", "3X40", "1X40", "2X40", "1X20", "2X20","3X20", "4X40","1X45","2X45","3X45", "20HC", "40HC", "45RF", "Khác"]
                                 curr_loai = cont_info['loai_cont'] or ""
                                 e_loai_cont = st.selectbox("Loại Container", options=loai_list, index=get_idx(loai_list, curr_loai))
 
@@ -1092,7 +1123,7 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
             with sub_tab_ds:
                 col_f1, col_f2 = st.columns(2)
                 keyword = col_f1.text_input("Tìm kiếm theo Số Cont", placeholder="Nhập số cont...", key="kw_cont_hq")
-                filter_loai = col_f2.selectbox("Lọc theo loại container", ["Tất cả", "20DC", "40HC", "45RF", "Khác"], key="filter_loai_hq")
+                filter_loai = col_f2.selectbox("Lọc theo loại container", ["Tất cả", "20HC", "40HC","20RF", "40RF","45RF", "Khác"], key="filter_loai_hq")
 
                 sql_ds_cont = """
                     SELECT 

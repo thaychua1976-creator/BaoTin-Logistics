@@ -274,7 +274,7 @@ with tab1:
                     so_seal_input = c_c2.text_input("🔒 Số Seal", value=so_seal_val, key=f"so_seal_{trip_suffix}")
                     
                     c_c3, c_c4, c_c5 = st.columns(3)
-                    loai_cont_opts = ["20DC","20","40","20HC", "40DC", "40HC", "45HC", "20RF", "40RF", "Khác"]
+                    loai_cont_opts = ["20DC","20HC", "40DC", "40HC", "45HC", "20RF", "40RF", "Khác"]
                     
                     # Xác định vị trí Index của loại cont đã lưu
                     def_loai_idx = loai_cont_opts.index(loai_cont_val) if loai_cont_val in loai_cont_opts else 0
@@ -739,7 +739,7 @@ with tab1:
                             st.error("❌ HỆ THỐNG CHẶN: Vui lòng nhập chính xác Số Container!")
                             st.stop()
                         if not loai_cont_input:
-                            st.error("❌ HỆ THỐNG CHẶN: Vui lòng chọn Loại Container (20, 40, 40HC...)!")
+                            st.error("❌ HỆ THỐNG CHẶN: Vui lòng chọn Loại Container (20HC, 40HC...)!")
                             st.stop()
                         if not chieu_cont_input:
                             st.error("❌ HỆ THỐNG CHẶN: Vui lòng chọn Chiều Hàng (Nhập / Xuất / Nội địa / Chạy rỗng)!")
