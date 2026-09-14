@@ -1319,14 +1319,14 @@ with tab3:
 # ---------------------------------------------------------
 with tab4:
     try:
-        tao_tieu_de_kem_nut_refresh("🗂️ Bảng điều phối chuyến đi trong ngày", "ref_ds_chuyen")
+        tao_tieu_de_kem_nut_refresh("🗂️ Bảng điều phối chuyến đi & Quản lý đội xe", "ref_ds_chuyen")
         
         @st.fragment
         def vung_thao_tac_quan_ly_chuyen_di():
             try:
                 ngay_hom_nay = datetime.date.today().strftime('%Y-%m-%d')
                 
-                # 1. Truy vấn các chuyến đi trong ngày từ bảng chuyen_di
+                # 1. Truy vấn các chuyến đi: Bao gồm chuyến trong ngày VÀ các chuyến tồn đọng chưa hoàn thành từ trước
                 sql_kanban = """
                     SELECT 
                         cd.id AS ma_chuyen, 
@@ -1345,28 +1345,31 @@ with tab4:
                     LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id
                     LEFT JOIN chuyen_di_tai_xe cdtx ON cd.id = cdtx.chuyen_di_id AND cdtx.loai_tai_xe = 'Tai_Chinh'
                     LEFT JOIN nhan_vien nv ON cdtx.tai_xe_id = nv.id 
-                    WHERE cd.ngay_chuyen_di = %s
-                    ORDER BY cd.id DESC
+                    WHERE cd.ngay_chuyen_di = %s 
+                       OR (cd.trang_thai_chuyen NOT IN ('Hoan_Thanh', 'Huy_Chuyen') AND cd.ngay_chuyen_di < %s)
+                    ORDER BY cd.ngay_chuyen_di DESC, cd.id DESC
                 """
-                df_kanban = db.execute_query(sql_kanban, (ngay_hom_nay,))
+                df_kanban = db.execute_query(sql_kanban, (ngay_hom_nay, ngay_hom_nay))
 
-                # 2. Truy vấn danh sách toàn bộ xe đang hoạt động trong hệ thống để lọc xe trống
+                # 2. Truy vấn danh sách toàn bộ xe đang hoạt động trong hệ thống
                 sql_all_xe = "SELECT id, bien_so_xe, tai_trong_thiet_ke FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'"
                 df_all_xe = db.execute_query(sql_all_xe)
 
                 if (isinstance(df_kanban, pd.DataFrame) and not df_kanban.empty) or (isinstance(df_all_xe, pd.DataFrame) and not df_all_xe.empty):
-                    st.markdown("##### 🚛 TIẾN ĐỘ VẬN HÀNH TRONG NGÀY & TRẠNG THÁI ĐẦU XE")
+                    st.markdown("##### 🚛 TIẾN ĐỘ VẬN HÀNH & TRẠNG THÁI ĐẦU XE")
                     
-                    # Chia 4 cột tương ứng: Tạo Mới, Chờ Quyết Toán, Hoàn Thành, Xe Trống (Đã loại bỏ cột Đang Đi)
+                    # Chia 4 cột: Tạo Mới (gồm cả tồn đọng chưa xong), Chờ Quyết Toán, Hoàn Thành (trong ngày), Xe Trống
                     c_tao_moi, c_quyet_toan, c_hoan_thanh, c_xe_trong = st.columns(4)
                     
                     # Hàm render Card HTML cho chuyến đi
                     def render_kanban_card(row, border_color, bg_color):
                         is_ghep = row.get('is_gop_chuyen', 0) == 1
                         is_ngoai = row.get('is_thue_ngoai', 0) == 1
+                        ngay_chuyen = str(row.get('ngay_chuyen_di', ''))
                         
                         badge_ghep = f"<span style='font-size: 10px; background-color: #ffecb3; padding: 2px 5px; border-radius: 4px; color: #f57f17; font-weight: bold; margin-left: 4px;'>🔗 Ghép</span>" if is_ghep else ""
                         badge_xe = f"<span style='font-size: 10px; background-color: #fce4ec; padding: 2px 5px; border-radius: 4px; color: #c2185b; font-weight: bold; margin-left: 4px;'>🤝 Ngoài</span>" if is_ngoai else f"<span style='font-size: 10px; background-color: #e3f2fd; padding: 2px 5px; border-radius: 4px; color: #1565c0; font-weight: bold; margin-left: 4px;'>🏢 Cty</span>"
+                        badge_ton = f"<span style='font-size: 10px; background-color: #ffccbc; padding: 2px 5px; border-radius: 4px; color: #d84315; font-weight: bold; margin-left: 4px;'>⚠️ Tồn ({ngay_chuyen})</span>" if ngay_chuyen != ngay_hom_nay else ""
                         
                         trong_tai = float(row['trong_tai']) if pd.notna(row['trong_tai']) else 0
                         
@@ -1374,7 +1377,7 @@ with tab4:
                             f"<div style='background-color: {bg_color}; border-left: 6px solid {border_color}; padding: 10px; border-radius: 8px; margin-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); font-family: sans-serif;'>"
                             f"<div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 1px solid #ddd; padding-bottom: 4px;'>"
                             f"<span style='font-size: 13px; font-weight: 900; color: #333;'>#{row['ma_chuyen']} - {row['bien_so']}</span>"
-                            f"<div>{badge_xe}{badge_ghep}</div>"
+                            f"<div>{badge_xe}{badge_ghep}{badge_ton}</div>"
                             f"</div>"
                             f"<div style='font-size: 11px; color: #444; line-height: 1.5;'>"
                             f"🧑‍✈️ TX: <b>{row['tai_xe']}</b><br>"
@@ -1401,14 +1404,15 @@ with tab4:
 
                     df_kanban = df_kanban if isinstance(df_kanban, pd.DataFrame) else pd.DataFrame()
                     
-                    # Xác định tập hợp các xe nội bộ đã có phát sinh chuyến trong ngày hôm nay (bao gồm cả trạng thái Tạo Mới, Đang Đi, Quyết Toán, Hoàn Thành)
-                    xe_da_co_chuyen = []
+                    # 3. Xác định chính xác các xe đang bận: 
+                    # Là những xe có chuyến đi ở trạng thái chưa hoàn thành (Tao_Moi, Dang_Di, Quyet_Toan) bất kể từ ngày nào
+                    xe_dang_ban = []
                     if not df_kanban.empty:
-                        xe_da_co_chuyen = df_kanban['xe_id'].dropna().unique().tolist()
+                        mask_ban = df_kanban['trang_thai'].isin(['Tao_Moi', 'Dang_Di', 'Quyet_Toan'])
+                        xe_dang_ban = df_kanban[mask_ban]['xe_id'].dropna().unique().tolist()
 
-                    # Đổ dữ liệu vào từng cột tương ứng (Gộp nội dung Đang Đi vào Tạo Mới hoặc hiển thị chung nếu cần, hoặc lọc riêng theo yêu cầu bỏ cột Đang Đi)
+                    # Đổ dữ liệu vào các cột Kanban
                     with c_tao_moi:
-                        # Gộp cả Tao_Moi và Dang_Di vào chung một cột quản lý ban đầu nếu muốn, hoặc chỉ lấy Tao_Moi tùy ý. Ở đây gom chung các chuyến đang thực hiện (Tao_Moi hoặc Dang_Di) vào cột Tạo Mới/Đang Thực Hiện
                         df_tm = df_kanban[df_kanban['trang_thai'].isin(['Tao_Moi', 'Dang_Di'])] if not df_kanban.empty else pd.DataFrame()
                         st.markdown(f"<h6 style='text-align: center; color: #f57f17; background-color: #fff9c4; padding: 6px; border-radius: 5px;'>🟡 TẠO MỚI / ĐANG CHẠY ({len(df_tm)})</h6>", unsafe_allow_html=True)
                         for _, row in df_tm.iterrows():
@@ -1421,20 +1425,22 @@ with tab4:
                             st.markdown(render_kanban_card(row, "#8e24aa", "#f3e5f5"), unsafe_allow_html=True)
 
                     with c_hoan_thanh:
-                        df_ht = df_kanban[df_kanban['trang_thai'] == 'Hoan_Thanh'] if not df_kanban.empty else pd.DataFrame()
-                        st.markdown(f"<h6 style='text-align: center; color: #2e7d32; background-color: #c8e6c9; padding: 6px; border-radius: 5px;'>🟢 HOÀN THÀNH ({len(df_ht)})</h6>", unsafe_allow_html=True)
+                        # Chỉ lấy các chuyến hoàn thành trong ngày hôm nay để hiển thị ở cột hoàn thành ngày
+                        df_ht = df_kanban[(df_kanban['trang_thai'] == 'Hoan_Thanh') & (df_kanban['ngay_chuyen_di'].astype(str) == ngay_hom_nay)] if not df_kanban.empty else pd.DataFrame()
+                        st.markdown(f"<h6 style='text-align: center; color: #2e7d32; background-color: #c8e6c9; padding: 6px; border-radius: 5px;'>🟢 HOÀN THÀNH HÔM NAY ({len(df_ht)})</h6>", unsafe_allow_html=True)
                         for _, row in df_ht.iterrows():
                             st.markdown(render_kanban_card(row, "#388e3c", "#e8f5e9"), unsafe_allow_html=True)
 
                     with c_xe_trong:
                         df_trong = pd.DataFrame()
                         if isinstance(df_all_xe, pd.DataFrame) and not df_all_xe.empty:
-                            df_trong = df_all_xe[~df_all_xe['id'].isin(xe_da_co_chuyen)]
+                            # Lọc loại trừ các xe đang vướng chuyến chưa hoàn thành/chờ quyết toán
+                            df_trong = df_all_xe[~df_all_xe['id'].isin(xe_dang_ban)]
                         st.markdown(f"<h6 style='text-align: center; color: #2e7d32; background-color: #f1f8e9; padding: 6px; border-radius: 5px;'>🟢 XE TRỐNG ({len(df_trong)})</h6>", unsafe_allow_html=True)
                         for _, xe_row in df_trong.iterrows():
                             st.markdown(render_empty_vehicle_card(xe_row, "#4caf50", "#f9fbe7"), unsafe_allow_html=True)
                 else:
-                    st.info(f"📭 Chưa có dữ liệu chuyến đi hoặc phương tiện nào được khởi tạo trong ngày hôm nay ({ngay_hom_nay}).")
+                    st.info(f"📭 Chưa có dữ liệu chuyến đi hoặc phương tiện nào được khởi tạo trong hệ thống.")
                     
             except Exception as e:
                 st.error(f"Lỗi truy xuất danh sách Kanban: {e}")
