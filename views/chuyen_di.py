@@ -566,7 +566,7 @@ with tab1:
                 if lo_trinh_db in lo_trinh_keys:
                     default_lt_idx = lo_trinh_keys.index(lo_trinh_db)
 
-                st.info("💡 Hệ thống chỉ cho phép chọn lộ trình đã được thiết lập sẵn. Nếu chưa có, vui lòng qua phân hệ Bảng Giá tạo mới.")
+                st.info("💡💡 Nếu xe máy thì hãy click checkbox lộ trình cho xe máy ở trên - Hệ thống chỉ cho phép chọn lộ trình đã được thiết lập sẵn. Nếu chưa có, vui lòng qua phân hệ Bảng Giá tạo mới.")
 
                 chon_lo_trinh = st.selectbox(
                     "🗺️ Chọn lộ trình (Tham chiếu từ Bảng Giá)*",

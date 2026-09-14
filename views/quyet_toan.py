@@ -1717,7 +1717,7 @@ with tab3:
                                     
                                     # Sử dụng tc_dict lấy từ cache ngoài vòng lặp
                                     if ds_phu_cap_str and ds_phu_cap_str.lower() not in ['nan', '']:
-                                        # [FIX 1]: Xóa đuôi .0 do Pandas tự ép kiểu số nguyên thành float (VD: '1.0' -> '1')
+                                        # [FIX 1]: Xóa đuôi .0 do Pandas tự ép kiểu số nguyên thành float (VD: '1.0' -> '1'): quan trọng
                                         ds_phu_cap_str = re.sub(r'\.0\b', '', ds_phu_cap_str)
                                         
                                         items = [x.strip() for x in ds_phu_cap_str.split(',')]
