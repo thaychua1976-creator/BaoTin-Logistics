@@ -411,9 +411,8 @@ with tab1:
                         cd.cong_chuyen, cd.tien_them,
                         cd.phi_hai_quan, cd.phi_boc_xep, cd.phi_khac, cd.ghi_chu_quyet_toan,
                         cd.is_gop_chuyen, cd.stt_chuyen_ghep, cd.is_ve_khuya, cd.khoi_luong_kg, cd.the_tich_cbm, cd.is_hang_tra_ve,
-                        cd.is_thue_ngoai, cd.chi_phi_thue_ngoai, cd.hinh_thuc_thanh_toan_ngoai,
-                        -- Lấy loại hình xe ưu tiên từ bảng chuyến đi (nếu có), nếu không lấy từ bảng xe hoặc mặc định Xe Tải
-                        COALESCE(cd.loai_hinh_xe, x.loai_xe, 'Xe Tải') AS loai_hinh_xe
+                        cd.is_thue_ngoai, cd.chi_phi_thue_ngoai, cd.hinh_thuc_thanh_toan_ngoai
+                        
                     FROM chuyen_di cd
                     LEFT JOIN xe x ON cd.xe_id = x.id
                     LEFT JOIN chuyen_di_tai_xe ctx ON cd.id = ctx.chuyen_di_id AND ctx.loai_tai_xe = 'Tai_Chinh'
@@ -428,18 +427,21 @@ with tab1:
 
             if isinstance(df_cd, pd.DataFrame) and not df_cd.empty:
                 # [CẬP NHẬT] Rút gọn tên công ty TNHH
+                # [CẬP NHẬT] Bổ sung Lộ trình và hiển thị đúng trạng thái Nội bộ/Thuê ngoài
                 trip_options = {}
                 for _, row in df_cd.iterrows():
                     ten_kh_rut_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*', '', str(row['ten_khach_hang'])).strip()
                     lo_trinh_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*', '', str(row['dia_diem_giao_nhan'])).strip()
                     
-                    # Lấy chính xác loại hình xe từ dòng dữ liệu truy vấn
-                    loai_xe_val = str(row.get('loai_hinh_xe', 'Xe Tải'))
+                    # Xác định xe thuê ngoài hay nội bộ
+                    is_ngoai = int(row.get('is_thue_ngoai', 0)) == 1
+                    kieu_xe = "Thuê ngoài" if is_ngoai else "Nội bộ"
+                    bien_so_hien_thi = str(row['bien_so_xe']) if pd.notna(row['bien_so_xe']) else "Không có BKS"
                     
                     trip_options[row['id']] = (
                         f"Mã: {row['id']} | Ngày: {row['ngay_chuyen_di']} | "
                         f"Khách: {ten_kh_rut_gon} | Lộ trình: {lo_trinh_gon} | "
-                        f"Xe: {row['bien_so_xe']} ({loai_xe_val}) | TX: {row['ten_tai_xe']}"
+                        f"Xe: {bien_so_hien_thi} ({kieu_xe}) | TX: {row['ten_tai_xe']}"
                     )
                 
                 cd_id = st.selectbox(
