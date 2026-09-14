@@ -1663,14 +1663,15 @@ with tab6:
 
             st.divider()
             
-            # --- TÍNH NĂNG MỚI: CẬP NHẬT TRẠNG THÁI CHUYẾN HOÀN THÀNH ---
+            # --- TÍNH NĂNG: CẬP NHẬT NHANH TRẠNG THÁI HOÀN THÀNH ---
             st.markdown("##### ⚡ Cập nhật nhanh giải phóng xe trống")
             st.info("Ép chuyển các chuyến đi sang trạng thái **Hoàn Thành** để giải phóng đầu xe tiếp tục nhận chuyến mới. Khâu quyết toán sẽ được xử lý độc lập sau.")
             
             c_up1, c_up2 = st.columns(2)
             with c_up1:
                 st.markdown("**1. Khai báo mã đơn lẻ**")
-                ma_chuyen_up = st.number_input("Nhập Mã chuyến đi cần chốt:", min_value=0, step=1, key="nhap_ma_chuyen")
+                # Sử dụng text_input kết hợp placeholder để tránh dính số 0 mặc định của number_input
+                ma_chuyen_str = st.text_input("Nhập Mã chuyến đi cần chốt:", value="", placeholder="VD: 1025", key="nhap_ma_chuyen_str")
                 btn_up_single = st.button("✅ Xác nhận Hoàn Thành chuyến này", type="primary", use_container_width=True)
             
             with c_up2:
@@ -1683,17 +1684,21 @@ with tab6:
                 ds_ma_chuyen = []
                 
                 if btn_up_single:
-                    if ma_chuyen_up > 0: ds_ma_chuyen.append(ma_chuyen_up)
-                    else: st.warning("⚠️ Vui lòng nhập Mã chuyến đi hợp lệ (lớn hơn 0).")
+                    # Bẫy validation: Kiểm tra trống hoặc không phải số nguyên dương
+                    cleaned_ma = ma_chuyen_str.strip()
+                    if not cleaned_ma:
+                        st.error("❌ Vui lòng nhập Mã chuyến đi trước khi bấm xác nhận!")
+                    elif not cleaned_ma.isdigit() or int(cleaned_ma) <= 0:
+                        st.error("❌ Mã chuyến đi phải là một dãy số nguyên dương hợp lệ!")
+                    else:
+                        ds_ma_chuyen.append(int(cleaned_ma))
                 
                 if btn_up_bulk and file_up is not None:
                     try:
                         df_up = pd.read_excel(file_up)
-                        # Hỗ trợ nhận diện nhiều kiểu đặt tên cột phổ biến
                         col_name = next((col for col in df_up.columns if str(col).strip().lower() in ['mã chuyến đi', 'ma_chuyen_di', 'id', 'mã chuyến']), None)
                         
                         if col_name:
-                            # Lọc bỏ NaN/Null và ép kiểu Int an toàn
                             ds_ma_chuyen = df_up[col_name].dropna().astype(int).unique().tolist()
                         else:
                             st.error("❌ File Excel không hợp lệ. Phải có cột mang tên 'Mã chuyến đi'.")
@@ -1718,13 +1723,11 @@ with tab6:
                                 
                                 if row:
                                     tt_hien_tai = row[0]
-                                    # Bẫy lỗi: Chặn cập nhật đè lên các chuyến đã đóng luồng
                                     if tt_hien_tai in ['Hoan_Thanh', 'Huy_Chuyen', 'Quyet_Toan']:
                                         st.warning(f"⚠️ Bỏ qua chuyến #{ma_cd}: Đang ở trạng thái '{tt_hien_tai}'.")
                                     else:
                                         cursor.execute("UPDATE chuyen_di SET trang_thai_chuyen = 'Hoan_Thanh' WHERE id = %s", (ma_cd,))
                                         if cursor.rowcount > 0:
-                                            # Ghi Audit Log vào lich_su_thao_tac
                                             chi_tiet = f'{{"trang_thai_cu": "{tt_hien_tai}", "trang_thai_moi": "Hoan_Thanh", "ghi_chu": "Cập nhật nhanh giải phóng đầu xe"}}'
                                             cursor.execute("INSERT INTO lich_su_thao_tac (chuyen_di_id, nguoi_dung, hanh_dong, chi_tiet) VALUES (%s, %s, 'CAP_NHAT_Nhanh_Hoan_Thanh', %s)", (ma_cd, nguoi_dung, chi_tiet))
                                             thanh_cong += 1
@@ -1737,7 +1740,6 @@ with tab6:
                             
                             if thanh_cong > 0:
                                 st.success(f"🎉 Hoàn tất! Đã chuyển đổi {thanh_cong}/{tong_so} chuyến sang trạng thái Hoàn Thành.")
-                                # Xóa cache các DataFrame để ép ứng dụng query lại dữ liệu mới nhất
                                 for key in ["df_canh_bao", "df_search_nb", "df_search_ngoai", "last_cb_driver"]:
                                     st.session_state.pop(key, None)
                                 time.sleep(2)
