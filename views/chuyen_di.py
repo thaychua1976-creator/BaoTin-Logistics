@@ -1038,7 +1038,6 @@ with tab3:
                     "NGAY_CHAY": "format cell là text: dd/mm/yyyy", 
                     "MA_SO_THUE": "0316666666", 
                     "TEN_KHACH_HANG": "Công ty TNHH ABC",
-                    "DIA_CHI_KHACH_HANG": "123 Đường ABC, Quận 1, TP.HCM",
                     "DIA_CHI_KHO_DI": "Bình Dương", 
                     "DIA_CHI_KHO_DEN": "Cát Lái",
                     "KHOI_LUONG_KG": 1500, 
@@ -1215,7 +1214,7 @@ with tab3:
                                     
                                     kh_id = row.get('DB_KHACH_HANG_ID')
                                     khach_hang_ten = str(row.get('TEN_KHACH_HANG', 'Khách Lẻ')).strip()
-                                    dia_chi_kh = str(row.get('DIA_CHI_KHACH_HANG', '')).strip()
+                                    #dia_chi_kh = str(row.get('DIA_CHI_KHACH_HANG', '')).strip()
                                     
                                     kho_di = str(row.get('DIA_CHI_KHO_DI', '')).strip()
                                     kho_den = str(row.get('DIA_CHI_KHO_DEN', '')).strip()
@@ -1236,7 +1235,7 @@ with tab3:
                                             'ngay_chuyen_di': ngay_chay_str,
                                             'khach_hang_id': kh_id,
                                             'ten_khach_hang': khach_hang_ten,
-                                            'dia_chi_khach_hang': dia_chi_kh,
+                                            #'dia_chi_khach_hang': dia_chi_kh,
                                             'xe_id': xe_phu_hop['id'],
                                             'dia_diem_giao_nhan': f"{kho_di} ➡️ {kho_den}",
                                             'khoi_luong_kg': req_kg,
@@ -1255,7 +1254,7 @@ with tab3:
                                                 "Mã Chuyến Hệ Thống": result_msg, 
                                                 "Ngày Chạy": ngay_chay_str,
                                                 "Khách Hàng": khach_hang_ten,
-                                                "Địa Chỉ Khách Hàng": dia_chi_kh,
+                                                #"Địa Chỉ Khách Hàng": dia_chi_kh,
                                                 "Biển Số Xe": xe_phu_hop['bien_so_xe'],
                                                 "Tải Trọng Đã Book (KG)": req_kg,
                                                 "Tài Xế Phụ Trách": xe_phu_hop['ten_tai_xe'], 
@@ -1287,7 +1286,7 @@ with tab3:
                     msg_tai_xe = (
                         f"🚛 Mai anh,em,chú,cậu vào:\n"
                         f"- Khách hàng: {row['Khách Hàng']}\n"
-                        f"- Địa chỉ: {row['Địa Chỉ Khách Hàng']} để giao\n"
+                        #f"- Địa chỉ: {row['Địa Chỉ Khách Hàng']} để giao\n"
                         f"- Lộ trình: {row['Lộ Trình']}\n"
                         f"- Mã chuyến: {row['Mã Chuyến Hệ Thống']}\n"
                         f"- Ngày chạy: {row['Ngày Chạy']}\n"
