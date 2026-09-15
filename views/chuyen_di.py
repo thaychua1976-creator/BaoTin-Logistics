@@ -94,6 +94,22 @@ with tab1:
         
         @st.fragment
         def vung_thao_tac_chuyen_di():
+            # Hàm trích xuất float an toàn đã có
+            def safe_float_val(key):
+                val = trip_data.get(key)
+                if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
+                    return 0.0
+                try: return float(val)
+                except: return 0.0
+                                            
+             # [CẬP NHẬT]: Bổ sung hàm trích xuất số nguyên (ID) an toàn chống crash NaN
+            def safe_int_val(key, default=None):
+                val = trip_data.get(key)
+                if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
+                     return default
+                try: return int(float(val))
+                except: return default    
+
             # 1. KHỞI TẠO BIẾN STATE (ĐẢM BẢO RESET TRẮNG FORM)
             if "api_km" not in st.session_state: st.session_state["api_km"] = 0.0
             if "form_reset_counter" not in st.session_state: st.session_state["form_reset_counter"] = 0
@@ -131,22 +147,6 @@ with tab1:
                             if isinstance(df_detail, pd.DataFrame) and not df_detail.empty:
                                 trip_data = df_detail.iloc[0].to_dict()
                                 
-                                # Hàm trích xuất float an toàn đã có
-                                def safe_float_val(key):
-                                    val = trip_data.get(key)
-                                    if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
-                                        return 0.0
-                                    try: return float(val)
-                                    except: return 0.0
-                                
-                                # [CẬP NHẬT]: Bổ sung hàm trích xuất số nguyên (ID) an toàn chống crash NaN
-                                def safe_int_val(key, default=None):
-                                    val = trip_data.get(key)
-                                    if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
-                                        return default
-                                    try: return int(float(val))
-                                    except: return default
-
                                 df_tx_assigned = db.execute_query("SELECT tai_xe_id FROM chuyen_di_tai_xe WHERE chuyen_di_id=%s AND loai_tai_xe='Tai_Chinh'", (edit_trip_id,))
                                 if isinstance(df_tx_assigned, pd.DataFrame) and not df_tx_assigned.empty:
                                     # Sử dụng an toàn ở đây
