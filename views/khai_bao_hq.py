@@ -198,6 +198,8 @@ if active_tab == "📋 KHAI BÁO TỜ KHAI MỚI":
             st.markdown("#### 📥 Nhập Liệu Tờ Khai Mới")
             st.info("💡 Hệ thống tự động đọc file Excel (.xls, .xlsx) hoặc PDF để trích xuất: Đơn vị XNK (Tự động điền vào Khách hàng & Tên đối tác), Số lượng hàng, Luồng, Hóa đơn TM.")
             
+            # [CẬP NHẬT] ĐƯA KHỞI TẠO BIẾN LÊN ĐÂY ĐỂ TRÁNH LỖI UNBOUND LOCAL ERROR
+            auto_data = st.session_state["hq_auto_data"]
             if "hq_auto_data" not in st.session_state: 
                 st.session_state["hq_auto_data"] = {
                     "so_to_khai": "", "so_van_don": "", "extracted_ten_khach_hang": "", "ma_so_thue": "",
@@ -319,7 +321,7 @@ if active_tab == "📋 KHAI BÁO TỜ KHAI MỚI":
             except Exception as e:
                 st.error(f"❌ Có lỗi xảy ra khi đọc file: {str(e)}")
 
-            auto_data = st.session_state.get("hq_auto_data", {})
+            #auto_data = st.session_state.get("hq_auto_data", {})
 
             c_out1, c_out2 = st.columns(2)
             loai_options = {"Nhap_Khau": "Hàng Nhập Khẩu", "Xuat_Khau": "Hàng Xuất Khẩu", "Noi_Dia": "Nhập Nội Địa", "DHL": "Hàng DHL", "Lẻ": "Hàng_Lẻ"}
