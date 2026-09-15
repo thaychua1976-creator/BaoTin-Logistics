@@ -237,74 +237,79 @@ def process_offline_zalo_files():
     
     return {"status": "warning", "message": "⚠️ Không tìm thấy dữ liệu hợp lệ.", "unprocessed": unprocessed_files}
 def main_app():
-    # [CẬP NHẬT]: Kích hoạt dọn dẹp chỉ file từ các phiên làm việc trước tự động khi mở app
+    # [CẬP NHẬT]: Tự động quét và xóa file của phiên làm việc trước khi mở App
     if "auto_cleaned_files" not in st.session_state:
         clear_files_only()
         st.session_state["auto_cleaned_files"] = True
-        
+
+    # Khởi tạo bộ đếm form key để phục vụ việc reset widget file_uploader
+    if "zalo_form_reset_key" not in st.session_state:
+        st.session_state["zalo_form_reset_key"] = 0
+
     st.title("🤖 RPA - Lấy thông tin điều xe từ file Zalo")
     
-    # 📌 KHU VỰC DỌN RÁC
+    # 📌 KHU VỰC DỌN RÁC TỒN ĐỌNG
     st.subheader("🧹 Dọn dẹp dữ liệu tồn đọng")
     st.markdown("Nếu tiến trình trước đó bị lỗi hoặc dừng đột ngột, hãy dọn rác trước khi tải file mới lên để tránh quá tải AI.")
     
-    # [CẬP NHẬT]: Nút này giờ đây gọi hàm xóa CẢ FILE LẪN THƯ MỤC
-    if st.button("🗑️ Dọn sạch toàn bộ file VÀ thư mục Zalo cũ", type="secondary"):
-        deleted = clear_files_and_folders() 
+    if st.button("🗑️ Dọn sạch toàn bộ File VÀ Thư mục Zalo cũ", type="secondary"):
+        deleted = clear_files_and_folders()
         if deleted > 0:
-            st.success(f"✅ Đã xóa thành công {deleted} file rác tồn đọng trong hệ thống và dọn thư mục trống!")
+            st.success(f"✅ Đã xóa thành công {deleted} file rác và dọn sạch cấu trúc thư mục!")
         else:
-            st.info("✨ Thư mục hiện tại đang sạch sẽ, không có file rác.")
+            st.info("✨ Thư mục hiện tại đang hoàn toàn trống.")
 
     st.markdown("---")
-    
     st.subheader("📤 Tải lên dữ liệu Zalo (Hình ảnh / File Text)")
     
     existing_groups = [d for d in os.listdir(DOWNLOAD_DIR) if os.path.isdir(os.path.join(DOWNLOAD_DIR, d))]
     options = ["+ Tạo nhóm mới"] + existing_groups
     
-    selected_option = st.selectbox("📂 Chọn nhóm Zalo đích (hoặc tạo mới):", options)
+    selected_option = st.selectbox("📂 Chọn nhóm Zalo đích (hoặc tạo mới):", options, key=f"sel_group_{st.session_state['zalo_form_reset_key']}")
     
     if selected_option == "+ Tạo nhóm mới":
-        group_name_input = st.text_input("Nhập tên nhóm Zalo mới:").strip()
+        group_name_input = st.text_input("Nhập tên nhóm Zalo mới:", key=f"input_new_group_{st.session_state['zalo_form_reset_key']}").strip()
     else:
         group_name_input = selected_option
     
-    uploaded_files = st.file_uploader(
-        "Chọn các file ảnh (.jpg, .png) hoặc văn bản (.txt) cần xử lý:", 
-        type=["jpg", "jpeg", "png", "txt"], 
-        accept_multiple_files=True
-    )
-    
-    if uploaded_files and group_name_input:
-        if st.button("📥 Lưu file lên hệ thống Cloud"):
-            target_group_dir = os.path.join(DOWNLOAD_DIR, group_name_input)
-            os.makedirs(target_group_dir, exist_ok=True) 
-            
-            saved_count = 0
-            for uploaded_file in uploaded_files:
-                file_path = os.path.join(target_group_dir, uploaded_file.name)
-                with open(file_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
-                saved_count += 1
+    # 📌 SỬ DỤNG FORM BỌC ĐỂ CHO PHÉP RESET TRẮNG WIDGET FILE_UPLOADER
+    form_key = f"zalo_upload_form_{st.session_state['zalo_form_reset_key']}"
+    with st.form(key=form_key):
+        uploaded_files = st.file_uploader(
+            "Chọn các file ảnh (.jpg, .png) hoặc văn bản (.txt) cần xử lý:", 
+            type=["jpg", "jpeg", "png", "txt"], 
+            accept_multiple_files=True
+        )
+        
+        submitted_upload = st.form_submit_button("📥 Lưu file lên hệ thống Cloud", type="primary", use_container_width=True)
+        
+        if submitted_upload:
+            if not group_name_input:
+                st.error("❌ Vui lòng chọn hoặc nhập tên nhóm Zalo đích!")
+            elif not uploaded_files:
+                st.warning("⚠️ Vui lòng chọn ít nhất một file để tải lên!")
+            else:
+                target_group_dir = os.path.join(DOWNLOAD_DIR, group_name_input)
+                os.makedirs(target_group_dir, exist_ok=True) 
                 
-            st.success(f"✅ Đã tải lên thành công {saved_count} file vào nhóm `{group_name_input}`.")
+                saved_count = 0
+                for uploaded_file in uploaded_files:
+                    file_path = os.path.join(target_group_dir, uploaded_file.name)
+                    with open(file_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+                    saved_count += 1
+                    
+                st.success(f"✅ Đã tải lên thành công {saved_count} file vào nhóm `{group_name_input}`.")
 
     st.markdown("---")
     st.subheader("⚙️ Xử lý dữ liệu")
     
-    # Sử dụng st.form để sau khi submit thành công có thể reset form và các widget file_uploader
-    with st.form(key="form_xu_ly_zalo_ai"):
-        submit_ai = st.form_submit_button("🚀 Bắt đầu phân tích AI", type="primary", use_container_width=True)
-        
-    if submit_ai:
+    if st.button("🚀 Bắt đầu phân tích AI", type="primary", use_container_width=True):
         with st.spinner("Đang kết nối thư viện OCR và Gemini AI..."):
             result = process_offline_zalo_files()
             if result:
                 if result["status"] == "success": 
                     st.success(result["message"])
-                    # Lưu trạng thái đã xuất file thành công vào session để kích hoạt cơ chế hiển thị nút tải
-                    st.session_state["zalo_export_success"] = True
                 elif result["status"] == "warning": 
                     st.warning(result["message"])
                 elif result["status"] == "info": 
@@ -314,21 +319,14 @@ def main_app():
                     st.error(f"🚨 Có {len(result['unprocessed'])} file hệ thống không thể xử lý:")
                     for f in result["unprocessed"]:
                         st.markdown(f"- `{f}`")
-                
-                # Ép làm mới giao diện ngay lập tức để nhận diện file excel mới sinh ra
-                st.rerun()
 
     st.markdown("---")
     st.subheader("📥 Tải kết quả tổng hợp")
     
-    # Kiểm tra nếu file Excel tồn tại
     if os.path.exists(EXCEL_FILE):
         with open(EXCEL_FILE, "rb") as file:
             file_bytes = file.read()
             
-        # Sử dụng st.download_button kèm theo callback hoặc bắt sự kiện click thông qua st.rerun()
-        # Vì Streamlit download_button không trả về trạng thái click trực tiếp, 
-        # ta kết hợp một nút bấm xác nhận "Làm mới phiên làm việc mới" ngay bên dưới nút tải.
         st.download_button(
             label="⬇️ Tải file Danh_Sach_Book_Xe_Tong_Hop.xlsx",
             data=file_bytes,
@@ -340,26 +338,25 @@ def main_app():
         
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # 📌 NÚT LÀM SẠCH VÀ XOÁ TRẮNG PHIÊN LÀM VIỆC (RESET FORM)
+        # 📌 NÚT XÓA TRẮNG TOÀN BỘ PHIÊN LÀM VIỆC VÀ GIAO DIỆN UPLOAD
         if st.button("🧹 Hoàn tất tải xuống / Xoá trắng form cho phiên mới", type="secondary", use_container_width=True):
-            # 1. Xoá file Excel tổng hợp kết quả
+            # 1. Xóa file Excel tổng hợp
             try:
                 if os.path.exists(EXCEL_FILE):
                     os.remove(EXCEL_FILE)
             except Exception:
                 pass
                 
-            # 2. Xoá toàn bộ file ảnh/txt rác trong thư mục zalo_downloads và các thư mục nhóm con
-            clear_files_only()
+            # 2. Xóa toàn bộ file ảnh/txt trong thư mục zalo_downloads và làm sạch thư mục rỗng
+            deleted_files = clear_files_only()
             
-            # 3. Xoá các state liên quan đến tiến trình cũ
-            st.session_state.pop("zalo_export_success", None)
+            # 3. Tăng bộ đếm form key để ép Streamlit tạo mới hoàn toàn các widget (làm trống file_uploader)
+            st.session_state["zalo_form_reset_key"] += 1
             
-            st.success("✅ Đã dọn sạch dữ liệu cũ và làm mới form thành công cho phiên làm việc mới!")
-            time.sleep(1.0)
+            st.success(f"✅ Đã dọn sạch {deleted_files} file rác, xóa file Excel kết quả và làm mới hoàn toàn giao diện cho phiên mới!")
+            time.sleep(1.2)
             st.rerun()
     else:
         st.info("Chưa có dữ liệu Excel nào được xuất ra trên hệ thống.")
-
 if __name__ == "__main__":
     main_app()
