@@ -201,6 +201,13 @@ def render_tab_cong_no_khach_hang(db):
         if isinstance(df_kh_raw, pd.DataFrame) and not df_kh_raw.empty:
             df_kh = df_kh_raw.copy()
             
+            # [CẬP NHẬT]: Khử chuỗi rác 'nan' cho toàn bộ cột Text trước khi xuất Excel
+            for col_text in ['bien_so_xe', 'dia_diem_giao_nhan', 'ghi_chu', 'loai_hinh_xe']:
+                if col_text in df_kh.columns:
+                    df_kh[col_text] = df_kh[col_text].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
+
+            # BỌC LỖI NAN: Ép kiểu và điền 0 cho tất cả cột tiền tệ
+            
             # BỌC LỖI NAN: Ép kiểu và điền 0 cho tất cả cột tiền tệ
             for col in ['trong_tai', 'phi_van_chuyen', 'phi_boc_xep', 'phu_phi_phat_sinh']:
                 if col in df_kh.columns:
@@ -227,7 +234,11 @@ def render_tab_cong_no_khach_hang(db):
             
             st.markdown("#### 📊 Bảng tổng hợp công nợ các khách hàng")
             df_th_kh_display = df_tong_hop_kh.copy()
-            df_th_kh_display['Tổng Công Nợ Phải Thu (VNĐ)'] = df_th_kh_display['Tổng Công Nợ Phải Thu (VNĐ)'].apply(lambda x: f"{int(x):,}")
+            
+            # [CẬP NHẬT]: Bọc float() và kiểm tra pd.notnull để chống crash int(NaN)
+            df_th_kh_display['Tổng Công Nợ Phải Thu (VNĐ)'] = df_th_kh_display['Tổng Công Nợ Phải Thu (VNĐ)'].apply(
+                lambda x: f"{int(float(x)):,}" if pd.notnull(x) and str(x).strip().lower() != 'nan' else "0"
+            )
             st.dataframe(df_th_kh_display, use_container_width=True, hide_index=True)
             
             tong_dt_toan_bo = df_tong_hop_kh['Tổng Công Nợ Phải Thu (VNĐ)'].sum()
@@ -432,6 +443,11 @@ def render_tab_cong_no_nha_xe(db):
         if isinstance(df_nx_raw, pd.DataFrame) and not df_nx_raw.empty:
             df_nx = df_nx_raw.copy()
             
+            # [CẬP NHẬT]: Khử chuỗi rác 'nan' cho Nhà Xe
+            for col_text in ['bien_so_xe_ngoai', 'tai_xe_ngoai_ten', 'tai_xe_ngoai_sdt', 'dia_diem_giao_nhan', 'ghi_chu']:
+                if col_text in df_nx.columns:
+                    df_nx[col_text] = df_nx[col_text].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
+            
             # BỌC LỖI NAN
             if 'chi_phi_thue_ngoai' in df_nx.columns:
                 df_nx['chi_phi_thue_ngoai'] = pd.to_numeric(df_nx['chi_phi_thue_ngoai'], errors='coerce').fillna(0)
@@ -450,7 +466,11 @@ def render_tab_cong_no_nha_xe(db):
             
             st.markdown("#### 📊 Bảng tổng hợp công nợ các nhà xe")
             df_th_display = df_tong_hop.copy()
-            df_th_display['Tổng Tiền Cần Thanh Toán (VNĐ)'] = df_th_display['Tổng Tiền Cần Thanh Toán (VNĐ)'].apply(lambda x: f"{int(x):,}")
+            
+            # [CẬP NHẬT]: Ép kiểu an toàn tương tự cho nhà xe
+            df_th_display['Tổng Tiền Cần Thanh Toán (VNĐ)'] = df_th_display['Tổng Tiền Cần Thanh Toán (VNĐ)'].apply(
+                lambda x: f"{int(float(x)):,}" if pd.notnull(x) and str(x).strip().lower() != 'nan' else "0"
+            )
             st.dataframe(df_th_display, use_container_width=True, hide_index=True)
             
             tong_cong_no_toàn_bo = df_tong_hop['Tổng Tiền Cần Thanh Toán (VNĐ)'].sum()
@@ -675,14 +695,21 @@ with tab_bc1:
                 df_result['Số Container'] = df_result['Số Container'].fillna('')
 
                 # 2. Logic phân loại chuẩn xác: Dựa vào Tên Loại Xe hoặc có Số Cont
+                # 2. Logic phân loại chuẩn xác: Dựa vào Tên Loại Xe hoặc có Số Cont
                 def check_is_cont(row):
                     loai = str(row.get('Loại Xe', '')).upper()
-                    so_cont = str(row.get('Số Container', '')).strip()
+                    # Cập nhật: Chuẩn hóa lower() để kiểm tra chữ nan
+                    so_cont = str(row.get('Số Container', '')).strip().lower() 
+                    
                     if 'KÉO' in loai or 'KEO' in loai or 'REMOOC' in loai or 'CONT' in loai:
                         return True
-                    if so_cont != "":
+                    
+                    # [CẬP NHẬT]: Chặn đứng trường hợp giá trị là chuỗi rác 'nan'
+                    if so_cont != "" and so_cont != "nan":
                         return True
                     return False
+
+                df_result['Is_Cont'] = df_result.apply(check_is_cont, axis=1)
 
                 df_result['Is_Cont'] = df_result.apply(check_is_cont, axis=1)
 

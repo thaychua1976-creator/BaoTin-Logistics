@@ -55,6 +55,10 @@ with tab1:
         # Sử dụng Cache
         df_xe = get_cached_master_data(db, sql_xe_list)
         if isinstance(df_xe, pd.DataFrame) and not df_xe.empty:
+            # [CẬP NHẬT]: Làm sạch DataFrame, khử triệt để giá trị NaN/None trên giao diện hiển thị
+            df_xe['Ghi chú'] = df_xe['Ghi chú'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
+            df_xe['Nhãn Hiệu'] = df_xe['Nhãn Hiệu'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
+            df_xe['Tài xế cố định'] = df_xe['Tài xế cố định'].fillna('Chưa gán tài xế')
             col_opt1, col_opt2 = st.columns([1, 7])
             with col_opt1:
                 che_do_xem = st.selectbox("Hiển thị:", ["10 dòng", "Tất cả"])
@@ -170,21 +174,30 @@ with tab3:
         
         if xe_id:
             xe_data = df_xe_active[df_xe_active['id'] == xe_id].iloc[0]
+            
+            # [CẬP NHẬT]: Hàm trích xuất giá trị an toàn chống crash NaN
+            def get_safe_val(key, default=""):
+                val = xe_data.get(key)
+                if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
+                    return default
+                return val
+
+            def get_safe_float(key, default=0.0):
+                val = xe_data.get(key)
+                if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
+                    return default
+                try: return float(val)
+                except: return default
+
             with st.form("form_update_xe"):
-                c_ed1, c_ed2, c_ed3, c_ed4, c_ed5,c_ed6= st.columns(6)
-                upd_bs = c_ed1.text_input("Biển số", value=xe_data['bien_so_xe'])
-                upd_nh = c_ed2.text_input("Nhãn hiệu", value=xe_data['nhan_hieu_xe'] if pd.notna(xe_data['nhan_hieu_xe']) else "")
-                upd_tt = c_ed3.number_input("Tải trọng TK(Tấn)", value=float(xe_data['tai_trong_thiet_ke'] or 0.0))
-                upd_dt = c_ed4.number_input("Dung tích (CBM)", value=float(xe_data['dung_tich_cbm'] or 0.0))
-                upd_dinhmuc_bd = c_ed5.number_input("Định mức BD (Km)", value=float(xe_data['dinh_muc_bao_duong'] or 0.0))
+                c_ed1, c_ed2, c_ed3, c_ed4, c_ed5, c_ed6 = st.columns(6)
+                upd_bs = c_ed1.text_input("Biển số", value=str(get_safe_val('bien_so_xe', '')))
+                upd_nh = c_ed2.text_input("Nhãn hiệu", value=str(get_safe_val('nhan_hieu_xe', '')))
+                upd_tt = c_ed3.number_input("Tải trọng TK(Tấn)", value=get_safe_float('tai_trong_thiet_ke', 0.0))
+                upd_dt = c_ed4.number_input("Dung tích (CBM)", value=get_safe_float('dung_tich_cbm', 0.0))
+                upd_dinhmuc_bd = c_ed5.number_input("Định mức BD (Km)", value=get_safe_float('dinh_muc_bao_duong', 0.0))
                 
-                ghi_chu_goc = xe_data['ghi_chu']
-
-                if pd.isna(ghi_chu_goc) or str(ghi_chu_goc).strip().lower() == 'nan':
-                    ghi_chu_hien_thi = ""
-                else:
-                    ghi_chu_hien_thi = str(ghi_chu_goc)
-
+                ghi_chu_hien_thi = str(get_safe_val('ghi_chu', ''))
                 upd_ghi_chu = c_ed6.text_input("Ghi chú thêm", value=ghi_chu_hien_thi)
                 gc_update = upd_ghi_chu.strip()
                 
@@ -659,6 +672,7 @@ with tab6:
 
             st.divider()
 
+            
             # --- 3. BẢNG CHI TIẾT & XUẤT EXCEL ---
             st.markdown(f"#### 🛠️ Bảng kê chi tiết lịch sử bảo dưỡng")
                 
@@ -672,10 +686,15 @@ with tab6:
                     ]
                     
                     df_hien_thi['Tài Xế Cố Định'] = df_hien_thi['Tài Xế Cố Định'].fillna("Chưa gán")
-                    df_hien_thi['Ngày'] = pd.to_datetime(df_hien_thi['Ngày']).dt.strftime('%d/%m/%Y')
+                    df_hien_thi['Ngày'] = pd.to_datetime(df_hien_thi['Ngày'], errors='coerce').dt.strftime('%d/%m/%Y').fillna('')
                     loai_map = {'Dinh_Ky': 'Định kỳ', 'Sua_Chua_Dot_Xuat': 'Đột xuất', 'Thay_Lop': 'Thay lốp', 'Khac': 'Khác'}
                     df_hien_thi['Loại'] = df_hien_thi['Loại'].map(loai_map).fillna(df_hien_thi['Loại'])
                     
+                    # [CẬP NHẬT]: Ép kiểu số an toàn và format chống lỗi NaN trên giao diện
+                    df_hien_thi['Chi Phí (VNĐ)'] = pd.to_numeric(df_hien_thi['Chi Phí (VNĐ)'], errors='coerce').fillna(0)
+                    df_hien_thi['KM Lúc Sửa (Odo)'] = pd.to_numeric(df_hien_thi['KM Lúc Sửa (Odo)'], errors='coerce').fillna(0)
+                    df_hien_thi['Dầu Tiêu Thụ (Lít)'] = pd.to_numeric(df_hien_thi['Dầu Tiêu Thụ (Lít)'], errors='coerce').fillna(0)
+
                     st.dataframe(
                         df_hien_thi.style.format({
                             "Chi Phí (VNĐ)": "{:,.0f}",

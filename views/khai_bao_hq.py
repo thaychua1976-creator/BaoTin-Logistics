@@ -213,15 +213,20 @@ if active_tab == "📋 KHAI BÁO TỜ KHAI MỚI":
                 uploaded_file = st.file_uploader("📂 Chọn file Excel tờ khai hải quan", type=["txt", "xls", "xlsx"], key=st.session_state["file_uploader_hq_key"])
                 if uploaded_file is not None:
                     file_sig = f"{uploaded_file.name}_{uploaded_file.size}"
-                    if st.session_state.get("last_uploaded_sig") != file_sig:
-                        auto_data = st.session_state["hq_auto_data"]
-                        
-                        # --- XỬ LÝ FILE EXCEL (.xls, .xlsx) ---
+                    if st.session_state.get("last_uploaded_sig") != file_sig:# --- XỬ LÝ FILE EXCEL (.xls, .xlsx) ---
                         if uploaded_file.name.lower().endswith(('.xls', '.xlsx')):
                             df = pd.read_excel(uploaded_file, sheet_name=0)
                             current_section = ""
                             for i, r in df.iterrows():
-                                vals = [str(v).strip() for v in r.values if pd.notnull(v) and str(v).strip()]
+                                # [CẬP NHẬT]: Lọc giá trị rỗng, nan và khử đuôi .0 do Pandas ép kiểu ngầm
+                                vals = []
+                                for v in r.values:
+                                    if pd.notnull(v):
+                                        v_str = str(v).strip()
+                                        if v_str and v_str.lower() != 'nan':
+                                            v_str = re.sub(r'\.0$', '', v_str)
+                                            vals.append(v_str)
+                                            
                                 if not vals: continue
                                 text_line = " | ".join(vals)
                                 
@@ -246,7 +251,14 @@ if active_tab == "📋 KHAI BÁO TỜ KHAI MỚI":
                                         else:
                                             # Xử lý form VNACCS: Số vận đơn nằm ở dòng ngay bên dưới, bắt đầu bằng STT '1'
                                             if i + 1 < len(df):
-                                                next_row_vals = [str(v).strip() for v in df.iloc[i+1].values if pd.notnull(v) and str(v).strip()]
+                                                next_row_vals = []
+                                                for nx_v in df.iloc[i+1].values:
+                                                    if pd.notnull(nx_v):
+                                                        nx_str = str(nx_v).strip()
+                                                        if nx_str and nx_str.lower() != 'nan':
+                                                            nx_str = re.sub(r'\.0$', '', nx_str)
+                                                            next_row_vals.append(nx_str)
+                                                
                                                 if len(next_row_vals) >= 2 and next_row_vals[0] == '1':
                                                     auto_data["so_van_don"] = next_row_vals[1]
                                     elif val == "Mã loại hình" and idx + 1 < len(vals):
@@ -333,7 +345,7 @@ if active_tab == "📋 KHAI BÁO TỜ KHAI MỚI":
                     dict_kh[kid] = f"MST: {mst} — {ten_kh_db}"
                     kh_keys_list.append(kid)
                     
-                    db_mst_clean = mst.replace(" ", "").replace("-", "")
+                    db_mst_clean = str(mst).replace(" ", "").replace("-", "")  # nên bọc str (mst) cho an toàn
                     if extracted_mst and extracted_mst != "" and extracted_mst in db_mst_clean:
                         default_kh_idx = len(kh_keys_list) - 1
                     elif extracted_name and (extracted_name in ten_kh_db.lower() or ten_kh_db.lower() in extracted_name):
@@ -621,7 +633,14 @@ elif active_tab == "🔍 DANH SÁCH & QUẢN LÝ TỜ KHAI":
                             )
                             
                             st.markdown("**💰 Khai Báo Chi Phí (VNĐ)**")
-                            def fmt(val): return f"{int(float(val)):,}" if pd.notna(val) and float(val) > 0 else ""
+                            # [CẬP NHẬT]: Hàm format tiền tệ an toàn, chống crash khi gặp null/nan
+                            def fmt(val):
+                                if pd.isna(val) or val == "" or str(val).strip().lower() == 'nan': 
+                                    return ""
+                                try: 
+                                    return f"{int(float(val)):,}" if float(val) > 0 else ""
+                                except: 
+                                    return ""
                             
                             ep1, ep2, ep3 = st.columns(3)
                             is_disabled_edit_vc = e_loai_tk in ["Noi_Dia", "DHL"]

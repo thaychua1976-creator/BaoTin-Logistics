@@ -185,21 +185,27 @@ with tab1:
                         if isinstance(df_tc_edit, pd.DataFrame) and not df_tc_edit.empty:
                             tc_edit_dict = {int(r['id']): r for _, r in df_tc_edit.iterrows()}
                             
-                            tc_format = {
-                                k: f"{v['ten_tieu_chi']} ({float(v.get('km_min') or 0):.1f} - {float(v.get('km_max') or 0):.1f} km)"
-                                for k, v in tc_edit_dict.items()
-                            }
+                            # [CẬP NHẬT 1]: Bắt lỗi an toàn NaN khi format chuỗi hiển thị
+                            tc_format = {}
+                            for k, v in tc_edit_dict.items():
+                                val_min = float(v['km_min']) if pd.notna(v.get('km_min')) else 0.0
+                                val_max = float(v['km_max']) if pd.notna(v.get('km_max')) else 0.0
+                                tc_format[k] = f"{v['ten_tieu_chi']} ({val_min:.1f} - {val_max:.1f} km)"
                             
                             edit_tc_id = st.selectbox("Chọn tiêu chí cần sửa", options=list(tc_edit_dict.keys()),
                                                     format_func=lambda x: tc_format[x], key="edit_tc_sel", index= None,placeholder="-- Vui lòng chọn tiêu chí --")
                             
                             if edit_tc_id:
                                 curr_tc = tc_edit_dict[edit_tc_id]
-                                edit_tc_name = st.text_input("Tên Tiêu chí mới*", value=curr_tc['ten_tieu_chi'], key="edit_tc_name")
+                                edit_tc_name = st.text_input("Tên Tiêu chí mới*", value=str(curr_tc.get('ten_tieu_chi', '')), key="edit_tc_name")
                                 
                                 c_km1, c_km2 = st.columns(2)
-                                edit_km_min = c_km1.number_input("Cự ly Min mới (km)", value=float(curr_tc.get('km_min') or 0.0), step=1.0, key="edit_km_min")
-                                edit_km_max = c_km2.number_input("Cự ly Max mới (km)", value=float(curr_tc.get('km_max') or 0.0), step=1.0, key="edit_km_max")
+                                # [CẬP NHẬT 2]: Ép kiểu an toàn trước khi đưa vào number_input
+                                curr_min = float(curr_tc['km_min']) if pd.notna(curr_tc.get('km_min')) else 0.0
+                                curr_max = float(curr_tc['km_max']) if pd.notna(curr_tc.get('km_max')) else 0.0
+                                
+                                edit_km_min = c_km1.number_input("Cự ly Min mới (km)", value=curr_min, step=1.0, key="edit_km_min")
+                                edit_km_max = c_km2.number_input("Cự ly Max mới (km)", value=curr_max, step=1.0, key="edit_km_max")
                                 
                                 if st.button("✏️ Cập nhật Tiêu Chí", type="primary"):
                                     if edit_tc_name.strip():
@@ -262,11 +268,15 @@ with tab1:
                         
                         if edit_tt_id:
                             curr_tt = tt_edit_dict[edit_tt_id]
-                            edit_tt_name = st.text_input("Tên Mức tải trọng mới*", value=curr_tt['ten_hien_thi'], key="edit_tt_name")
+                            edit_tt_name = st.text_input("Tên Mức tải trọng mới*", value=str(curr_tt.get('ten_hien_thi', '')), key="edit_tt_name")
                             
                             c_tt1, c_tt2 = st.columns(2)
-                            edit_tt_min = c_tt1.number_input("Tải trọng Min mới (Tấn)", value=float(curr_tt.get('tai_trong_min') or 0.0), step=0.1, key="edit_tt_min")
-                            edit_tt_max = c_tt2.number_input("Tải trọng Max mới (Tấn)", value=float(curr_tt.get('tai_trong_max') or 0.0), step=0.1, key="edit_tt_max")
+                            # [CẬP NHẬT 3]: Bắt lỗi NaN an toàn cho Min/Max tải trọng
+                            curr_tt_min = float(curr_tt['tai_trong_min']) if pd.notna(curr_tt.get('tai_trong_min')) else 0.0
+                            curr_tt_max = float(curr_tt['tai_trong_max']) if pd.notna(curr_tt.get('tai_trong_max')) else 0.0
+                            
+                            edit_tt_min = c_tt1.number_input("Tải trọng Min mới (Tấn)", value=curr_tt_min, step=0.1, key="edit_tt_min")
+                            edit_tt_max = c_tt2.number_input("Tải trọng Max mới (Tấn)", value=curr_tt_max, step=0.1, key="edit_tt_max")
                             
                             if st.button("✏️ Cập nhật Tải Trọng", type="primary"):
                                 if edit_tt_name.strip():
@@ -324,10 +334,12 @@ with tab1:
                         df_tc_del = pd.DataFrame()
                         
                     if isinstance(df_tc_del, pd.DataFrame) and not df_tc_del.empty:
-                        tc_del_dict = {
-                            int(r['id']): f"{r['ten_tieu_chi']} ({float(r.get('km_min', 0)):.1f} - {float(r.get('km_max', 0)):.1f} km)"
-                            for _, r in df_tc_del.iterrows()
-                        }
+                        # [CẬP NHẬT 4]: Format an toàn danh sách Xóa
+                        tc_del_dict = {}
+                        for _, r in df_tc_del.iterrows():
+                            val_min = float(r['km_min']) if pd.notna(r.get('km_min')) else 0.0
+                            val_max = float(r['km_max']) if pd.notna(r.get('km_max')) else 0.0
+                            tc_del_dict[int(r['id'])] = f"{r['ten_tieu_chi']} ({val_min:.1f} - {val_max:.1f} km)"
                         
                         del_tc_id = st.selectbox("Chọn tiêu chí cần xóa", options=list(tc_del_dict.keys()),
                                                  format_func=lambda x: tc_del_dict[x], key="del_tc_sel", index=None, placeholder="-- Vui lòng chọn tiêu chí --")

@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import io, datetime, time, json
+import io, datetime, time, json,re
 
 # Import các hàm Backend chuẩn của dự án
 from utils_core import (
@@ -232,9 +232,16 @@ with tab1:
 
                 # --- CHỨC NĂNG 3: SỬA TRỰC TIẾP ---
                 elif mode_thao_tac == "✏️ Sửa trực tiếp tuyến đường":
+                    # [CẬP NHẬT 1]: Hàm format an toàn chống NaN
+                    def safe_fmt(val):
+                        if pd.isna(val) or val == "" or str(val).strip().lower() == 'nan': return "0"
+                        try: return f"{int(float(val)):,}"
+                        except: return "0"
+                        
                     rate_opts = {None: "-- Vui lòng chọn tuyến đường cần sửa --"}
                     for _, r in df_rates_ui.iterrows():
-                        rate_opts[r['id']] = f"ID: {r['id']} | [{r['ten_khach_hang']}] {r['diem_di']} ➡️ {r['diem_den']} | Xe: {r['loai_xe_quy_cach']} | Giá: {float(r['don_gia_cuoc']):,}"
+                        qc_xe = str(r['loai_xe_quy_cach']) if pd.notna(r['loai_xe_quy_cach']) else "Không rõ"
+                        rate_opts[r['id']] = f"ID: {r['id']} | [{r['ten_khach_hang']}] {r['diem_di']} ➡️ {r['diem_den']} | Xe: {qc_xe} | Giá: {safe_fmt(r['don_gia_cuoc'])}"
                             
                     selected_rate_id = st.selectbox("🔍 Chọn dòng giá cần sửa:", options=list(rate_opts.keys()), format_func=lambda x: rate_opts[x], index=0)
                         
@@ -255,21 +262,23 @@ with tab1:
                             phan_loai_opts = ['Container', 'Xe_Tai', 'Hang_Le', 'Hang_Air', 'Xe_May']
                             default_pl = phan_loai_opts.index(row_info['phan_loai_phuong_tien']) if row_info['phan_loai_phuong_tien'] in phan_loai_opts else 1
                             e_phan_loai = c5.selectbox("Phân loại", phan_loai_opts, index=default_pl)
-                            e_quy_cach = c6.text_input("Loại xe quy cách", value=str(row_info['loai_xe_quy_cach'] or ''))
+                            e_quy_cach = c6.text_input("Loại xe quy cách", value=str(row_info.get('loai_xe_quy_cach', '')))
                             e_is_ve = c7.selectbox("Chiều hàng", options=[0, 1], index=int(row_info['is_hang_tra_ve']), format_func=lambda x: "Chiều Đi (0)" if x==0 else "Chiều Về (1)")
 
                             c8, c9, c10 = st.columns(3)
-                            val_kg = float(row_info.get('gioi_han_kg',  0))
-                            val_cbm = float(row_info.get('gioi_han_cbm', 0))
+                            val_kg = float(row_info.get('gioi_han_kg',  0)) if pd.notna(row_info.get('gioi_han_kg')) else 0.0
+                            val_cbm = float(row_info.get('gioi_han_cbm', 0)) if pd.notna(row_info.get('gioi_han_cbm')) else 0.0
                             e_gh_kg = c8.number_input("Giới hạn KG (LCL)", value=val_kg if val_kg > 0 else None, placeholder="0", format="%g")
                             e_gh_cbm = c9.number_input("Giới hạn CBM (LCL)", value=val_cbm if val_cbm > 0 else None, placeholder="0", format="%g")
-                            val_tiep_noi = float(row_info['gia_chuyen_tiep_noi'] or 0)
-                            e_gia_tp = c10.text_input("Giá chuyến tiếp nối", value=f"{val_tiep_noi:,.0f}" if val_tiep_noi > 0 else "", placeholder="0")
+                            
+                            # [CẬP NHẬT 2]: Parse tiền tệ an toàn
+                            val_tiep_noi = row_info.get('gia_chuyen_tiep_noi')
+                            e_gia_tp = c10.text_input("Giá chuyến tiếp nối", value=safe_fmt(val_tiep_noi) if safe_fmt(val_tiep_noi) != "0" else "", placeholder="0")
 
                             c11, c12 = st.columns(2)
-                            val_don_gia = float(row_info['don_gia_cuoc'] or 0)
-                            e_don_gia = c11.text_input("Đơn giá cước (VNĐ)*", value=f"{val_don_gia:,.0f}" if val_don_gia > 0 else "", placeholder="0")
-                            e_ghi_chu = c12.text_input("Ghi chú", value=str(row_info['ghi_chu'] or ''))
+                            val_don_gia = row_info.get('don_gia_cuoc')
+                            e_don_gia = c11.text_input("Đơn giá cước (VNĐ)*", value=safe_fmt(val_don_gia) if safe_fmt(val_don_gia) != "0" else "", placeholder="0")
+                            e_ghi_chu = c12.text_input("Ghi chú", value=str(row_info.get('ghi_chu', '')))
 
                             if st.form_submit_button("💾 Lưu Thay Đổi Mức Giá", type="primary"):
                                 data_edit = {
@@ -330,16 +339,25 @@ with tab2:
                 try:
                     xls = pd.ExcelFile(file_rate_up)
                     
+                    # [CẬP NHẬT 5]: Hàm làm sạch rác ép kiểu của Pandas
+                    def clean_excel_df(df_in):
+                        df_out = df_in.copy()
+                        for col in df_out.columns:
+                            df_out[col] = df_out[col].apply(
+                                lambda x: re.sub(r'\.0$', '', str(x).strip()) if pd.notna(x) and str(x).strip().lower() != 'nan' else None
+                            )
+                        return df_out
+                    
                     sheet_rate = "BIEU_CUOC" if "BIEU_CUOC" in xls.sheet_names else ("RateCards" if "RateCards" in xls.sheet_names else 0)
-                    df_up_rate = pd.read_excel(xls, sheet_name=sheet_rate)
+                    df_up_rate = clean_excel_df(pd.read_excel(xls, sheet_name=sheet_rate)) # Bọc hàm clean
                     df_up_rate.columns = [str(c).strip().upper() for c in df_up_rate.columns]
                     
                     df_up_pp = None
                     if "PHU_PHI" in xls.sheet_names:
-                        df_up_pp = pd.read_excel(xls, sheet_name="PHU_PHI")
+                        df_up_pp = clean_excel_df(pd.read_excel(xls, sheet_name="PHU_PHI")) # Bọc hàm clean
                         df_up_pp.columns = [str(c).strip().upper() for c in df_up_pp.columns]
                     elif "PhuPhiKhachHang" in xls.sheet_names:
-                        df_up_pp = pd.read_excel(xls, sheet_name="PhuPhiKhachHang")
+                        df_up_pp = clean_excel_df(pd.read_excel(xls, sheet_name="PhuPhiKhachHang")) # Bọc hàm clean
                         df_up_pp.columns = [str(c).strip().upper() for c in df_up_pp.columns]
 
                     is_ok, msg = import_and_update_bang_gia_transaction(db.pool, df_up_rate, df_up_pp, current_user)
@@ -546,9 +564,15 @@ with tab3:
 
                 # --- CHỨC NĂNG 3: SỬA TRỰC TIẾP ---
                 elif mode_pp_act == "✏️ Sửa trực tiếp phụ phí":
+                    # [CẬP NHẬT 3]: Hàm format an toàn chống NaN
+                    def safe_fmt_pp(val):
+                        if pd.isna(val) or val == "" or str(val).strip().lower() == 'nan': return "0"
+                        try: return f"{int(float(val)):,}"
+                        except: return "0"
+                        
                     pp_opts = {None: "-- Vui lòng chọn phụ phí cần sửa --"}
                     for _, r in df_pp_ui.iterrows(): 
-                        pp_opts[r['id']] = f"ID: {r['id']} | [{r['ten_khach_hang']}] {r['ten_phu_phi']} | Giá: {float(r['don_gia_phu_phi']):,}"
+                        pp_opts[r['id']] = f"ID: {r['id']} | [{r['ten_khach_hang']}] {r['ten_phu_phi']} | Giá: {safe_fmt_pp(r['don_gia_phu_phi'])}"
                         
                     selected_pp_id = st.selectbox(
                         "🔍 Chọn phụ phí cần sửa:", 
@@ -561,10 +585,11 @@ with tab3:
                         row_pp = df_pp_ui[df_pp_ui['id'] == selected_pp_id].iloc[0]
                         with st.form(f"form_edit_single_pp_{selected_pp_id}", clear_on_submit=False):
                             c1, c2 = st.columns(2)
-                            e_ten_pp = c1.text_input("Tên phụ phí*", value=str(row_pp['ten_phu_phi'] or ''))
+                            e_ten_pp = c1.text_input("Tên phụ phí*", value=str(row_pp.get('ten_phu_phi', '')))
                             
-                            val_don_gia_pp = float(row_pp['don_gia_phu_phi'] or 0)
-                            e_don_gia_pp = c2.text_input("Đơn giá phụ phí (VNĐ)*", value=f"{val_don_gia_pp:,.0f}" if val_don_gia_pp > 0 else "", placeholder="0")
+                            # [CẬP NHẬT 4]: Trích xuất an toàn
+                            val_don_gia_pp = row_pp.get('don_gia_phu_phi')
+                            e_don_gia_pp = c2.text_input("Đơn giá phụ phí (VNĐ)*", value=safe_fmt_pp(val_don_gia_pp) if safe_fmt_pp(val_don_gia_pp) != "0" else "", placeholder="0")
 
                             c3, c4 = st.columns(2)
                             e_dk_kich_hoat = c3.text_input("Điều kiện kích hoạt", value=str(row_pp['dieu_kien_kich_hoat'] or ''))
@@ -640,7 +665,16 @@ with tab4:
                     xls_pp = pd.ExcelFile(file_pp_up)
                     sheet_pp = "PHU_PHI" if "PHU_PHI" in xls_pp.sheet_names else ("PhuPhiKhachHang" if "PhuPhiKhachHang" in xls_pp.sheet_names else 0)
                     
-                    df_up_pp = pd.read_excel(xls_pp, sheet_name=sheet_pp)
+                    # [CẬP NHẬT 6]: Làm sạch tương tự cho Tab Import Phụ phí
+                    def clean_excel_df(df_in):
+                        df_out = df_in.copy()
+                        for col in df_out.columns:
+                            df_out[col] = df_out[col].apply(
+                                lambda x: re.sub(r'\.0$', '', str(x).strip()) if pd.notna(x) and str(x).strip().lower() != 'nan' else None
+                            )
+                        return df_out
+                        
+                    df_up_pp = clean_excel_df(pd.read_excel(xls_pp, sheet_name=sheet_pp)) # Bọc hàm clean
                     df_up_pp.columns = [str(c).strip().upper() for c in df_up_pp.columns]
                     
                     is_ok, msg = import_and_update_phu_phi_transaction(db.pool, df_up_pp, current_user)

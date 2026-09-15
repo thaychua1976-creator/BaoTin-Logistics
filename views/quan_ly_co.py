@@ -154,6 +154,12 @@ with tab_quan_ly_co:
         df_co = db.execute_query(sql_ds_co, (co_tu_ngay.strftime('%Y-%m-%d'), co_den_ngay.strftime('%Y-%m-%d')))
         
         if isinstance(df_co, pd.DataFrame) and not df_co.empty:
+            # [CẬP NHẬT]: Làm sạch DataFrame, khử triệt để giá trị NaN/None trên giao diện hiển thị
+            df_co['phi_co'] = pd.to_numeric(df_co['phi_co'], errors='coerce').fillna(0)
+            df_co['phi_dvhq'] = pd.to_numeric(df_co['phi_dvhq'], errors='coerce').fillna(0)
+            df_co['so_hoa_don_co'] = df_co['so_hoa_don_co'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
+            df_co['ghi_chu'] = df_co['ghi_chu'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
+
             df_co_view = df_co[['id', 'form_co', 'so_co', 'ngay_co', 'so_to_khai', 'ten_khach_hang', 'phi_co', 'phi_dvhq', 'so_hoa_don_co', 'ghi_chu']].copy()
             df_co_view['phi_co'] = df_co_view['phi_co'].apply(lambda x: f"{int(x):,}" if pd.notnull(x) else "0")
             df_co_view['phi_dvhq'] = df_co_view['phi_dvhq'].apply(lambda x: f"{int(x):,}" if pd.notnull(x) else "0")
@@ -176,11 +182,25 @@ with tab_quan_ly_co:
             if selected_co_id is not None:
                 co_info = df_co[df_co['id'] == selected_co_id].iloc[0]
                 
-                st.markdown(f"Đang thao tác với Số C/O: **{co_info['so_co']}**")
+                # [CẬP NHẬT]: Các hàm trích xuất dữ liệu an toàn, chống crash NaN
+                def get_safe_val(key, default=""):
+                    val = co_info.get(key)
+                    if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
+                        return default
+                    return str(val).strip()
+
+                def get_safe_float(key, default=0.0):
+                    val = co_info.get(key)
+                    if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
+                        return default
+                    try: return float(val)
+                    except: return default
+
+                st.markdown(f"Đang thao tác với Số C/O: **{get_safe_val('so_co')}**")
                 action_mode_co = st.radio("Hành động:", ["✏️ Sửa C/O", "🗑️ Xóa C/O"], horizontal=True, key="radio_co_action")
                 
                 if action_mode_co == "🗑️ Xóa C/O":
-                    st.warning(f"⚠️ Bạn có chắc chắn muốn xóa vĩnh viễn chứng từ C/O **{co_info['so_co']}**?")
+                    st.warning(f"⚠️ Bạn có chắc chắn muốn xóa vĩnh viễn chứng từ C/O **{get_safe_val('so_co')}**?")
                     if st.button("Xác Nhận Xóa C/O", type="primary"):
                         ok, msg = delete_co_transaction(db.pool, selected_co_id, current_user)
                         if ok:
@@ -193,7 +213,6 @@ with tab_quan_ly_co:
                             st.error(f"Lỗi: {msg}")
                 else:
                     with st.form(f"form_edit_co_{selected_co_id}", clear_on_submit=False):
-                        # Lấy lại danh sách Tờ khai của chính khách hàng này để có thể sửa đổi (Sử dụng Cache)
                         sql_tk_edit = "SELECT id, so_to_khai FROM to_khai_hai_quan WHERE khach_hang_id = %s"
                         df_tk_edit = get_cached_master_data(db, sql_tk_edit, (co_info['khach_hang_id'],))
                         dict_tk_edit = {r['id']: f"Số TK: {r['so_to_khai']}" for _, r in df_tk_edit.iterrows()} if not df_tk_edit.empty else {co_info['to_khai_id']: co_info['so_to_khai']}
@@ -201,24 +220,27 @@ with tab_quan_ly_co:
                         e_to_khai_id = st.selectbox("Tờ Khai Xuất Khẩu Liên Kết", options=list(dict_tk_edit.keys()), index=get_idx(list(dict_tk_edit.keys()), co_info['to_khai_id']), format_func=lambda x: dict_tk_edit[x])
                             
                         ec1, ec2, ec3 = st.columns(3)
-                        e_form_co = ec1.text_input("Loại Form C/O", value=co_info['form_co'] or "")
-                        e_so_co = ec2.text_input("Số C/O*", value=co_info['so_co'] or "")
-                        e_ngay_co = ec3.date_input("Ngày Cấp C/O", value=pd.to_datetime(co_info['ngay_co']).date())
+                        e_form_co = ec1.text_input("Loại Form C/O", value=get_safe_val('form_co'))
+                        e_so_co = ec2.text_input("Số C/O*", value=get_safe_val('so_co'))
+                        
+                        # Xử lý an toàn ngày cấp C/O chống lỗi NaT/NaN
+                        raw_ngay_co = co_info.get('ngay_co')
+                        default_ngay_co = pd.to_datetime(raw_ngay_co).date() if pd.notna(raw_ngay_co) and str(raw_ngay_co).strip().lower() != 'nan' else datetime.date.today()
+                        e_ngay_co = ec3.date_input("Ngày Cấp C/O", value=default_ngay_co)
                         
                         def fmt(val): 
-                            if pd.isna(val) or val == "": return ""
+                            if pd.isna(val) or val == "" or str(val).strip().lower() == 'nan': return ""
                             try:
                                 num = float(val)
                                 return f"{int(num):,}" if num > 0 else ""
                             except: return ""
                         
                         ec4, ec5, ec6 = st.columns(3)
-                        # Bổ sung placeholder="0" và hàm fmt đã cải tiến
-                        e_phi_co = ec4.text_input("Lệ Phí C/O (VNĐ)*", value=fmt(co_info['phi_co']), placeholder="0")
-                        e_phi_dvhq = ec5.text_input("Phí DVHQ C/O (VNĐ)", value=fmt(co_info['phi_dvhq']), placeholder="0")
-                        e_so_hoa_don_co = ec6.text_input("Số Hóa Đơn Phí C/O", value=co_info['so_hoa_don_co'] or "")
+                        e_phi_co = ec4.text_input("Lệ Phí C/O (VNĐ)*", value=fmt(get_safe_float('phi_co')), placeholder="0")
+                        e_phi_dvhq = ec5.text_input("Phí DVHQ C/O (VNĐ)", value=fmt(get_safe_float('phi_dvhq')), placeholder="0")
+                        e_so_hoa_don_co = ec6.text_input("Số Hóa Đơn Phí C/O", value=get_safe_val('so_hoa_don_co'))
                         
-                        e_ghi_chu = st.text_input("Ghi chú bổ sung", value=co_info['ghi_chu'] or "")
+                        e_ghi_chu = st.text_input("Ghi chú bổ sung", value=get_safe_val('ghi_chu'))
                         
                         if st.form_submit_button("💾 LƯU THAY ĐỔI C/O", type="primary"):
                             if not e_so_co:

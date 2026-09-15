@@ -41,8 +41,8 @@ def get_grouped_files():
             grouped_files[group_name] = [os.path.join(root, f) for f in valid_files]
     return grouped_files
 
-# Hàm dọn dẹp thư mục rác
-def clear_pending_files():
+# [CẬP NHẬT]: Hàm dọn dẹp CHỈ XÓA FILE (Tự động chạy để dọn rác từ phiên trước)
+def clear_files_only():
     deleted_count = 0
     for root, dirs, files in os.walk(DOWNLOAD_DIR):
         for file in files:
@@ -52,6 +52,11 @@ def clear_pending_files():
                 deleted_count += 1
             except Exception:
                 pass
+    return deleted_count
+
+# [CẬP NHẬT]: Hàm dọn dẹp TOÀN BỘ FILE & THƯ MỤC (Chỉ chạy khi người dùng bấm nút)
+def clear_files_and_folders():
+    deleted_count = clear_files_only() # Tái sử dụng hàm xóa file
     
     # Xóa luôn các thư mục rỗng
     for root, dirs, files in os.walk(DOWNLOAD_DIR, topdown=False):
@@ -202,9 +207,9 @@ def process_offline_zalo_files():
             if not success:
                 unprocessed_files.append(f"{nhom} / {filename}")
         
-        group_path = os.path.join(DOWNLOAD_DIR, nhom)
-        if os.path.exists(group_path) and not os.listdir(group_path):
-            os.rmdir(group_path)
+        #group_path = os.path.join(DOWNLOAD_DIR, nhom)
+        #if os.path.exists(group_path) and not os.listdir(group_path):  # các dòng này xoá thư mục
+        #    os.rmdir(group_path)
             
         if group_idx < total_groups:
             ui_group_status.warning(f"🛑 Xong nhóm {nhom}. Nghỉ 5s...")
@@ -219,26 +224,35 @@ def process_offline_zalo_files():
                     
     if valid_records:
         df_new = pd.DataFrame(valid_records)
-        if os.path.exists(EXCEL_FILE):
-            df_existing = pd.read_excel(EXCEL_FILE)
-            df_combined = pd.concat([df_existing, df_new], ignore_index=True)
-            df_combined.to_excel(EXCEL_FILE, index=False)
-        else:
-            df_new.to_excel(EXCEL_FILE, index=False)
-        return {"status": "success", "message": f"✅ Đã lưu {len(valid_records)} chuyến xe vào Excel.", "unprocessed": unprocessed_files}
+        df_new['ngay_chuyen_di'] = df_new.get('ngay_chuyen_di', 'Khong_Xac_Dinh').fillna('Khong_Xac_Dinh').astype(str)
+        
+        # [CẬP NHẬT]: Ghi đè file Excel mới, chia sheet theo ngày, loại bỏ dữ liệu các đợt trước
+        with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
+            grouped = df_new.groupby('ngay_chuyen_di')
+            for date_str, group_df in grouped:
+                sheet_name = str(date_str).split('T')[0][:31] # Tên sheet tối đa 31 ký tự
+                group_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                
+        return {"status": "success", "message": f"✅ Đã lưu {len(valid_records)} chuyến xe vào Excel (Dữ liệu đã làm mới, không cộng dồn ngày cũ).", "unprocessed": unprocessed_files}
     
     return {"status": "warning", "message": "⚠️ Không tìm thấy dữ liệu hợp lệ.", "unprocessed": unprocessed_files}
-
 def main_app():
+    # [CẬP NHẬT]: Kích hoạt dọn dẹp chỉ file từ các phiên làm việc trước tự động khi mở app
+    if "auto_cleaned_files" not in st.session_state:
+        clear_files_only()
+        st.session_state["auto_cleaned_files"] = True
+        
     st.title("🤖 RPA - Lấy thông tin điều xe từ file Zalo")
     
     # 📌 KHU VỰC DỌN RÁC
     st.subheader("🧹 Dọn dẹp dữ liệu tồn đọng")
     st.markdown("Nếu tiến trình trước đó bị lỗi hoặc dừng đột ngột, hãy dọn rác trước khi tải file mới lên để tránh quá tải AI.")
-    if st.button("🗑️ Dọn sạch toàn bộ file Zalo cũ", type="secondary"):
-        deleted = clear_pending_files()
+    
+    # [CẬP NHẬT]: Nút này giờ đây gọi hàm xóa CẢ FILE LẪN THƯ MỤC
+    if st.button("🗑️ Dọn sạch toàn bộ file VÀ thư mục Zalo cũ", type="secondary"):
+        deleted = clear_files_and_folders() 
         if deleted > 0:
-            st.success(f"✅ Đã xóa thành công {deleted} file rác tồn đọng trong hệ thống!")
+            st.success(f"✅ Đã xóa thành công {deleted} file rác tồn đọng trong hệ thống và dọn thư mục trống!")
         else:
             st.info("✨ Thư mục hiện tại đang sạch sẽ, không có file rác.")
 
@@ -279,12 +293,18 @@ def main_app():
     st.markdown("---")
     st.subheader("⚙️ Xử lý dữ liệu")
     
-    if st.button("🚀 Bắt đầu phân tích AI", type="primary"):
+    # Sử dụng st.form để sau khi submit thành công có thể reset form và các widget file_uploader
+    with st.form(key="form_xu_ly_zalo_ai"):
+        submit_ai = st.form_submit_button("🚀 Bắt đầu phân tích AI", type="primary", use_container_width=True)
+        
+    if submit_ai:
         with st.spinner("Đang kết nối thư viện OCR và Gemini AI..."):
             result = process_offline_zalo_files()
             if result:
                 if result["status"] == "success": 
                     st.success(result["message"])
+                    # Lưu trạng thái đã xuất file thành công vào session để kích hoạt cơ chế hiển thị nút tải
+                    st.session_state["zalo_export_success"] = True
                 elif result["status"] == "warning": 
                     st.warning(result["message"])
                 elif result["status"] == "info": 
@@ -294,18 +314,50 @@ def main_app():
                     st.error(f"🚨 Có {len(result['unprocessed'])} file hệ thống không thể xử lý:")
                     for f in result["unprocessed"]:
                         st.markdown(f"- `{f}`")
+                
+                # Ép làm mới giao diện ngay lập tức để nhận diện file excel mới sinh ra
+                st.rerun()
 
     st.markdown("---")
     st.subheader("📥 Tải kết quả tổng hợp")
+    
+    # Kiểm tra nếu file Excel tồn tại
     if os.path.exists(EXCEL_FILE):
         with open(EXCEL_FILE, "rb") as file:
-            st.download_button(
-                label="⬇️ Tải file Danh_Sach_Book_Xe_Tong_Hop.xlsx",
-                data=file,
-                file_name="Danh_Sach_Book_Xe_Tong_Hop.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary"
-            )
+            file_bytes = file.read()
+            
+        # Sử dụng st.download_button kèm theo callback hoặc bắt sự kiện click thông qua st.rerun()
+        # Vì Streamlit download_button không trả về trạng thái click trực tiếp, 
+        # ta kết hợp một nút bấm xác nhận "Làm mới phiên làm việc mới" ngay bên dưới nút tải.
+        st.download_button(
+            label="⬇️ Tải file Danh_Sach_Book_Xe_Tong_Hop.xlsx",
+            data=file_bytes,
+            file_name="Danh_Sach_Book_Xe_Tong_Hop.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+            use_container_width=True
+        )
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # 📌 NÚT LÀM SẠCH VÀ XOÁ TRẮNG PHIÊN LÀM VIỆC (RESET FORM)
+        if st.button("🧹 Hoàn tất tải xuống / Xoá trắng form cho phiên mới", type="secondary", use_container_width=True):
+            # 1. Xoá file Excel tổng hợp kết quả
+            try:
+                if os.path.exists(EXCEL_FILE):
+                    os.remove(EXCEL_FILE)
+            except Exception:
+                pass
+                
+            # 2. Xoá toàn bộ file ảnh/txt rác trong thư mục zalo_downloads và các thư mục nhóm con
+            clear_files_only()
+            
+            # 3. Xoá các state liên quan đến tiến trình cũ
+            st.session_state.pop("zalo_export_success", None)
+            
+            st.success("✅ Đã dọn sạch dữ liệu cũ và làm mới form thành công cho phiên làm việc mới!")
+            time.sleep(1.0)
+            st.rerun()
     else:
         st.info("Chưa có dữ liệu Excel nào được xuất ra trên hệ thống.")
 

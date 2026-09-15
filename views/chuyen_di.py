@@ -130,9 +130,29 @@ with tab1:
                             df_detail = db.execute_query("SELECT * FROM chuyen_di WHERE id=%s", (edit_trip_id,))
                             if isinstance(df_detail, pd.DataFrame) and not df_detail.empty:
                                 trip_data = df_detail.iloc[0].to_dict()
+                                
+                                # Hàm trích xuất float an toàn đã có
+                                def safe_float_val(key):
+                                    val = trip_data.get(key)
+                                    if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
+                                        return 0.0
+                                    try: return float(val)
+                                    except: return 0.0
+                                
+                                # [CẬP NHẬT]: Bổ sung hàm trích xuất số nguyên (ID) an toàn chống crash NaN
+                                def safe_int_val(key, default=None):
+                                    val = trip_data.get(key)
+                                    if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
+                                        return default
+                                    try: return int(float(val))
+                                    except: return default
+
                                 df_tx_assigned = db.execute_query("SELECT tai_xe_id FROM chuyen_di_tai_xe WHERE chuyen_di_id=%s AND loai_tai_xe='Tai_Chinh'", (edit_trip_id,))
                                 if isinstance(df_tx_assigned, pd.DataFrame) and not df_tx_assigned.empty:
-                                   trip_data['tai_xe_id_assigned'] = int(float(df_tx_assigned.iloc[0]['tai_xe_id']))
+                                    # Sử dụng an toàn ở đây
+                                    tx_val = df_tx_assigned.iloc[0]['tai_xe_id']
+                                    if pd.notna(tx_val):
+                                        trip_data['tai_xe_id_assigned'] = int(float(tx_val))
                                 db_ghi_chu = trip_data.get('ghi_chu', '') or ''
                                 ghi_chu_thucong_val = db_ghi_chu
                                 
@@ -262,7 +282,7 @@ with tab1:
                 if kieu_nghiep_vu == "Nghiệp vụ Xe Tải":
                     col_hl1, col_hl2 = st.columns(2)
                     
-                    val_kl = float(trip_data.get('khoi_luong_kg') or 0.0)
+                    val_kl = safe_float_val('khoi_luong_kg')
                     khoi_luong = col_hl1.number_input("📦 Khối lượng (KG)*", min_value=0.0, value=val_kl if val_kl > 0 else None, placeholder="0", format="%g", step=1.0, key=kg_key)
                     
                     val_cbm = float(trip_data.get('the_tich_cbm') or 0.0)
@@ -385,7 +405,8 @@ with tab1:
                         # [BỔ SUNG] Lấy ID xe đã lưu an toàn để bypass các bộ lọc
                         saved_xe_id = None
                         if mode_action == "✏️ Sửa chuyến hiện tại" and pd.notna(trip_data.get('xe_id')):
-                            saved_xe_id = int(float(trip_data.get('xe_id')))
+                            # [CẬP NHẬT] Lấy ID xe đã lưu an toàn để bypass các bộ lọc
+                            saved_xe_id = safe_int_val('xe_id')
 
                         for k, v in xe_map.items():
                             k_int = int(k)
@@ -908,12 +929,13 @@ with tab2:
             with st.expander("🔗 NGHIỆP VỤ GHÉP CHUYẾN / CHUYẾN TIẾP NỐI (Dành cho Điều Phối)", expanded=True):
                 st.markdown("💡 **Hướng dẫn:** Bôi đen (chọn) các chuyến đi của **cùng một xe** theo đúng thứ tự lấy hàng.")
                 
-                # CẬP NHẬT: Cho phép hiển thị và ghép cả xe nội bộ lẫn xe thuê ngoài
+                
+                # CẬP NHẬT: Xử lý an toàn các chuyến chưa gán xe (CHUA_GAN)
                 sql_ghep = """
                     SELECT cd.id, cd.ngay_chuyen_di, cd.dia_diem_giao_nhan, 
                            COALESCE(kh.ten_khach_hang, cd.ten_khach_hang) as ten_khach, 
-                           COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) as bien_so_xe, 
-                           COALESCE(CAST(cd.xe_id AS CHAR), cd.bien_so_xe_ngoai) as identifier_xe
+                           COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai, 'Chưa gán xe') as bien_so_xe, 
+                           COALESCE(CAST(cd.xe_id AS CHAR), cd.bien_so_xe_ngoai, 'CHUA_GAN') as identifier_xe
                     FROM chuyen_di cd 
                     LEFT JOIN xe x ON cd.xe_id = x.id 
                     LEFT JOIN khach_hang kh ON cd.khach_hang_id = kh.id
@@ -921,29 +943,54 @@ with tab2:
                     ORDER BY identifier_xe, cd.id ASC
                 """
                 df_ghep = db.execute_query(sql_ghep)
+                
                 if isinstance(df_ghep, pd.DataFrame) and not df_ghep.empty:
-                    ghep_opts = {r['id']: f"🚛 Xe: {r['bien_so_xe']} | Mã chuyến: {r['id']} | Khách: {r['ten_khach']} | Lộ trình: {r['dia_diem_giao_nhan']}" for _, r in df_ghep.iterrows()}
-                    chuyen_duoc_chon = st.multiselect("📌 Click để chọn các chuyến đi cần ghép:", options=list(ghep_opts.keys()), format_func=lambda x: ghep_opts[x], key="multiselect_ghep_chuyen_tab2")
+                    # BƯỚC 1: Lấy danh sách các xe có chuyến đi (Loại bỏ các chuyến chưa gán xe)
+                    xe_dict = {}
+                    for _, row in df_ghep.iterrows():
+                        if row['identifier_xe'] != 'CHUA_GAN':
+                            xe_dict[row['identifier_xe']] = row['bien_so_xe']
                     
-                    if st.button("🔗 XÁC NHẬN GHÉP CHUYẾN", type="primary", key="btn_xac_nhan_ghep_tab2"):
-                        if len(chuyen_duoc_chon) < 2: 
-                            st.warning("⚠️ Chọn ít nhất 2 chuyến.")
-                        # SỬA LỖI: Kiểm tra trùng xe dựa trên identifier_xe thay vì chỉ xe_id (để bắt được cả xe ngoài)
-                        elif len(df_ghep[df_ghep['id'].isin(chuyen_duoc_chon)]['identifier_xe'].unique()) > 1: 
-                            st.error("❌ Các chuyến không cùng xe!")
-                        else:
-                            success, msg = group_trips_transaction(db.pool, chuyen_duoc_chon, st.session_state.get('username', 'Admin'))
-                            if success:
-                                st.success(msg)
-                                # Dọn rác cache để Tab Khác cập nhật ngay lập tức
-                                for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]:
-                                    st.session_state.pop(key, None)
-                                time.sleep(1.2)
-                                st.rerun()
-                            else: 
-                                st.error(f"Lỗi: {msg}")
+                    if not xe_dict:
+                        st.info("📭 Các chuyến đi hiện tại chưa được phân công xe cụ thể, không thể thực hiện ghép chuyến.")
+                    else:
+                        # BƯỚC 2: Cho người dùng chọn Xe trước
+                        xe_duoc_chon = st.selectbox(
+                            "🚛 1. Chọn phương tiện cần thao tác ghép chuyến:", 
+                            options=list(xe_dict.keys()), 
+                            format_func=lambda x: f"Biển số xe: {xe_dict[x]}",
+                            key="selectbox_xe_ghep"
+                        )
+                        
+                        # BƯỚC 3: Lọc danh sách chuyến đi chỉ thuộc về chiếc xe vừa chọn
+                        df_ghep_filtered = df_ghep[df_ghep['identifier_xe'] == xe_duoc_chon]
+                        ghep_opts = {r['id']: f"Mã chuyến: {r['id']} | Khách: {r['ten_khach']} | Lộ trình: {r['dia_diem_giao_nhan']}" for _, r in df_ghep_filtered.iterrows()}
+                        
+                        chuyen_duoc_chon = st.multiselect(
+                            f"📌 2. Click để chọn các chuyến đi cần ghép của xe {xe_dict[xe_duoc_chon]}:", 
+                            options=list(ghep_opts.keys()), 
+                            format_func=lambda x: ghep_opts[x], 
+                            key="multiselect_ghep_chuyen_tab2"
+                        )
+                        
+                        # BƯỚC 4: Xử lý Submit
+                        if st.button("🔗 XÁC NHẬN GHÉP CHUYẾN", type="primary", key="btn_xac_nhan_ghep_tab2"):
+                            if len(chuyen_duoc_chon) < 2: 
+                                st.warning("⚠️ Vui lòng chọn ít nhất 2 chuyến đi để tiến hành ghép.")
+                            else:
+                                # Đoạn check xe trùng nhau đã bị loại bỏ vì UI đã khóa chặt logic lọc theo 1 xe duy nhất
+                                success, msg = group_trips_transaction(db.pool, chuyen_duoc_chon, st.session_state.get('username', 'Admin'))
+                                if success:
+                                    st.success(msg)
+                                    # Dọn rác cache để các Tab khác cập nhật ngay lập tức
+                                    for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]:
+                                        st.session_state.pop(key, None)
+                                    time.sleep(1.2)
+                                    st.rerun()
+                                else: 
+                                    st.error(f"Lỗi hệ thống: {msg}")
                 else: 
-                    st.info("📭 Không có chuyến đi nội bộ khả dụng để ghép.")
+                    st.info("📭 Không có chuyến đi nào ở trạng thái khả dụng để ghép.")
                     
             st.divider()
             
@@ -1051,6 +1098,13 @@ with tab3:
                     try:
                         df_orders = pd.read_excel(file_order, dtype={'MA_SO_THUE': str, 'MA_KHACH_HANG': str,'TEN_KHACH_HANG': str})
                         df_orders.columns = [str(c).strip().upper() for c in df_orders.columns] 
+                        
+                        # [CẬP NHẬT]: Khử đuôi .0 do Pandas ép kiểu ngầm trên toàn bộ DataFrame file order
+                        for col in df_orders.columns:
+                            df_orders[col] = df_orders[col].apply(
+                                lambda x: re.sub(r'\.0$', '', str(x).strip()) if pd.notna(x) and str(x).strip().lower() != 'nan' else x
+                            )
+                            
                         df_orders['NGAY_CHAY_CHUAN'] = pd.to_datetime(df_orders['NGAY_CHAY'], dayfirst=True, errors='coerce')
                         
                         # Sử dụng Cache cho danh sách đối chiếu Khách hàng
@@ -1336,8 +1390,10 @@ with tab4:
                     c_tao_moi, c_quyet_toan, c_hoan_thanh, c_xe_trong = st.columns(4)
                     
                     # Hàm rút gọn chuỗi tên Khách hàng và Lộ trình giống thông báo tài xế
+                    # [CẬP NHẬT]: Hàm rút gọn thông tin an toàn chống chuỗi 'nan'
                     def rut_gon_thong_tin(text):
-                        if not text: return ""
+                        if pd.isna(text) or str(text).strip() == "" or str(text).strip().lower() == 'nan': 
+                            return "Chưa cập nhật"
                         # Loại bỏ các từ khóa công ty rườm rà không phân biệt chữ hoa/thường
                         clean_text = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*|cty\s*', '', str(text))
                         return clean_text.strip()
@@ -1349,14 +1405,18 @@ with tab4:
                         ngay_chuyen = str(row.get('ngay_chuyen_di', ''))
                         
                         # Rút gọn tên khách hàng và lộ trình
-                        khach_hang_gon = rut_gon_thong_tin(row['khach_hang'])
-                        lo_trinh_gon = rut_gon_thong_tin(row['lo_trinh'])
+                        khach_hang_gon = rut_gon_thong_tin(row.get('khach_hang'))
+                        lo_trinh_gon = rut_gon_thong_tin(row.get('lo_trinh'))
                         
                         badge_ghep = f"<span style='font-size: 10px; background-color: #ffecb3; padding: 2px 5px; border-radius: 4px; color: #f57f17; font-weight: bold; margin-left: 4px;'>🔗 Ghép</span>" if is_ghep else ""
                         badge_xe = f"<span style='font-size: 10px; background-color: #fce4ec; padding: 2px 5px; border-radius: 4px; color: #c2185b; font-weight: bold; margin-left: 4px;'>🤝 Ngoài</span>" if is_ngoai else f"<span style='font-size: 10px; background-color: #e3f2fd; padding: 2px 5px; border-radius: 4px; color: #1565c0; font-weight: bold; margin-left: 4px;'>🏢 Cty</span>"
                         badge_ton = f"<span style='font-size: 10px; background-color: #ffccbc; padding: 2px 5px; border-radius: 4px; color: #d84315; font-weight: bold; margin-left: 4px;'>⚠️ Tồn ({ngay_chuyen})</span>" if ngay_chuyen != ngay_hom_nay else ""
                         
-                        trong_tai = float(row['trong_tai']) if pd.notna(row['trong_tai']) else 0
+                        # [CẬP NHẬT]: Ép kiểu số an toàn cho định dạng hiển thị
+                        try:
+                            trong_tai = float(row.get('trong_tai', 0)) if pd.notna(row.get('trong_tai')) else 0.0
+                        except:
+                            trong_tai = 0.0
                         
                         return (
                             f"<div style='background-color: {bg_color}; border-left: 6px solid {border_color}; padding: 10px; border-radius: 8px; margin-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); font-family: sans-serif;'>"
@@ -1542,10 +1602,15 @@ with tab5:
                     if has_nb:
                         # Copy để tránh warning SettingWithCopy của Pandas
                         df_hien_thi_nb = df_search_nb.copy()
-                        df_hien_thi_nb['Ngày'] = pd.to_datetime(df_hien_thi_nb['Ngày']).dt.strftime('%d/%m/%Y')
+                        if 'Ngày' in df_hien_thi_nb.columns:
+                            df_hien_thi_nb['Ngày'] = pd.to_datetime(df_hien_thi_nb['Ngày'], errors='coerce').dt.strftime('%d/%m/%Y').fillna('')
+                            
+                        # [CẬP NHẬT]: Format tiền tệ an toàn chống lỗi NaN
                         for col_money in ['Lương chuyến', 'Thưởng thêm', 'Doanh thu']:
                             if col_money in df_hien_thi_nb.columns:
-                                df_hien_thi_nb[col_money] = df_hien_thi_nb[col_money].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
+                                df_hien_thi_nb[col_money] = df_hien_thi_nb[col_money].apply(
+                                    lambda x: f"{int(float(x)):,}" if pd.notnull(x) and str(x).strip() != "" and str(x).lower() != 'nan' else "0"
+                                )
                         st.dataframe(df_hien_thi_nb, use_container_width=True, hide_index=True)
                     else:
                         st.info("Không tìm thấy chuyến xe nội bộ nào phù hợp bộ lọc.")
@@ -1558,7 +1623,10 @@ with tab5:
                         df_hien_thi_ng['Ngày'] = pd.to_datetime(df_hien_thi_ng['Ngày']).dt.strftime('%d/%m/%Y')
                         for col_money in ['Lương chuyến', 'Thưởng thêm', 'Doanh thu', 'Phí Thuê Ngoài']:
                             if col_money in df_hien_thi_ng.columns:
-                                df_hien_thi_ng[col_money] = df_hien_thi_ng[col_money].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
+                                #df_hien_thi_ng[col_money] = df_hien_thi_ng[col_money].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
+                                df_hien_thi_ng[col_money] = df_hien_thi_ng[col_money].apply(
+                                    lambda x: f"{int(float(x)):,}" if pd.notnull(x) and str(x).strip() != "" and str(x).lower() != 'nan' else "0"
+                                    )
                         st.dataframe(df_hien_thi_ng, use_container_width=True, hide_index=True)
                     else:
                         st.info("Không tìm thấy chuyến xe thuê ngoài nào phù hợp bộ lọc.")
@@ -1701,7 +1769,9 @@ with tab6:
                         col_name = next((col for col in df_up.columns if str(col).strip().lower() in ['mã chuyến đi', 'ma_chuyen_di', 'id', 'mã chuyến']), None)
                         
                         if col_name:
-                            ds_ma_chuyen = df_up[col_name].dropna().astype(int).unique().tolist()
+                            # [CẬP NHẬT]: Ép kiểu an toàn sang số, các giá trị chữ/trống sẽ bị ép thành NaN, sau đó dropna() sẽ dọn dẹp sạch sẽ
+                            df_up['id_chuyen_clean'] = pd.to_numeric(df_up[col_name], errors='coerce')
+                            ds_ma_chuyen = df_up['id_chuyen_clean'].dropna().astype(int).unique().tolist()
                         else:
                             st.error("❌ File Excel không hợp lệ. Phải có cột mang tên 'Mã chuyến đi'.")
                     except Exception as e:

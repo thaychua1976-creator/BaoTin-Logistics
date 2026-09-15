@@ -48,15 +48,18 @@ with tab1:
                 loai_nhan_vien AS 'Chức vụ', trang_thai AS 'Tình trạng' 
             FROM nhan_vien ORDER BY id ASC
         """
-        # Sử dụng cache cho danh sách nhân viên
         df_nv_list = get_cached_master_data(db, sql_nv)
         
         if isinstance(df_nv_list, pd.DataFrame) and not df_nv_list.empty:
+            # [CẬP NHẬT]: Làm sạch dữ liệu, khử NaN và các chuỗi rác trên giao diện danh sách
             df_nv_list['Trạng thái'] = df_nv_list['Tình trạng'].apply(lambda x: "🟢 Đang làm việc" if x == "Dang_Lam_Viec" else "🔴 Đã nghỉ việc")
+            df_nv_list['CCCD'] = df_nv_list['CCCD'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
+            df_nv_list['GPLX'] = df_nv_list['GPLX'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
+            df_nv_list['Hạng'] = df_nv_list['Hạng'].fillna('Khác').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else 'Khác')
             
-            # Cập nhật format ngày tháng hiển thị sang dd/mm/yyyy
-            df_nv_list['Hạn Bằng'] = pd.to_datetime(df_nv_list['Hạn Bằng']).dt.strftime('%d/%m/%Y').fillna("---")
-            df_nv_list['Hạn Tập Huấn'] = pd.to_datetime(df_nv_list['Hạn Tập Huấn']).dt.strftime('%d/%m/%Y').fillna("---")
+            # Cập nhật format ngày tháng hiển thị sang dd/mm/yyyy an toàn chống lỗi NaT
+            df_nv_list['Hạn Bằng'] = pd.to_datetime(df_nv_list['Hạn Bằng'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("---")
+            df_nv_list['Hạn Tập Huấn'] = pd.to_datetime(df_nv_list['Hạn Tập Huấn'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("---")
             
             df_nv_list = df_nv_list.drop(columns=['Tình trạng'])
             
@@ -177,7 +180,6 @@ with tab2:
 # ==========================================
 with tab3:
     if "reset_nv_form" not in st.session_state: st.session_state["reset_nv_form"] = 0
-    # Sử dụng cache cho truy vấn danh sách nhân viên đang làm việc
     df_nv_active = get_cached_master_data(db, "SELECT * FROM nhan_vien WHERE trang_thai = 'Dang_Lam_Viec' ORDER BY ho_ten")
     
     if isinstance(df_nv_active, pd.DataFrame) and not df_nv_active.empty:
@@ -186,24 +188,46 @@ with tab3:
         
         if nv_id is not None:
             nv_data = df_nv_active[df_nv_active['id'] == nv_id].iloc[0]
+            
+            # [CẬP NHẬT]: Hàm lấy giá trị an toàn chống crash NaN
+            def get_safe_val(key, default=""):
+                val = nv_data.get(key)
+                if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
+                    return default
+                return str(val).strip()
+
+            def get_safe_date(key):
+                val = nv_data.get(key)
+                if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
+                    return datetime.date.today()
+                try:
+                    return pd.to_datetime(val).date()
+                except:
+                    return datetime.date.today()
+
             with st.form("form_update_nv"):
                 c_edit1, c_edit2, c_edit3 = st.columns(3)
-                edit_ma = c_edit1.text_input("Mã NV", value=nv_data['ma_nhan_vien'])
-                edit_ten = c_edit2.text_input("Họ tên", value=nv_data['ho_ten'])
-                edit_sdt = c_edit3.text_input("SĐT", value=nv_data['so_dien_thoai'])
+                edit_ma = c_edit1.text_input("Mã NV", value=get_safe_val('ma_nhan_vien'))
+                edit_ten = c_edit2.text_input("Họ tên", value=get_safe_val('ho_ten'))
+                edit_sdt = c_edit3.text_input("SĐT", value=get_safe_val('so_dien_thoai'))
                 
                 c_edit4, c_edit5, c_edit6 = st.columns(3)
-                edit_cccd = c_edit4.text_input("CCCD", value=nv_data['cccd'] if pd.notna(nv_data['cccd']) else "")
-                edit_gplx = c_edit5.text_input("GPLX", value=nv_data['giay_phep_lai_xe'] if pd.notna(nv_data['giay_phep_lai_xe']) else "")
-                opts_hang = ["C", "E", "FC", "FD", "B2", "Khác"]
-                edit_hang = c_edit6.selectbox("Hạng Bằng", opts_hang, index=opts_hang.index(nv_data['hang_gplx']) if nv_data['hang_gplx'] in opts_hang else 0)
+                edit_cccd = c_edit4.text_input("CCCD", value=get_safe_val('cccd'))
+                edit_gplx = c_edit5.text_input("GPLX", value=get_safe_val('giay_phep_lai_xe'))
+                
+                opts_hang = ["C", "E", "FC", "FD", "B2", "Khác", "A1", "D", "D2"]
+                db_hang = get_safe_val('hang_gplx', 'C')
+                idx_hang = opts_hang.index(db_hang) if db_hang in opts_hang else 0
+                edit_hang = c_edit6.selectbox("Hạng Bằng", opts_hang, index=idx_hang)
                 
                 c_edit7, c_edit8 = st.columns(2)
-                # Cập nhật format="DD/MM/YYYY" cho giao diện Tab 3
-                edit_han_gplx = c_edit7.date_input("Hạn Bằng", value=nv_data['han_gplx'] if pd.notna(nv_data['han_gplx']) else datetime.date.today(), format="DD/MM/YYYY")
-                edit_han_tth = c_edit8.date_input("Hạn Thẻ Tập Huấn", value=nv_data['han_the_tap_huan'] if pd.notna(nv_data['han_the_tap_huan']) else datetime.date.today(), format="DD/MM/YYYY")
+                edit_han_gplx = c_edit7.date_input("Hạn Bằng", value=get_safe_date('han_gplx'), format="DD/MM/YYYY")
+                edit_han_tth = c_edit8.date_input("Hạn Thẻ Tập Huấn", value=get_safe_date('han_the_tap_huan'), format="DD/MM/YYYY")
                 
-                edit_loai = st.selectbox("Chức vụ", ["Tai_Chinh", "Tai_Phu", "Van_Phong","Dieu_Hanh"], index=["Tai_Chinh", "Tai_Phu", "Van_Phong","Dieu_Hanh"].index(nv_data['loai_nhan_vien']))
+                opts_chuc_vu = ["Tai_Chinh", "Tai_Phu", "Van_Phong", "Dieu_Hanh"]
+                db_loai = get_safe_val('loai_nhan_vien', 'Tai_Chinh')
+                idx_loai = opts_chuc_vu.index(db_loai) if db_loai in opts_chuc_vu else 0
+                edit_loai = st.selectbox("Chức vụ", opts_chuc_vu, index=idx_loai)
                 
                 col_btn1, col_btn2 = st.columns(2)
                 if col_btn1.form_submit_button("🔄 Lưu thay đổi", type="primary"):

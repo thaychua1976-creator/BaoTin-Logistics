@@ -54,11 +54,23 @@ tab1, tab2, tab3,tab4 = st.tabs([
 # =========================================================================
 
 def clean_money_val(val):
-    if val is None or pd.isna(val) or str(val).strip() == "": return 0.0
-    if isinstance(val, (int, float)): return float(val)
-    s = str(val).replace(',', '').replace(' ', '').strip()
-    try: return float(s)
-    except: return 0.0
+    if val is None or pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan': 
+        return 0.0
+    if isinstance(val, (int, float)): 
+        return float(val)
+    
+    s = str(val).strip()
+    # Loại bỏ đuôi .0 do ép kiểu tự động
+    s = re.sub(r'\.0$', '', s)
+    s = s.replace(',', '').replace(' ', '')
+    # Với VND không có tiền lẻ thập phân, cắt bỏ phần sau dấu chấm nếu còn
+    if '.' in s: 
+        s = s.split('.')[0]
+        
+    try: 
+        return float(s)
+    except: 
+        return 0.0
 
 def rule_engine_calc(kh_id, tai_trong_xe_tan, doanh_thu, facts, db_instance):
     tong_tien_tu_dong = 0.0
@@ -1179,9 +1191,19 @@ with tab2:
                                     except: return ""
                                         
                                 def parse_money(val_str):
-                                    clean_str = str(val_str).replace(",", "").replace(".", "").replace(" ", "")
-                                    try: return float(clean_str)
-                                    except: return 0.0 
+                                    if pd.isna(val_str) or val_str == "" or val_str is None or str(val_str).strip().lower() == 'nan': 
+                                        return 0.0
+                                    
+                                    clean_str = str(val_str).strip()
+                                    # 1. Khử đuôi thập phân .0 do ép kiểu ngầm
+                                    clean_str = re.sub(r'\.0$', '', clean_str)
+                                    # 2. Xóa các dấu phân cách hàng nghìn (Cả chấm và phẩy)
+                                    clean_str = clean_str.replace(",", "").replace(".", "").replace(" ", "")
+                                    
+                                    try: 
+                                        return float(clean_str)
+                                    except: 
+                                        return 0.0
 
                                 c1, c2, c3, c4 = st.columns(4)
                                 
@@ -1396,15 +1418,26 @@ with tab3:
                             progress_bar = st.progress(0, text="🚀 Đang quét dữ liệu, chuẩn bị quyết toán...")
                             
                             def parse_excel_money(val):
-                                if pd.isna(val) or val == "" or val is None: return 0.0
+                                if pd.isna(val) or val == "" or val is None or str(val).strip().lower() == 'nan': 
+                                    return 0.0
                                 try:
                                     if isinstance(val, (int, float)): return float(val)
-                                    # Xóa triệt để dấu chấm, phẩy và khoảng trắng định dạng
-                                    clean_str = str(val).replace(",", "").replace(".", "").replace(" ", "").strip()
+                                    
+                                    clean_str = str(val).strip()
+                                    # Xử lý Pandas tự ép kiểu thành số thập phân (VD: 100000.0 -> 100000)
+                                    clean_str = re.sub(r'\.0$', '', clean_str)
+                                    
+                                    # Xóa phân cách hàng nghìn
+                                    clean_str = clean_str.replace(",", "").replace(" ", "")
+                                    
+                                    # Nếu file Excel bị format dạng 1000.50 -> Cắt lấy phần nguyên
+                                    if '.' in clean_str: 
+                                        clean_str = clean_str.split('.')[0]
+                                        
                                     if not clean_str: return 0.0
                                     return float(clean_str)
-                                except Exception: return 0.0
-
+                                except Exception: 
+                                    return 0.0
                             def parse_excel_bool(val):
                                 if pd.isna(val) or val == "" or val is None: return False
                                 v_str = str(val).replace(".0", "").strip().lower()

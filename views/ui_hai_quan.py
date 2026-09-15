@@ -40,7 +40,11 @@ st.title("🚢 Quản Lý Nghiệp Vụ Hải Quan")
 # Lấy danh sách khách hàng qua CACHE thay vì gọi DB thủ công
 try:
     df_kh = get_cached_master_data("SELECT id, ten_khach_hang FROM khach_hang")
-    dict_kh = {row['ten_khach_hang']: row['id'] for _, row in df_kh.iterrows()} if isinstance(df_kh, pd.DataFrame) and not df_kh.empty else {}
+    if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
+        df_kh['ten_khach_hang'] = df_kh['ten_khach_hang'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
+        dict_kh = {row['ten_khach_hang']: row['id'] for _, row in df_kh.iterrows() if str(row['ten_khach_hang']).strip()}
+    else:
+        dict_kh = {}
     list_kh = list(dict_kh.keys())
 except Exception as e:
     st.error(f"❌ Lỗi tải danh sách khách hàng: {e}")
@@ -132,6 +136,11 @@ with tab2:
         if not isinstance(df_bang_gia, pd.DataFrame) or df_bang_gia.empty:
             st.info("📭 Chưa có dữ liệu bảng giá nào để chỉnh sửa.")
         else:
+            # [CẬP NHẬT]: Làm sạch DataFrame, khử triệt để giá trị NaN/None và ép kiểu an toàn
+            df_bang_gia['don_gia_hq'] = pd.to_numeric(df_bang_gia['don_gia_hq'], errors='coerce').fillna(0)
+            df_bang_gia['phan_loai_chi_tiet'] = df_bang_gia['phan_loai_chi_tiet'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
+            df_bang_gia['ghi_chu'] = df_bang_gia['ghi_chu'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
+
             # 1. Định dạng DataFrame để hiển thị đẹp trên UI
             df_display = df_bang_gia[['id', 'ten_khach_hang', 'nhom_dich_vu', 'phan_loai_chi_tiet', 'dia_diem_thong_quan', 'don_gia_hq', 'ghi_chu']].copy()
             df_display['dia_diem_thong_quan'] = df_display['dia_diem_thong_quan'].replace({'Cang_Bien': 'Cảng Biển', 'San_Bay': 'Sân Bay'})
@@ -227,11 +236,24 @@ with tab3:
         if 'df_bang_gia' not in locals() or not isinstance(df_bang_gia, pd.DataFrame) or df_bang_gia.empty:
             st.info("📭 Không có dữ liệu để xóa.")
         else:
-            ds_bang_gia = df_bang_gia.to_dict('records')
-            bg_opts = {
-                r['id']: f"[{r['ten_khach_hang']}] - {r['nhom_dich_vu']} - {r['phan_loai_chi_tiet']} (Giá: {int(r['don_gia_hq']):,})"
-                for r in ds_bang_gia
-            }
+            # [CẬP NHẬT]: Lọc bỏ các dòng lỗi NaN trước khi tạo option cho Selectbox
+            df_del_valid = df_bang_gia.dropna(subset=['id']).copy()
+            ds_bang_gia = df_del_valid.to_dict('records')
+            
+            bg_opts = {}
+            for r in ds_bang_gia:
+                r_id = r.get('id')
+                ten_kh = str(r.get('ten_khach_hang', 'Khách lẻ')).strip()
+                nhom_dv = str(r.get('nhom_dich_vu', '')).strip()
+                phan_loai = str(r.get('phan_loai_chi_tiet', '')).strip()
+                phan_loai_str = f" - {phan_loai}" if phan_loai and phan_loai.lower() != 'nan' else ""
+                
+                try:
+                    don_gia_val = int(float(r.get('don_gia_hq', 0) or 0))
+                except:
+                    don_gia_val = 0
+                
+                bg_opts[r_id] = f"[{ten_kh}] - {nhom_dv}{phan_loai_str} (Giá: {don_gia_val:,})"
             
             if "key_del_bg" not in st.session_state:
                 st.session_state["key_del_bg"] = "sel_del_bg_1"

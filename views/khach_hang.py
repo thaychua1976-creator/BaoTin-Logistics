@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from audit_logger import ghi_log_he_thong
-
+import re
 # --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_cached_master_data(_db_instance, query, params=None):
@@ -141,6 +141,13 @@ def render_quan_ly_khach_hang():
         df_kh = get_cached_master_data(db, sql_load)
         
         if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
+           
+            # [CẬP NHẬT]: Làm sạch dữ liệu, khử NaN và loại bỏ đuôi .0 do Pandas ép kiểu ngầm
+            for col in ['ma_khach_hang', 'ten_khach_hang', 'so_dien_thoai', 'ma_so_thue', 'dia_chi']:
+                df_kh[col] = df_kh[col].apply(
+                    lambda x: re.sub(r'\.0$', '', str(x).strip()) if pd.notna(x) and str(x).strip().lower() != 'nan' else ''
+                )
+
             search_query = st.text_input("🔍 Tìm kiếm nhanh theo tên hoặc mã số thuế:", placeholder="Nhập tên công ty hoặc MST...")
             
             df_hien_thi = df_kh.copy()
@@ -242,25 +249,43 @@ def render_quan_ly_khach_hang():
         # -------------------------------------------------------------
         # CHẾ ĐỘ 2: CẬP NHẬT (Sử dụng st.form)
         # -------------------------------------------------------------
+        # -------------------------------------------------------------
+        # CHẾ ĐỘ 2: CẬP NHẬT (Sử dụng st.form)
+        # -------------------------------------------------------------
         else:
             df_all = get_cached_master_data(db, "SELECT id, ten_khach_hang, ma_khach_hang, so_dien_thoai, ma_so_thue, dia_chi FROM khach_hang ORDER BY id DESC")
             if isinstance(df_all, pd.DataFrame) and not df_all.empty:
-                edit_opts = {r['id']: f"#{r['id']} - {r['ten_khach_hang']} (MST: {r['ma_so_thue']})" for _, r in df_all.iterrows()}
+                
+                # [CẬP NHẬT]: Chuẩn hóa an toàn toàn bộ cột chuỗi trước khi tạo Options
+                
+                for col in ['ma_khach_hang', 'ten_khach_hang', 'so_dien_thoai', 'ma_so_thue', 'dia_chi']:
+                    df_all[col] = df_all[col].apply(
+                        lambda x: re.sub(r'\.0$', '', str(x).strip()) if pd.notna(x) and str(x).strip().lower() != 'nan' else ''
+                    )
+
+                edit_opts = {r['id']: f"#{r['id']} - {r['ten_khach_hang']} (MST: {r['ma_so_thue'] if r['ma_so_thue'] else 'Trống'})" for _, r in df_all.iterrows()}
                 target_id = st.selectbox("Chọn khách hàng cần chỉnh sửa:", options=list(edit_opts.keys()), format_func=lambda x: edit_opts[x], key="sel_edit_kh")
                 
                 if target_id:
                     row_data = df_all[df_all['id'] == target_id].iloc[0]
                     
+                    # [CẬP NHẬT]: Hàm trích xuất an toàn chống render chuỗi 'nan' lên Form
+                    def get_safe_val(key):
+                        val = row_data.get(key)
+                        if pd.isna(val) or str(val).strip().lower() == 'nan':
+                            return ""
+                        return str(val).strip()
+                    
                     with st.form("form_update_khach_hang"):
                         c1, c2 = st.columns(2)
-                        ten_kh_edit = c1.text_input("Tên đơn vị / Tên công ty (*)", value=row_data['ten_khach_hang'] or "")
-                        mst_kh_edit = c2.text_input("Mã số thuế (*) (Xuất hóa đơn)", value=row_data['ma_so_thue'] or "")
+                        ten_kh_edit = c1.text_input("Tên đơn vị / Tên công ty (*)", value=get_safe_val('ten_khach_hang'))
+                        mst_kh_edit = c2.text_input("Mã số thuế (*) (Xuất hóa đơn)", value=get_safe_val('ma_so_thue'))
                         
                         c3, c4 = st.columns(2)
-                        ma_kh_edit = c3.text_input("Mã khách hàng (*)", value=row_data['ma_khach_hang'] or "")
-                        sdt_kh_edit = c4.text_input("Số điện thoại liên hệ", value=row_data['so_dien_thoai'] or "")
+                        ma_kh_edit = c3.text_input("Mã khách hàng (*)", value=get_safe_val('ma_khach_hang'))
+                        sdt_kh_edit = c4.text_input("Số điện thoại liên hệ", value=get_safe_val('so_dien_thoai'))
                         
-                        dia_chi_kh_edit = st.text_area("Địa chỉ trụ sở đầy đủ", value=row_data['dia_chi'] or "")
+                        dia_chi_kh_edit = st.text_area("Địa chỉ trụ sở đầy đủ", value=get_safe_val('dia_chi'))
                         
                         if st.form_submit_button("💾 Lưu thay đổi thông tin", type="primary", use_container_width=True):
                             missing_fields = []

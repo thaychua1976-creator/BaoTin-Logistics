@@ -32,6 +32,10 @@ def render_fuel_management_tab(db, current_user):
         st.warning("⚠️ Hiện tại không có dữ liệu xe hoạt động trong hệ thống.")
         return
         
+    # [CẬP NHẬT]: Ép kiểu số an toàn và khử NaN cho ODO và Định mức
+    df_xe['tong_km_hien_tai'] = pd.to_numeric(df_xe['tong_km_hien_tai'], errors='coerce').fillna(0.0)
+    df_xe['dinh_muc_nhien_lieu'] = pd.to_numeric(df_xe['dinh_muc_nhien_lieu'], errors='coerce').fillna(0.0)
+
     dict_xe = {row['id']: row for _, row in df_xe.iterrows()}
     
     # 2. CHIA GIAO DIỆN THÀNH 3 TAB CON NGHIỆP VỤ
@@ -150,9 +154,16 @@ def render_fuel_management_tab(db, current_user):
         df_list_xang = db.execute_query(sql_list_xang)
         
         if isinstance(df_list_xang, pd.DataFrame) and not df_list_xang.empty:
+            # [CẬP NHẬT]: Khử triệt để NaN cho các cột số tiền, lít, ODO và ghi chú
+            df_list_xang['tong_tien'] = pd.to_numeric(df_list_xang['tong_tien'], errors='coerce').fillna(0)
+            df_list_xang['so_lit'] = pd.to_numeric(df_list_xang['so_lit'], errors='coerce').fillna(0)
+            df_list_xang['odo_hien_tai'] = pd.to_numeric(df_list_xang['odo_hien_tai'], errors='coerce').fillna(0)
+            df_list_xang['ghi_chu'] = df_list_xang['ghi_chu'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
+
             dict_bills = {}
             for _, r in df_list_xang.iterrows():
                 ngay_format = pd.to_datetime(r['ngay_do']).strftime('%d/%m/%Y %H:%M')
+                # Nhờ đã làm sạch ở trên, lệnh int() dưới đây hoàn toàn an toàn
                 dict_bills[r['id']] = f"Mã phiếu #{r['id']} | Xe: {r['bien_so_xe']} | Ngày: {ngay_format} | {r['so_lit']}L - {int(r['tong_tien']):,}đ"
                 
             bill_edit_id = st.selectbox(
@@ -183,7 +194,8 @@ def render_fuel_management_tab(db, current_user):
                     tien_format = f"{int(val_tien):,}" if val_tien > 0 else ""
                     e_tien = e_col3.text_input("Tổng tiền sửa lại (VNĐ)", value=tien_format, placeholder="0")
                     
-                    e_gc = st.text_input("Ghi chú chỉnh sửa (Lý do hiệu chỉnh)", value=str(row_edit['ghi_chu'] or ""))
+                    # [CẬP NHẬT]: Không cần dùng str(row_edit['ghi_chu'] or "") nữa
+                    e_gc = st.text_input("Ghi chú chỉnh sửa (Lý do hiệu chỉnh)", value=row_edit['ghi_chu'])
                     
                     if st.form_submit_button("💾 Lưu thay đổi thông tin", type="primary"):
                         data_sua = {
@@ -233,6 +245,8 @@ def render_fuel_management_tab(db, current_user):
             df_hist = db.execute_query(sql_history, (xe_filter,))
             
             if isinstance(df_hist, pd.DataFrame) and not df_hist.empty:
+                # [CẬP NHẬT]: Xử lý an toàn NaN trước khi filter và vẽ biểu đồ
+                df_hist['hieu_suat_tieu_hao'] = pd.to_numeric(df_hist['hieu_suat_tieu_hao'], errors='coerce').fillna(0.0)
                 df_chart = df_hist[df_hist['hieu_suat_tieu_hao'] > 0].copy()
                 if not df_chart.empty:
                     df_chart['Ngày đổ'] = pd.to_datetime(df_chart['ngay_do']).dt.strftime('%d/%m')

@@ -59,6 +59,11 @@ with tab1:
         df_xe = get_cached_master_data(db, sql_xe_list)
         
         if isinstance(df_xe, pd.DataFrame) and not df_xe.empty:
+            # [CẬP NHẬT]: Làm sạch DataFrame, khử triệt để giá trị NaN/None trên giao diện hiển thị
+            df_xe['Nhãn Hiệu'] = df_xe['Nhãn Hiệu'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
+            df_xe['Ghi chú'] = df_xe['Ghi chú'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
+            df_xe['Tài xế cố định'] = df_xe['Tài xế cố định'].fillna('Chưa gán tài xế')
+
             col_opt1, col_opt2 = st.columns([1, 7])
             with col_opt1:
                 che_do_xem = st.selectbox("Hiển thị:", ["10 dòng", "Tất cả"])
@@ -121,16 +126,25 @@ with tab2:
     st.markdown("### 🔔 Bảng Điều Khiển Pháp Lý (Phương tiện & Nhân sự)")
     today = pd.Timestamp(datetime.date.today())
     
+    # [CẬP NHẬT]: Hàm xét cảnh báo an toàn chống lỗi NaT/NaN
     def xet_canh_bao(ngay_han):
-        if pd.isna(ngay_han): return "⚪ Chưa có"
-        days_left = (pd.Timestamp(ngay_han) - today).days
-        if days_left < 0: return "🔴 ĐÃ HẾT HẠN"
-        if days_left <= 30: return f"🟡 Sắp hết ({days_left} ngày)"
-        return "🟢 An toàn"
+        if pd.isna(ngay_han) or str(ngay_han).strip() == "" or str(ngay_han).strip().lower() == 'nat' or str(ngay_han).strip().lower() == 'nan': 
+            return "⚪ Chưa có"
+        try:
+            days_left = (pd.Timestamp(ngay_han) - today).days
+            if days_left < 0: return "🔴 ĐÃ HẾT HẠN"
+            if days_left <= 30: return f"🟡 Sắp hết ({days_left} ngày)"
+            return "🟢 An toàn"
+        except:
+            return "⚪ Chưa có"
 
     def format_ngay(ngay_han):
-        if pd.isna(ngay_han): return ""
-        return pd.to_datetime(ngay_han).strftime('%d/%m/%Y')
+        if pd.isna(ngay_han) or str(ngay_han).strip() == "" or str(ngay_han).strip().lower() == 'nat' or str(ngay_han).strip().lower() == 'nan': 
+            return ""
+        try:
+            return pd.to_datetime(ngay_han).strftime('%d/%m/%Y')
+        except:
+            return ""
 
     # --- KHU VỰC 1: CẢNH BÁO XE ---
     st.markdown("#### 🚛 1. Pháp lý phương tiện (Đăng kiểm, Bảo hiểm, Phù hiệu)")
@@ -280,10 +294,10 @@ with tab3:
     try:
             st.markdown("### 🛠️ Hệ thống Cảnh báo Bảo dưỡng Phương tiện")
 
-            # Không dùng Cache vì Odometer của phương tiện thay đổi liên tục
             df_bao_duong = get_canh_bao_bao_duong(db.pool)
 
             if df_bao_duong is not None and not df_bao_duong.empty:
+                # [CẬP NHẬT]: Ép kiểu số an toàn chống lỗi NaN trên toàn bộ DataFrame bảo dưỡng
                 df_bao_duong['km_da_chay'] = pd.to_numeric(df_bao_duong['km_da_chay'], errors='coerce').fillna(0.0)
                 df_bao_duong['dinh_muc_km'] = pd.to_numeric(df_bao_duong['dinh_muc_km'], errors='coerce').fillna(5000.0)
                 
@@ -302,7 +316,7 @@ with tab3:
                 
                 df_hien_thi = df_bao_duong[['bien_so_xe', 'ngay_bd_cuoi', 'km_da_chay', 'dinh_muc_km', 'ty_le']].copy()
                 df_hien_thi.columns = ['Biển Số Xe', 'Ngày BD Gần Nhất', 'KM Đã Chạy', 'Định Mức KM', 'Tỷ Lệ (%)']
-                df_hien_thi['Ngày BD Gần Nhất'] = df_hien_thi['Ngày BD Gần Nhất'].fillna("Chưa từng BD")
+                df_hien_thi['Ngày BD Gần Nhất'] = df_hien_thi['Ngày BD Gần Nhất'].fillna("Chưa từng BD").apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else "Chưa từng BD")
                 
                 def color_status(val):
                     try:
