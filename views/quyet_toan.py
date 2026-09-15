@@ -806,8 +806,8 @@ with tab1:
                         st.warning("⚠️ Tuyến đường này chưa có trong Bảng giá. Vui lòng tự nhập cước vào ô bên dưới:")
 
                     label_dt = "Doanh thu cước khách (VNĐ) - TỔNG 2 CHIỀU" if (is_hang_ve_ui and st.session_state.get(f"note_ve_{cd_id}")) else "Doanh thu cước khách (VNĐ)"
-                    # Mở rộng Key động: Bắt sự thay đổi của cả Hàng về, Bao chuyến và Loại xe bao
-                    dynamic_key = f"dt_input_{cd_id}_{is_hang_ve_ui}_{is_bao_chuyen_ui}_{loai_xe_bao_ui}"
+                    # Mở rộng Key động: Bắt sự thay đổi của cả Hàng về, Bao chuyến, Loại xe, Loại hàng hóa và Loại cont
+                    dynamic_key = f"dt_input_{cd_id}_{is_hang_ve_ui}_{is_bao_chuyen_ui}_{loai_xe_bao_ui}_{loai_hang_ui}_{loai_cont_ui}"
 
                     doanh_thu_input = st.text_input(
                         label_dt, 
