@@ -1196,6 +1196,9 @@ with tab3:
                                 success_count = 0
                                 xe_list = df_xe_ranh.to_dict('records')
                                 danh_sach_xuat_excel = [] 
+                                # [CẬP NHẬT 1]: Khởi tạo mảng lưu danh sách các đơn không tìm được xe
+                                unassigned_orders = [] 
+                                
                                 for xe in xe_list: xe['is_used'] = False 
                                 
                                 def safe_float(val):
@@ -1214,8 +1217,6 @@ with tab3:
                                     
                                     kh_id = row.get('DB_KHACH_HANG_ID')
                                     khach_hang_ten = str(row.get('TEN_KHACH_HANG', 'Khách Lẻ')).strip()
-                                    #dia_chi_kh = str(row.get('DIA_CHI_KHACH_HANG', '')).strip()
-                                    
                                     kho_di = str(row.get('DIA_CHI_KHO_DI', '')).strip()
                                     kho_den = str(row.get('DIA_CHI_KHO_DEN', '')).strip()
                                     ghi_chu_excel = str(row.get('GHI_CHU', ''))
@@ -1235,7 +1236,6 @@ with tab3:
                                             'ngay_chuyen_di': ngay_chay_str,
                                             'khach_hang_id': kh_id,
                                             'ten_khach_hang': khach_hang_ten,
-                                            #'dia_chi_khach_hang': dia_chi_kh,
                                             'xe_id': xe_phu_hop['id'],
                                             'dia_diem_giao_nhan': f"{kho_di} ➡️ {kho_den}",
                                             'khoi_luong_kg': req_kg,
@@ -1254,28 +1254,45 @@ with tab3:
                                                 "Mã Chuyến Hệ Thống": result_msg, 
                                                 "Ngày Chạy": ngay_chay_str,
                                                 "Khách Hàng": khach_hang_ten,
-                                                #"Địa Chỉ Khách Hàng": dia_chi_kh,
                                                 "Biển Số Xe": xe_phu_hop['bien_so_xe'],
                                                 "Tải Trọng Đã Book (KG)": req_kg,
+                                                # [CẬP NHẬT 2]: Ghi nhận CBM nếu lớn hơn 0
+                                                "Thể Tích Đã Book (CBM)": req_cbm if req_cbm > 0 else 0,
                                                 "Tài Xế Phụ Trách": xe_phu_hop['ten_tai_xe'], 
                                                 "Số Điện Thoại Tài Xế": xe_phu_hop['sdt_tai_xe'] if pd.notna(xe_phu_hop['sdt_tai_xe']) else "Chưa cập nhật",
                                                 "CCCD Tài Xế": xe_phu_hop['cccd_tai_xe'] if pd.notna(xe_phu_hop['cccd_tai_xe']) else "Chưa cập nhật",
                                                 "Lộ Trình": f"{kho_di} ➡️ {kho_den}",
                                                 "Ghi Chú": ghi_chu_excel
                                             })
+                                    else:
+                                        # [CẬP NHẬT 3]: Bắt sự kiện không tìm thấy xe và lưu vào mảng cảnh báo để tiếp tục chạy vòng lặp
+                                        cbm_msg = f" và {req_cbm} CBM" if req_cbm > 0 else ""
+                                        unassigned_orders.append(f"- **{khach_hang_ten}** ({kho_di} ➡️ {kho_den}): Yêu cầu tải **{req_kg:,.0f} KG**{cbm_msg}")
                                 
                                 st.session_state["export_dieu_xe"] = pd.DataFrame(danh_sach_xuat_excel)
-                                if success_count > 0:
-                                    st.success(f"🎉 Hệ thống đã tự động điều phối thành công {success_count} đơn hàng!")
-                                    time.sleep(1.5)
-                                    st.rerun()
+                                st.session_state["unassigned_orders"] = unassigned_orders
+                                
+                                # [CẬP NHẬT 4]: Đã xóa st.rerun() để UI render ngay lập tức bảng cảnh báo ở phía dưới
                                     
                     except Exception as e:
                         st.error(f"❌ Lỗi xử lý thuật toán tự động: {str(e)}")
 
+            # [CẬP NHẬT 5]: Hiển thị cảnh báo các đơn không tìm được xe (nếu có)
+            if st.session_state.get("unassigned_orders"):
+                st.warning(f"⚠️ **CẢNH BÁO:** Không tìm thấy phương tiện nội bộ rảnh rỗi nào đáp ứng đủ điều kiện cho {len(st.session_state['unassigned_orders'])} đơn hàng dưới đây. Vui lòng tạo chuyến thủ công để Thuê xe ngoài hoặc Ghép chuyến:")
+                for msg in st.session_state["unassigned_orders"]:
+                    st.markdown(msg)
+
             if st.session_state.get("export_dieu_xe") is not None and not st.session_state["export_dieu_xe"].empty:
+                st.success(f"🎉 Hệ thống đã tự động điều phối thành công {len(st.session_state['export_dieu_xe'])} đơn hàng!")
                 st.markdown("### 🖨️ Danh sách chuyến xe điều phối thành công & Hỗ trợ Zalo Thủ Công")
-                st.dataframe(st.session_state["export_dieu_xe"], use_container_width=True, hide_index=True)
+                
+                # Format cột CBM cho đẹp (Chỉ hiển thị CBM nếu có giá trị)
+                df_display = st.session_state["export_dieu_xe"].copy()
+                if 'Thể Tích Đã Book (CBM)' in df_display.columns:
+                    df_display['Thể Tích Đã Book (CBM)'] = df_display['Thể Tích Đã Book (CBM)'].apply(lambda x: str(x) if float(x) > 0 else "")
+                
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
                 
                 danh_sach_zalo = []
                 for _, row in st.session_state["export_dieu_xe"].iterrows():
@@ -1286,12 +1303,15 @@ with tab3:
                     msg_tai_xe = (
                         f"🚛 Mai anh,em,chú,cậu vào:\n"
                         f"- Khách hàng: {row['Khách Hàng']}\n"
-                        #f"- Địa chỉ: {row['Địa Chỉ Khách Hàng']} để giao\n"
                         f"- Lộ trình: {row['Lộ Trình']}\n"
                         f"- Mã chuyến: {row['Mã Chuyến Hệ Thống']}\n"
                         f"- Ngày chạy: {row['Ngày Chạy']}\n"
                         f"- Ghi chú: {ghi_chu_row}"
                     )
+                    
+                    # [CẬP NHẬT 6]: Tự động thêm thông tin CBM vào tin nhắn Zalo gửi KH nếu có
+                    cbm_val = float(row.get('Thể Tích Đã Book (CBM)', 0))
+                    cbm_text_kh = f"\n- Thể tích: {cbm_val} CBM" if cbm_val > 0 else ""
                     
                     msg_khach_hang = (
                         f"📦 THÔNG TIN TÀI XẾ VẬN CHUYỂN\n"
@@ -1299,7 +1319,7 @@ with tab3:
                         f"- SĐT: {row['Số Điện Thoại Tài Xế']}\n"
                         f"- CCCD: {row['CCCD Tài Xế']}\n"
                         f"- Biển số xe: {row['Biển Số Xe']}\n"
-                        f"- Tải trọng: {float(row['Tải Trọng Đã Book (KG)']):,.0f} KG\n"
+                        f"- Tải trọng: {float(row['Tải Trọng Đã Book (KG)']):,.0f} KG{cbm_text_kh}\n"
                         f"- Ghi chú: {ghi_chu_row}"
                     )
                     
@@ -1327,6 +1347,7 @@ with tab3:
                 with col_btn1:
                     if st.button("🔄 Reset Màn Hình", use_container_width=True):
                         st.session_state["export_dieu_xe"] = None
+                        st.session_state.pop("unassigned_orders", None)
                         st.rerun()
                 with col_btn2:
                     st.download_button(
