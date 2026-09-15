@@ -1406,8 +1406,8 @@ with tab4:
                 if (isinstance(df_kanban, pd.DataFrame) and not df_kanban.empty) or (isinstance(df_all_xe, pd.DataFrame) and not df_all_xe.empty):
                     st.markdown("##### 🚛 TIẾN ĐỘ VẬN HÀNH & TRẠNG THÁI ĐẦU XE")
                     
-                    # Chia 4 cột: Tạo Mới, Chờ Quyết Toán, Hoàn Thành, Xe Trống
-                    c_tao_moi, c_quyet_toan, c_hoan_thanh, c_xe_trong = st.columns(4)
+                    # Chia 3 cột: Tạo Mới, Hoàn Thành, Xe Trống
+                    c_tao_moi, c_hoan_thanh, c_xe_trong = st.columns(3)
                     
                     # Hàm rút gọn chuỗi tên Khách hàng và Lộ trình giống thông báo tài xế
                     # [CẬP NHẬT]: Hàm rút gọn thông tin an toàn chống chuỗi 'nan'
@@ -1469,7 +1469,7 @@ with tab4:
 
                     df_kanban = df_kanban if isinstance(df_kanban, pd.DataFrame) else pd.DataFrame()
                     
-                    # 3. Xác định chính xác các xe đang bận
+                    # 3. Xác định chính xác các xe đang bận (Vẫn giữ trạng thái Quyet_Toan để tránh xe đang quyết toán hiển thị thành Xe Trống)
                     xe_dang_ban = []
                     if not df_kanban.empty:
                         mask_ban = df_kanban['trang_thai'].isin(['Tao_Moi', 'Dang_Di', 'Quyet_Toan'])
@@ -1481,12 +1481,6 @@ with tab4:
                         st.markdown(f"<h6 style='text-align: center; color: #f57f17; background-color: #fff9c4; padding: 6px; border-radius: 5px;'>🟡 TẠO MỚI / ĐANG CHẠY ({len(df_tm)})</h6>", unsafe_allow_html=True)
                         for _, row in df_tm.iterrows():
                             st.markdown(render_kanban_card(row, "#fbc02d", "#fffde7"), unsafe_allow_html=True)
-
-                    with c_quyet_toan:
-                        df_qt = df_kanban[df_kanban['trang_thai'] == 'Quyet_Toan'] if not df_kanban.empty else pd.DataFrame()
-                        st.markdown(f"<h6 style='text-align: center; color: #6a1b9a; background-color: #e1bee7; padding: 6px; border-radius: 5px;'>🟣 CHỜ QUYẾT TOÁN ({len(df_qt)})</h6>", unsafe_allow_html=True)
-                        for _, row in df_qt.iterrows():
-                            st.markdown(render_kanban_card(row, "#8e24aa", "#f3e5f5"), unsafe_allow_html=True)
 
                     with c_hoan_thanh:
                         df_ht = df_kanban[(df_kanban['trang_thai'] == 'Hoan_Thanh') & (df_kanban['ngay_chuyen_di'].astype(str) == ngay_hom_nay)] if not df_kanban.empty else pd.DataFrame()
