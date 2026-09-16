@@ -1307,7 +1307,7 @@ with tab3:
                         COALESCE(nv.ho_ten, cd.tai_xe_ngoai_ten) AS 'TAI_XE',
                         cd.dia_diem_giao_nhan AS 'LO_TRINH',
                         cd.doanh_thu AS 'DOANH_THU_HIEN_TAI',
-                        cd.trang_thai_chuyen AS 'TRANG_THAI'
+                        cd.trang_thai_chuyen AS 'TRANG_THAI',
                         cd.ghi_chu AS 'GHI_CHU_DB' -- BỔ SUNG DÒNG NÀY
                     FROM chuyen_di cd
                     LEFT JOIN xe x ON cd.xe_id = x.id
