@@ -1560,11 +1560,17 @@ with tab3:
                                                     
                                                     loai_hang_excel = str(r.get('LOAI_HANG_HOA', 'Thường')).strip().lower()
                                                     loai_cont_excel = str(r.get('LOAI_CONT', 'Thường')).strip().lower()
+
+                                                    # [FIX 1]: Chuẩn hóa an toàn dọn dẹp các giá trị NaN, Null từ Pandas Excel
+                                                    if loai_hang_excel in ['nan', 'null', 'none', '']: loai_hang_excel = 'thường'
+                                                    if loai_cont_excel in ['nan', 'null', 'none', '']: loai_cont_excel = 'thường'
+
                                                     has_nguy_hiem = 'nguy hiểm' in loai_hang_excel or 'nguy hiem' in loai_hang_excel
-                                                    has_lanh = 'lạnh' in loai_cont_excel or 'lanh' in loai_cont_excel
+                                                    # [FIX 2]: Bổ sung 'rf' để tự động kích hoạt cờ Container Lạnh nếu Excel truyền vào 20RF/40RF
+                                                    has_lanh = any(kw in loai_cont_excel for kw in ['lạnh', 'lanh', 'rf'])
                                                     
-                                                    # THÊM MỚI: Làm sạch tên Loại Cont từ Excel để chuẩn bị dò Bảng giá
-                                                    is_cont = loai_cont_excel not in ["thường", "thuong", "khác", "khac", ""]
+                                                    # Làm sạch tên Loại Cont từ Excel để chuẩn bị dò Bảng giá (Xóa chữ lạnh nếu có để chỉ giữ lại mã size)
+                                                    is_cont = loai_cont_excel not in ["thường", "thuong", "khác", "khac"]
                                                     loai_cont_clean = loai_cont_excel.replace(" (lạnh)", "").replace(" (lanh)", "").strip()
 
                                                     valid_candidates_di = []
@@ -1588,25 +1594,21 @@ with tab3:
                                                             if target_kw in qc_gia or target_kw.replace(" ", "_") in qc_gia:
                                                                 m_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
                                                                 m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
-                                                                
-                                                                # Khớp ưu tiên: Nếu là khớp đảo ngược, cộng thêm 1000 điểm để nhường chỗ cho khớp thuận
                                                                 penalty = 0 if rc['match_type'] == 'direct' else 1000.0
                                                                 
-                                                                if rc_hang_ve_check == 1:
-                                                                    valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
-                                                                else:
-                                                                    valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
+                                                                if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
+                                                                else: valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
                                                             continue
                                                         else:
                                                             if 'bao xe tai' in qc_gia or 'bao_xe_tai' in qc_gia or 'bao xe cont' in qc_gia or 'bao_xe_cont' in qc_gia:
                                                                 continue
-                                                        # THÊM MỚI: Bắt buộc khớp quy cách Container (20, 40, 40HC...) nếu Bảng giá có quy định
+                                                            
+                                                        # Bắt buộc khớp quy cách Container
                                                         if is_cont:
                                                             cont_sizes = ['20dc', '20', '40', '40dc', '40hc', '45hc', '20rf', '40rf']
                                                             has_cont_size_in_qc = any(cs in qc_gia for cs in cont_sizes)
-                                                            # Khách book 20DC nhưng bảng giá đang xét là 40HC -> Bỏ qua dòng này
                                                             if has_cont_size_in_qc and loai_cont_clean not in qc_gia:
-                                                                continue
+                                                                continue # Bỏ qua nếu Excel ghi 20RF nhưng Bảng giá là 40HC
 
                                                         req_nguy_hiem = any(x in qc_gia for x in ['nguy hiem', 'nguyhiem'])
                                                         req_lanh = any(x in qc_gia for x in ['lạnh', 'lanh', 'rf'])
@@ -1619,9 +1621,7 @@ with tab3:
 
                                                         if not is_prop_match: continue
 
-                                                        # =========================================================================
-                                                        # [BỔ SUNG TAB 3] XỬ LÝ RIÊNG DOANH THU CHO XE MÁY THUÊ NGOÀI
-                                                        # =========================================================================
+                                                        # [XỬ LÝ RIÊNG DOANH THU XE MÁY THUÊ NGOÀI]
                                                         is_thue_ngoai_auto = pd.isna(row_db.get('xe_id'))
                                                         is_xe_may = ('xe_may' in pl_pt_gia) or ('xemay' in pl_pt_gia) or ('xe máy' in qc_gia) or ('xe may' in qc_gia)
                                                         
@@ -1630,14 +1630,26 @@ with tab3:
                                                             m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
                                                             penalty = 0 if rc['match_type'] == 'direct' else 1000.0
                                                             
-                                                            if rc_hang_ve_check == 1:
-                                                                valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
-                                                            else:
-                                                                valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
+                                                            if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
+                                                            else: valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
                                                             continue 
-                                                        # =========================================================================
 
-                                                        if pl_pt_gia in ['xe_tai', 'hang_le', 'xe tai', 'xe tải', 'hang le', 'hàng lẻ', '', 'nan', 'none'] or any(kw in pl_pt_gia for kw in ['tai', 'tải', 'le', 'lẻ']):
+                                                        # =========================================================
+                                                        # [FIX 3]: PHÂN NHÁNH RÕ RÀNG CONTAINER VÀ XE TẢI
+                                                        # =========================================================
+                                                        is_container_db = ('container' in pl_pt_gia) or ('cont' in pl_pt_gia)
+
+                                                        if is_container_db:
+                                                            # Nếu là Container -> Bỏ qua kiểm tra Tải Trọng 30T, lấy ngay giá vì đã lọt qua lưới so khớp 20HC/40HC ở trên
+                                                            m_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
+                                                            m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
+                                                            penalty = 0 if rc['match_type'] == 'direct' else 1000.0
+                                                            
+                                                            if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
+                                                            else: valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
+
+                                                        elif pl_pt_gia in ['xe_tai', 'hang_le', 'xe tai', 'xe tải', 'hang le', 'hàng lẻ', '', 'nan', 'none'] or any(kw in pl_pt_gia for kw in ['tai', 'tải', 'le', 'lẻ']):
+                                                            # Logic duyệt tải trọng cho Xe Tải truyền thống (Kiểm tra KG/CBM)
                                                             is_weight_match = False
 
                                                             gh_kg = float(rc.get('gioi_han_kg', 0) or 0)
@@ -1658,8 +1670,7 @@ with tab3:
                                                             nums_in_str = [float(n) for n in re.findall(r'\d+\.?\d*', qc_gia)]
 
                                                             if cap_tan is not None and cap_cbm is not None:
-                                                                if tai_trong_so_sanh_tan <= cap_tan and booked_cbm <= cap_cbm:
-                                                                    is_weight_match = True
+                                                                if tai_trong_so_sanh_tan <= cap_tan and booked_cbm <= cap_cbm: is_weight_match = True
                                                             elif cap_tan is not None:
                                                                 if tai_trong_so_sanh_tan <= cap_tan: is_weight_match = True
                                                             elif cap_cbm is not None:
@@ -1684,10 +1695,8 @@ with tab3:
                                                                 penalty = 0 if rc['match_type'] == 'direct' else 1000.0
                                                                 score = base_score + penalty
                                                                 
-                                                                if rc_hang_ve_check == 1:
-                                                                    valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': score})
-                                                                else:
-                                                                    valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': score})
+                                                                if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': score})
+                                                                else: valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': score})
 
                                                     if valid_candidates_di or valid_candidates_ve:
                                                         if valid_candidates_di:
