@@ -1475,7 +1475,7 @@ with tab3:
                                         SELECT cd.trang_thai_chuyen, cd.khach_hang_id, cd.ten_khach_hang, 
                                             cd.doanh_thu, cd.dia_diem_giao_nhan, cd.chi_phi_thue_ngoai, 
                                             cd.hinh_thuc_thanh_toan_ngoai, cd.ghi_chu,
-                                            cd.ngay_chuyen_di, cd.khoi_luong_kg, cd.xe_id, cd.the_tich_cbm,
+                                            cd.ngay_chuyen_di, cd.khoi_luong_kg, cd.xe_id, cd.the_tich_cbm,cd.loai_hinh_xe,
                                             x.tai_trong_thiet_ke
                                         FROM chuyen_di cd
                                         LEFT JOIN xe x ON cd.xe_id = x.id
@@ -1578,6 +1578,15 @@ with tab3:
                                                     is_cont = loai_cont_excel not in ["thường", "thuong", "khác", "khac"]
                                                     loai_cont_clean = loai_cont_excel.replace(" (lạnh)", "").replace(" (lanh)", "").strip()
 
+                                                    # ==============================================================
+                                                    # [PHÂN LOẠI XE THỰC TẾ CỦA CHUYẾN ĐI TỪ DATABASE]
+                                                    # ==============================================================
+                                                    loai_hinh_xe_db = str(row_db.get('loai_hinh_xe', '')).strip().lower()
+                                                    
+                                                    is_thuc_te_cont = ('container' in loai_hinh_xe_db) or ('cont' in loai_hinh_xe_db)
+                                                    is_thuc_te_xe_may = ('xe_may' in loai_hinh_xe_db) or ('xe may' in loai_hinh_xe_db)
+                                                    is_thuc_te_xe_tai = not is_thuc_te_cont and not is_thuc_te_xe_may
+                                                    
                                                     valid_candidates_di = []
                                                     valid_candidates_ve = []
                                                     booked_cbm = float(row_db.get('the_tich_cbm', 0.0) or 0.0)
@@ -1585,6 +1594,18 @@ with tab3:
                                                     for _, rc in df_matched.iterrows():
                                                         pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip().lower() 
                                                         qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ").replace(",", ".")
+                                                        
+                                                        # ==============================================================
+                                                        # [TRẠM KIỂM SOÁT]: NGĂN CHẶN NHẢY SAI BẢNG GIÁ
+                                                        # ==============================================================
+                                                        is_gia_cont = ('container' in pl_pt_gia) or ('cont' in pl_pt_gia)
+                                                        is_gia_xemay = ('xe_may' in pl_pt_gia) or ('xemay' in pl_pt_gia) or ('xe máy' in qc_gia) or ('xe may' in qc_gia)
+                                                        is_gia_xetai = not is_gia_cont and not is_gia_xemay
+
+                                                        # KHÓA CHÉO TUYỆT ĐỐI
+                                                        if is_thuc_te_cont and not is_gia_cont: continue    # Cont không nhận giá Xe tải
+                                                        if is_thuc_te_xe_tai and not is_gia_xetai: continue # Xe tải không nhận giá Cont
+                                                        if is_thuc_te_xe_may and not is_gia_xemay: continue # Xe máy không nhận giá Tải/Cont
                                                         
                                                         raw_ve = rc.get('is_hang_tra_ve', 0)
                                                         rc_hang_ve_check = 0
