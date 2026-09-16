@@ -94,6 +94,25 @@ with tab1:
         
         @st.fragment
         def vung_thao_tac_chuyen_di():
+            # =================================================================
+            # [UX CẢI TIẾN] ĐƯA KHỐI THÔNG BÁO COPY ZALO LÊN NGAY ĐẦU TRANG
+            # =================================================================
+            if "tn_tai_xe" in st.session_state and "tn_khach" in st.session_state:
+                st.markdown("<div style='background-color: #e8f5e9; padding: 15px; border-radius: 8px; border-left: 5px solid #4caf50; margin-bottom: 15px;'>", unsafe_allow_html=True)
+                st.success("🎉 HỆ THỐNG ĐÃ LÊN LỆNH THÀNH CÔNG! Copy thông tin dưới đây để gửi Zalo:")
+                
+                c_msg1, c_msg2 = st.columns(2)
+                c_msg1.text_area("📱 Gửi cho Tài xế:", value=st.session_state["tn_tai_xe"], height=160, key="copy_tx")
+                c_msg2.text_area("📱 Gửi cho Khách hàng:", value=st.session_state["tn_khach"], height=160, key="copy_kh")
+                
+                if st.button("✅ Đã copy xong / Đóng thông báo", type="primary", use_container_width=True, key="btn_dong_msg"):
+                    del st.session_state["tn_tai_xe"]
+                    del st.session_state["tn_khach"]
+                    st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
+                st.divider()
+
+            
             # Hàm trích xuất float an toàn đã có
             def safe_float_val(key):
                 val = trip_data.get(key)
@@ -203,7 +222,8 @@ with tab1:
                                 else: success, result = (True, res_del) if res_del else (False, "Lỗi xóa cơ sở dữ liệu")
                                     
                             if success:
-                                st.success(f"✅ Đã xóa thành công chuyến đi mã {delete_trip_id}!")
+                                st.toast(f"✅ Đã xóa thành công chuyến đi mã {delete_trip_id}!")
+                                #st.success(f"✅ Đã xóa thành công chuyến đi mã {delete_trip_id}!")
                                 # Dọn rác cache 
                                 for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]:
                                     st.session_state.pop(key, None)
@@ -387,7 +407,8 @@ with tab1:
                                     
                                     if found_xe:
                                         st.session_state[selectbox_xe_key] = found_xe
-                                        st.success("✅ Đã tìm thấy xe phù hợp (đủ tải trọng/thể tích) và tự động chọn!")
+                                       # st.success("✅ Đã tìm thấy xe phù hợp (đủ tải trọng/thể tích) và tự động chọn!")
+                                        st.toast("✅ Đã tìm thấy xe phù hợp (đủ tải trọng/thể tích) và tự động chọn!")
                                     else:
                                         st.error("❌ Không có xe nào (kể cả ghép) đáp ứng đủ tải trọng / thể tích này!")
                         else:
@@ -846,7 +867,8 @@ with tab1:
                             msg_success = f"✅ Đã cập nhật thành công chuyến đi mã {edit_trip_id_cast}!"
                     
                     if success:
-                        st.success(msg_success)
+                        #st.success(msg_success)
+                        st.toast(msg_success, icon="🎉")
                         # Dọn rác cache danh sách chuyến đi
                         for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]:
                             st.session_state.pop(key, None)
@@ -887,26 +909,6 @@ with tab1:
                     else:
                         st.error(f"❌ Lỗi Database: {result}")
 
-            if "tn_tai_xe" in st.session_state and "tn_khach" in st.session_state:
-                # Tạo một empty container để chứa toàn bộ khối thông báo
-                msg_container = st.empty()
-                
-                with msg_container.container():
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    st.success("✅ Hệ thống đã lên lệnh thành công! Copy thông tin dưới đây để gửi đi:")
-                        
-                    c_msg1, c_msg2 = st.columns(2)
-                    c_msg1.text_area("📱 Gửi cho Tài xế:", value=st.session_state["tn_tai_xe"], height=160, key="copy_tx")
-                    c_msg2.text_area("📱 Gửi cho Khách hàng:", value=st.session_state["tn_khach"], height=160, key="copy_kh")
-                        
-                    if st.button("✅ Đã gửi xong / Đóng thông báo", type="primary", use_container_width=True, key="btn_dong_msg"):
-                        del st.session_state["tn_tai_xe"]
-                        del st.session_state["tn_khach"]
-                        st.rerun()
-                    st.divider()
-
-                
-                
                 # Sau khi hết vòng lặp 30 giây, nếu biến vẫn còn thì tự động đóng
                 #if "tn_tai_xe" in st.session_state:
                 #    del st.session_state["tn_tai_xe"]
@@ -981,7 +983,7 @@ with tab2:
                                 # Đoạn check xe trùng nhau đã bị loại bỏ vì UI đã khóa chặt logic lọc theo 1 xe duy nhất
                                 success, msg = group_trips_transaction(db.pool, chuyen_duoc_chon, st.session_state.get('username', 'Admin'))
                                 if success:
-                                    st.success(msg)
+                                    st.toast(msg, icon="🎉")
                                     # Dọn rác cache để các Tab khác cập nhật ngay lập tức
                                     for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]:
                                         st.session_state.pop(key, None)
@@ -1284,7 +1286,7 @@ with tab3:
                     st.markdown(msg)
 
             if st.session_state.get("export_dieu_xe") is not None and not st.session_state["export_dieu_xe"].empty:
-                st.success(f"🎉 Hệ thống đã tự động điều phối thành công {len(st.session_state['export_dieu_xe'])} đơn hàng!")
+                st.toast(f"🎉 Hệ thống đã tự động điều phối thành công {len(st.session_state['export_dieu_xe'])} đơn hàng!")
                 st.markdown("### 🖨️ Danh sách chuyến xe điều phối thành công & Hỗ trợ Zalo Thủ Công")
                 
                 # Format cột CBM cho đẹp (Chỉ hiển thị CBM nếu có giá trị)
@@ -1610,7 +1612,7 @@ with tab5:
 
                 if has_nb or has_ng:
                     total_len = (len(df_search_nb) if has_nb else 0) + (len(df_search_ngoai) if has_ng else 0)
-                    st.success(f"✅ Tìm thấy tổng cộng **{total_len}** chuyến đi thỏa mãn điều kiện.")
+                    st.toast(f"✅ Tìm thấy tổng cộng **{total_len}** chuyến đi thỏa mãn điều kiện.")
 
                     st.markdown("#### 🚛 Danh sách chuyến xe Nội bộ")
                     if has_nb:
@@ -1742,7 +1744,7 @@ with tab6:
                         type="primary"
                     )
                 else:
-                    st.success("🎉 Tuyệt vời! Không có chuyến đi nào bị tồn đọng hay treo hệ thống trong khoảng thời gian này.")
+                    st.toast("🎉 Tuyệt vời! Không có chuyến đi nào bị tồn đọng hay treo hệ thống trong khoảng thời gian này.")
                     
             except Exception as e:
                 st.error(f"⚠️ Chi tiết lỗi truy vấn Cảnh báo: {e}")
@@ -1825,7 +1827,7 @@ with tab6:
                             conn.commit()
                             
                             if thanh_cong > 0:
-                                st.success(f"🎉 Hoàn tất! Đã chuyển đổi {thanh_cong}/{tong_so} chuyến sang trạng thái Hoàn Thành.")
+                                st.toast(f"🎉 Hoàn tất! Đã chuyển đổi {thanh_cong}/{tong_so} chuyến sang trạng thái Hoàn Thành.")
                                 
                                 # XÓA TRẮNG TEXT INPUT VÀ FILE UPLOADER SAU KHI CẬP NHẬT THÀNH CÔNG
                                 st.session_state["nhap_ma_chuyen_str"] = ""
