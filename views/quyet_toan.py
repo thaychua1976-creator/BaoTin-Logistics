@@ -1048,7 +1048,7 @@ with tab1:
                                         is_ok, msg = settle_trip_transaction(db.pool, data_dict_thu_cong, 'Hoan_Thanh', cd_id)
                                     
                                 if is_ok:
-                                    st.success("🎉 THÀNH CÔNG! Đã cập nhật và chốt chuyến đi!")
+                                    st.toast("🎉 THÀNH CÔNG! Đã cập nhật và chốt chuyến đi!")
                                     
                                     # [BỔ SUNG] Dọn dẹp data cache cũ để giải phóng RAM
                                     old_cache = f"df_cd_cache_{st.session_state['reset_chuyen_form']}"
@@ -1064,7 +1064,7 @@ with tab1:
                     if submit_xoa:
                         success, msg = delete_trip_safe(db.pool, cd_id)
                         if success:
-                            st.success("✅ Đã xóa chuyến đi thành công!")
+                            st.toast("✅ Đã xóa chuyến đi thành công!")
                             
                             # [BỔ SUNG] Dọn dẹp cache sau khi xóa
                             old_cache = f"df_cd_cache_{st.session_state['reset_chuyen_form']}"
@@ -1266,7 +1266,7 @@ with tab2:
                                     is_ok, msg = update_trip_transaction(db.pool, data_chuyen_di=data_update, trang_thai_enum='Hoan_Thanh', chuyen_di_id=chuyen_can_sua)
                                     
                                     if is_ok:
-                                        st.success(f"✅ Đã cập nhật thành công quyết toán cho chuyến {chuyen_can_sua}!")
+                                        st.toast(f"✅ Đã cập nhật thành công quyết toán cho chuyến {chuyen_can_sua}!")
                                         
                                         # [BỔ SUNG] Xóa rác của selectbox và buộc load lại DB
                                         select_key = f"chon_chuyen_sua_{st.session_state['reset_sqt']}"
@@ -1898,7 +1898,7 @@ with tab3:
                                 for err in error_list: st.error(err)
                                  
                             if closed_count > 0:
-                                st.success(f"🎉 TUYỆT VỜI! Đã chốt {closed_count} chuyến thành công! Danh sách File sẽ tự động dọn dẹp...")
+                                st.toast(f"🎉 TUYỆT VỜI! Đã chốt {closed_count} chuyến thành công! Danh sách File sẽ tự động dọn dẹp...")
                                 
                                 # [BỔ SUNG] Xóa nguyên bộ Dataframe Pending khổng lồ khỏi RAM
                                 old_pending_cache = f"df_pending_{st.session_state['reset_file_upload']}"
@@ -1985,7 +1985,7 @@ with tab4:
                     for col in ['Doanh Thu', 'Phụ Cấp', 'Phí Khác', 'Phí Thuê Ngoài']:
                         df_hien_thi[col] = df_hien_thi[col].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "0")
                         
-                    st.success(f"✅ Tìm thấy {len(df_kq)} chuyến đi đã quyết toán trong khoảng thời gian này.")
+                    st.toast(f"✅ Tìm thấy {len(df_kq)} chuyến đi đã quyết toán trong khoảng thời gian này.")
                     st.dataframe(df_hien_thi, use_container_width=True, hide_index=True)
                 else:
                     st.info("📭 Không có chuyến đi nào được quyết toán trong khoảng thời gian bạn chọn.")
