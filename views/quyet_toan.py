@@ -631,7 +631,12 @@ with tab1:
                                 for _, rc in df_matched.iterrows():
                                     pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip().lower() 
                                     qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ").replace(",", ".")
-                                    
+                                    # [KHÓA CHÉO TUYỆT ĐỐI]: Ngăn Xe tải nhận nhầm Bảng giá Cont và ngược lại
+                                    is_container_db_check = ('container' in pl_pt_gia) or ('cont' in pl_pt_gia)
+                                    if not is_cont and is_container_db_check:
+                                        continue # Bỏ qua: Khách đi Xe Tải nhưng Bảng giá là Container
+                                    if is_cont and not is_container_db_check:
+                                        continue # Bỏ qua: Khách đi Container nhưng Bảng giá là Xe Tải
                                     raw_ve = rc.get('is_hang_tra_ve', 0)
                                     rc_hang_ve_check = 0
                                     if not pd.isna(raw_ve):
@@ -1347,8 +1352,8 @@ with tab3:
                         "IS_BOC_XEP": 0,
                         "IS_OVERLOAD_CONT": 0,
                         "CANG_NANG_HA": "",
-                        "LOAI_HANG_HOA": "Thường",
-                        "LOAI_CONT": "Thường",
+                        "LOAI_HANG_HOA": "Thường, Nguy hiểm",
+                        "LOAI_CONT": "20HC,20RF..",
                         "CHIEU_CONT": "Không",
                         "LAY_SEAL_SOM": 0,
                         "GIAO_KHAC_KHU": 0,
@@ -1369,7 +1374,7 @@ with tab3:
                     "SO_KM_PHAT_SINH": 15, "SO_DIEM_GIAO_THEM": 1,
                     "SO_NGAY_NEO_XE": 0, "SO_NGAY_NEO_XE_NHA_MAY": 0, "SO_NGAY_NEO_CONT": 0,
                     "IS_HUY_CHUYEN": 0, "IS_BOC_XEP": 0, "IS_VE_KHUYA": 0, "IS_OVERLOAD_CONT": 0,
-                    "CANG_NANG_HA": "Dong_Nai", "LOAI_HANG_HOA": "Thường", "LOAI_CONT": "Thường",
+                    "CANG_NANG_HA": "Dong_Nai", "LOAI_HANG_HOA": "Thường, Nguy hiểm", "LOAI_CONT": "20HC,20RF..",
                     "CHIEU_CONT": "Không", "LAY_SEAL_SOM": 0, "GIAO_KHAC_KHU": 0,
                     "CONT_RONG": "Không", "GHI_CHU": "Chốt cuối tháng"
                 }])
