@@ -1308,6 +1308,7 @@ with tab3:
                         cd.dia_diem_giao_nhan AS 'LO_TRINH',
                         cd.doanh_thu AS 'DOANH_THU_HIEN_TAI',
                         cd.trang_thai_chuyen AS 'TRANG_THAI'
+                        cd.ghi_chu AS 'GHI_CHU_DB' -- BỔ SUNG DÒNG NÀY
                     FROM chuyen_di cd
                     LEFT JOIN xe x ON cd.xe_id = x.id
                     LEFT JOIN chuyen_di_tai_xe ctx ON cd.id = ctx.chuyen_di_id AND ctx.loai_tai_xe = 'Tai_Chinh'
@@ -1328,6 +1329,19 @@ with tab3:
                 
                 template_data = []
                 for _, row in df_pending.iterrows():
+                    # --- NEW: BÓC TÁCH CONTAINER TỪ GHI CHÚ ---
+                    ghi_chu_db = str(row.get('GHI_CHU_DB', ''))
+                    loai_cont_val = "Thường"
+                    chieu_cont_val = "Không"
+                    so_cont_val = ""
+                    
+                    match = re.search(r'\[CONT:\s*(.*?)\s*\|\s*SEAL:\s*(.*?)\s*\|\s*LOAI:\s*(.*?)\s*\|\s*CHIEU:\s*(.*?)\s*\]', ghi_chu_db)
+                    if match:
+                        so_cont_val = match.group(1).strip()
+                        loai_cont_val = match.group(3).strip()
+                        chieu_cont_val = match.group(4).strip()
+                    # -------------------------------------------
+                    
                     template_data.append({
                         "MA_CHUYEN": row['MA_CHUYEN'],
                         "LỘ TRÌNH (Tham khảo)": row['LO_TRINH'],
@@ -1353,8 +1367,9 @@ with tab3:
                         "IS_OVERLOAD_CONT": 0,
                         "CANG_NANG_HA": "",
                         "LOAI_HANG_HOA": "Thường, Nguy hiểm",
-                        "LOAI_CONT": "20HC,20RF..",
-                        "CHIEU_CONT": "Không",
+                        "SO_CONT": so_cont_val,        # <-- CỘT MỚI
+                        "LOAI_CONT": loai_cont_val,    # <-- ĐÃ THAY THẾ BIẾN ĐỘNG
+                        "CHIEU_CONT": chieu_cont_val,  # <-- ĐÃ THAY THẾ BIẾN ĐỘNG
                         "LAY_SEAL_SOM": 0,
                         "GIAO_KHAC_KHU": 0,
                         "CONT_RONG": "Không",
@@ -1369,13 +1384,14 @@ with tab3:
                     "DOANH_THU_CHUYEN": 2000000,  
                     "CHI_PHI_THUE_NGOAI": 0, 
                     "PHI_HAI_QUAN": 0, "PHI_BOC_XEP": 100000, "PHI_KHAC": 0,
-                    "IS_HANG_VE": 0, "XE_MAY_CONG_KENH": 0,   # <--- THÊM VÀO ĐÂY NỮA
+                    "IS_HANG_VE": 0, "XE_MAY_CONG_KENH": 0,
                     "DS_PHU_CAP_TAI_XE": "1, 3 (Hoặc gõ chữ: Bốc xếp, Về khuya)",
                     "SO_KM_PHAT_SINH": 15, "SO_DIEM_GIAO_THEM": 1,
                     "SO_NGAY_NEO_XE": 0, "SO_NGAY_NEO_XE_NHA_MAY": 0, "SO_NGAY_NEO_CONT": 0,
                     "IS_HUY_CHUYEN": 0, "IS_BOC_XEP": 0, "IS_VE_KHUYA": 0, "IS_OVERLOAD_CONT": 0,
-                    "CANG_NANG_HA": "Dong_Nai", "LOAI_HANG_HOA": "Thường, Nguy hiểm", "LOAI_CONT": "20HC,20RF..",
-                    "CHIEU_CONT": "Không", "LAY_SEAL_SOM": 0, "GIAO_KHAC_KHU": 0,
+                    "CANG_NANG_HA": "Dong_Nai", "LOAI_HANG_HOA": "Thường, Nguy hiểm", 
+                    "SO_CONT": "", "LOAI_CONT": "20HC", "CHIEU_CONT": "Nhập", # <-- SỬA DÒNG NÀY
+                    "LAY_SEAL_SOM": 0, "GIAO_KHAC_KHU": 0,
                     "CONT_RONG": "Không", "GHI_CHU": "Chốt cuối tháng"
                 }])
             
