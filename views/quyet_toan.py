@@ -396,7 +396,16 @@ def keyword_match_score(app_str, db_str):
         return 1.0 if str(app_str).strip().lower() == str(db_str).strip().lower() else 0.0
     intersection = app_tokens.intersection(db_tokens)
     min_len = min(len(app_tokens), len(db_tokens))
-    return len(intersection) / min_len if min_len > 0 else 0.0
+    max_len = max(len(app_tokens), len(db_tokens))
+    if min_len == 0: return 0.0
+    
+    # Base score (Giữ nguyên logic cũ để dễ dàng vượt qua màng lọc 0.75)
+    base_score = len(intersection) / min_len 
+    
+    # Exactness score (Phạt nếu dư từ, dùng làm trọng số phụ để phân định thắng thua)
+    exactness = len(intersection) / max_len
+    
+    return base_score + (exactness * 0.1)
 
 # ==========================================
 # TAB 1: QUYẾT TOÁN ĐƠN CHUYẾN (ĐÃ TỐI ƯU CACHE)
@@ -592,6 +601,9 @@ with tab1:
                                     row_copy = rc_row.copy()
                                     # Gắn cờ để ưu tiên Tuyến Thuận hơn Tuyến Ngược nếu DB có cả 2
                                     row_copy['match_type'] = 'direct' if is_direct else 'reverse'
+                                    # THÊM DÒNG NÀY: Lưu lại điểm số so khớp chuỗi để ưu tiên lộ trình chính xác nhất
+                                    row_copy['route_score'] = (di_score + den_score) if is_direct else (di_score_rev + den_score_rev)
+                                                        
                                     matched_rc_rows.append(row_copy)
                             
                             if matched_rc_rows:
@@ -654,7 +666,7 @@ with tab1:
                                             m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
                                             
                                             # Khớp ưu tiên: Nếu là khớp đảo ngược, cộng thêm 1000 điểm để nhường chỗ cho khớp thuận (nếu có)
-                                            penalty = 0 if rc['match_type'] == 'direct' else 1000.0
+                                            penalty = (0 if rc['match_type'] == 'direct' else 1000.0) - (rc.get('route_score', 0) * 10.0)
                                             
                                             if rc_hang_ve_check == 1:
                                                 valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
@@ -692,7 +704,7 @@ with tab1:
                                         m_price = gia_tiep_noi if (is_ghep == 1 and stt_ghep > 1 and gia_tiep_noi > 0) else gia_goc
                                         m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
                                         
-                                        penalty = 0 if rc['match_type'] == 'direct' else 1000.0
+                                        penalty = (0 if rc['match_type'] == 'direct' else 1000.0) - (rc.get('route_score', 0) * 10.0)
                                         
                                         if rc_hang_ve_check == 1:
                                             valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
@@ -743,7 +755,7 @@ with tab1:
                                             m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
                                             
                                             base_score = (cap_tan or 999.0) + (cap_cbm or 999.0)
-                                            penalty = 0 if rc['match_type'] == 'direct' else 1000.0
+                                            penalty = (0 if rc['match_type'] == 'direct' else 1000.0) - (rc.get('route_score', 0) * 10.0)
                                             score = base_score + penalty
                                             
                                             if rc_hang_ve_check == 1:
@@ -1572,6 +1584,8 @@ with tab3:
                                                         row_copy = rc_row.copy()
                                                         # Gắn cờ để ưu tiên Tuyến Thuận hơn Tuyến Ngược nếu DB có cả 2
                                                         row_copy['match_type'] = 'direct' if is_direct else 'reverse'
+                                                        # THÊM DÒNG NÀY: Lưu lại điểm số so khớp chuỗi để ưu tiên lộ trình chính xác nhất
+                                                        row_copy['route_score'] = (di_score + den_score) if is_direct else (di_score_rev + den_score_rev)
                                                         matched_rc_rows.append(row_copy)
 
                                                 if matched_rc_rows:
@@ -1636,7 +1650,7 @@ with tab3:
                                                             if target_kw in qc_gia or target_kw.replace(" ", "_") in qc_gia:
                                                                 m_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
                                                                 m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
-                                                                penalty = 0 if rc['match_type'] == 'direct' else 1000.0
+                                                                penalty = (0 if rc['match_type'] == 'direct' else 1000.0) - (rc.get('route_score', 0) * 10.0)
                                                                 
                                                                 if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
                                                                 else: valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
@@ -1670,7 +1684,7 @@ with tab3:
                                                         if is_xe_may and is_thue_ngoai_auto:
                                                             m_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
                                                             m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
-                                                            penalty = 0 if rc['match_type'] == 'direct' else 1000.0
+                                                            penalty = (0 if rc['match_type'] == 'direct' else 1000.0) - (rc.get('route_score', 0) * 10.0)
                                                             
                                                             if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
                                                             else: valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
@@ -1685,7 +1699,7 @@ with tab3:
                                                             # Nếu là Container -> Bỏ qua kiểm tra Tải Trọng 30T, lấy ngay giá vì đã lọt qua lưới so khớp 20HC/40HC ở trên
                                                             m_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
                                                             m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
-                                                            penalty = 0 if rc['match_type'] == 'direct' else 1000.0
+                                                            penalty = (0 if rc['match_type'] == 'direct' else 1000.0) - (rc.get('route_score', 0) * 10.0)
                                                             
                                                             if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
                                                             else: valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
@@ -1734,7 +1748,7 @@ with tab3:
                                                                 m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
                                                                 
                                                                 base_score = (cap_tan or 999.0) + (cap_cbm or 999.0)
-                                                                penalty = 0 if rc['match_type'] == 'direct' else 1000.0
+                                                                penalty = (0 if rc['match_type'] == 'direct' else 1000.0) - (rc.get('route_score', 0) * 10.0)
                                                                 score = base_score + penalty
                                                                 
                                                                 if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': score})
