@@ -54,7 +54,12 @@ def render_fuel_management_tab(db, current_user):
         with col_ai:
             st.markdown("#### 🤖 AI Nhận diện Hóa đơn & ODO")
             st.info("Tải lên ảnh Bill xăng hoặc ảnh Taplo xe để AI tự động trích xuất số liệu điền vào form.")
-            uploaded_file = st.file_uploader("Chọn ảnh (JPG, PNG)", type=['jpg', 'jpeg', 'png'], key="fuel_ai_img")
+            # [SỬA LẠI DÒNG NÀY]: Gắn fuel_form_reset_key vào tham số key của file_uploader
+            uploaded_file = st.file_uploader(
+                "Chọn ảnh (JPG, PNG)", 
+                type=['jpg', 'jpeg', 'png'], 
+                key=f"fuel_ai_img_{st.session_state['fuel_form_reset_key']}"
+            )
             
             if uploaded_file:
                 st.image(uploaded_file, caption="Ảnh hóa đơn / Taplo chờ xử lý", use_container_width=True)
