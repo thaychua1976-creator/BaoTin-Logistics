@@ -570,10 +570,23 @@ with tab1:
                 is_hang_ve_db = bool(trip_data.get('is_hang_tra_ve', 0)) if mode_action == "✏️ Sửa chuyến hiện tại" else False
                 is_xe_may_db = (trip_data.get('loai_hinh_xe') == 'Xe_May') if mode_action == "✏️ Sửa chuyến hiện tại" else False
                 
-                col_cb_lt1, col_cb_lt2 = st.columns(2)
-                is_hang_ve_ui = col_cb_lt1.checkbox("🔄 Lộ trình chở hàng về (Chỉ lọc các tuyến chiều về)", value=is_hang_ve_db, key=f"is_hang_ve_ui_{trip_suffix}")
-                is_xe_may_ui = col_cb_lt2.checkbox("🏍️ Lộ trình dành cho Xe Máy", value=is_xe_may_db, key=f"is_xe_may_ui_{trip_suffix}")
+                #col_cb_lt1, col_cb_lt2 = st.columns(2)
+                #is_hang_ve_ui = col_cb_lt1.checkbox("🔄 Lộ trình hướng về (Lọc lộ trình chiều về)", value=is_hang_ve_db, key=f"is_hang_ve_ui_{trip_suffix}")
+                #is_xe_may_ui = col_cb_lt2.checkbox("🏍️ Lộ trình dành cho Xe Máy", value=is_xe_may_db, key=f"is_xe_may_ui_{trip_suffix}")
 
+                col_cb_lt1, col_cb_lt2 = st.columns(2)
+                
+                # Chuyển đổi Checkbox thành Radio để hiển thị rõ 2 hướng đi và về cạnh nhau
+                chieu_hang_ui = col_cb_lt1.radio(
+                    "🔄 Chọn chiều tuyến đường:", 
+                    ["Lộ trình Hướng Đi", "Lộ trình Hướng Về"], 
+                    index=1 if is_hang_ve_db else 0, 
+                    horizontal=True, 
+                    key=f"chieu_hang_ui_{trip_suffix}"
+                )
+                # Chuyển đổi lại thành biến boolean để thuật toán SQL bên dưới vẫn chạy đúng 100%
+                is_hang_ve_ui = (chieu_hang_ui == "Lộ trình Hướng Về")
+                is_xe_may_ui = col_cb_lt2.checkbox("🏍️ Lộ trình dành cho Xe Máy", value=is_xe_may_db, key=f"is_xe_may_ui_{trip_suffix}")
                 lo_trinh_opts = {None: "-- Vui lòng chọn lộ trình (Tạo mới nếu chưa có) --"}
                 if khach_id_filter:
                     flag_hang_ve = 1 if is_hang_ve_ui else 0
