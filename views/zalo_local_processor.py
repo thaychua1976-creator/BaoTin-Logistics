@@ -96,22 +96,21 @@ def process_offline_zalo_files():
 
     **QUY TẮC 1: BÓC TÁCH DỮ LIỆU DẠNG BẢNG**
     - Nếu ảnh là dạng bảng (VD: "GOLDEN VICTORY OIA | 28,000 | PHUONG DONG | 14H"), BẮT BUỘC mỗi dòng ngang tương ứng với 1 chuyến xe. 
-    - Cấu trúc ngầm định: [Điểm đi] | [Khối lượng] | [Điểm đến] | [Giờ giấc / Ghi chú].
 
-    **QUY TẮC 2: BÓC TÁCH CHUỖI TEXT TỔNG HỢP (NHIỀU XE / NHIỀU ĐIỂM)**
+    **QUY TẮC 2: BÓC TÁCH CHUỖI TEXT TỔNG HỢP**
     - Nếu khách đặt nhiều xe trong 1 tin nhắn, BẮT BUỘC tách thành các object riêng biệt cho từng chuyến.
 
-    **QUY TẮC 3: CHUẨN HÓA KHỐI LƯỢNG (khoi_luong_kg)**
-    - Các con số lớn đứng độc lập (VD: 35,000; 28,000) CHÍNH LÀ khối lượng tính bằng KG. 
-    - BẮT BUỘC loại bỏ dấu phẩy (",") (VD: 35,000 -> 35000).
-    - Nếu gặp "T", "TAN", "TẤN" (VD: 1TAN, 6T), nhân số đó với 1000. Đơn vị "KG" thì giữ nguyên.
+    **QUY TẮC 3: TRÍCH XUẤT THÔNG TIN KHÁCH HÀNG**
+    - Nhận diện "Tên khách hàng" (Tên công ty, xưởng, người đặt xe). Nếu không thấy, để trống "".
+    - Nhận diện "Mã số thuế" (nếu có ghi trong tin nhắn). Nếu không có, để trống "".
 
-    **QUY TẮC 4: CHUẨN HÓA THỂ TÍCH (the_tich_cbm)**
-    - Nhận diện các từ "CBM", "KHỐI", "khoi". Lấy chính xác phần số.
+    **QUY TẮC 4: CHUẨN HÓA KHỐI LƯỢNG & THỂ TÍCH**
+    - Các con số lớn đứng độc lập (VD: 35,000; 28,000) CHÍNH LÀ khối lượng tính bằng KG. Bỏ dấu phẩy (35,000 -> 35000).
+    - Nếu gặp "T", "TAN", "TẤN" (VD: 1TAN, 6T), nhân số đó với 1000. 
+    - Thể tích (CBM/KHỐI): Lấy chính xác phần số.
 
-    **QUY TẮC 5: LÀM SẠCH FORM "YÊU CẦU ĐIỀU XE" (F.T)**
-    - Chỉ tạo 1 object. Ngày đi: "Thời gian yêu cầu xuất phát".
-    - Điểm đi -> Điểm đến: Gom từ "Địa điểm xuất phát" -> "Điểm đến".
+    **QUY TẮC 5: TÁCH BIỆT KHO ĐI VÀ KHO ĐẾN**
+    - Bắt buộc tách rõ "Địa chỉ kho đi" và "Địa chỉ kho đến". Không được gộp chung.
 
     **QUY TẮC 6: XỬ LÝ NGÀY THÁNG**
     - "Sáng mai", "mai" -> {tomorrow_str}. "Hôm nay", "tối nay" -> {today_str}.
@@ -122,7 +121,10 @@ def process_offline_zalo_files():
         "danh_sach_xe": [
             {{
                 "ngay_chuyen_di": "YYYY-MM-DD",
-                "dia_diem_giao_nhan": "Điểm đi -> Điểm đến",
+                "ma_so_thue": "",
+                "ten_khach_hang": "",
+                "dia_chi_kho_di": "Địa điểm xuất phát",
+                "dia_chi_kho_den": "Điểm giao hàng",
                 "khoi_luong_kg": Số thực,
                 "the_tich_cbm": Số thực,
                 "ghi_chu": "Chi tiết giờ giấc, tên xưởng..."
@@ -226,14 +228,35 @@ def process_offline_zalo_files():
         df_new = pd.DataFrame(valid_records)
         df_new['ngay_chuyen_di'] = df_new.get('ngay_chuyen_di', 'Khong_Xac_Dinh').fillna('Khong_Xac_Dinh').astype(str)
         
-        # [CẬP NHẬT]: Ghi đè file Excel mới, chia sheet theo ngày, loại bỏ dữ liệu các đợt trước
+        # 1. Bổ sung các cột bị thiếu (nếu AI không trích xuất được để tránh lỗi code)
+        for col in ['ma_so_thue', 'ten_khach_hang', 'dia_chi_kho_di', 'dia_chi_kho_den', 'khoi_luong_kg', 'the_tich_cbm', 'ghi_chu']:
+            if col not in df_new.columns:
+                df_new[col] = ""
+
+        # 2. Đổi tên cột cho khớp với file mẫu (Template Điều Xe)
+        df_export = df_new.rename(columns={
+            'ngay_chuyen_di': 'NGAY_CHAY',
+            'ma_so_thue': 'MA_SO_THUE',
+            'ten_khach_hang': 'TEN_KHACH_HANG',
+            'dia_chi_kho_di': 'DIA_CHI_KHO_DI',
+            'dia_chi_kho_den': 'DIA_CHI_KHO_DEN',
+            'khoi_luong_kg': 'KHOI_LUONG_KG',
+            'the_tich_cbm': 'THE_TICH_CBM',
+            'ghi_chu': 'GHI_CHU'
+        })
+
+        # 3. Sắp xếp lại thứ tự cột chuẩn xác
+        columns_order = ['NGAY_CHAY', 'MA_SO_THUE', 'TEN_KHACH_HANG', 'DIA_CHI_KHO_DI', 'DIA_CHI_KHO_DEN', 'KHOI_LUONG_KG', 'THE_TICH_CBM', 'GHI_CHU']
+        df_export = df_export[columns_order]
+        
+        # 4. Ghi đè file Excel mới, chia sheet theo ngày
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
-            grouped = df_new.groupby('ngay_chuyen_di')
+            grouped = df_export.groupby('NGAY_CHAY')
             for date_str, group_df in grouped:
                 sheet_name = str(date_str).split('T')[0][:31] # Tên sheet tối đa 31 ký tự
                 group_df.to_excel(writer, sheet_name=sheet_name, index=False)
                 
-        return {"status": "success", "message": f"✅ Đã lưu {len(valid_records)} chuyến xe vào Excel (Dữ liệu đã làm mới, không cộng dồn ngày cũ).", "unprocessed": unprocessed_files}
+        return {"status": "success", "message": f"✅ Đã lưu {len(valid_records)} chuyến xe vào Excel đúng chuẩn mẫu tự động điều phối.", "unprocessed": unprocessed_files}
     
     return {"status": "warning", "message": "⚠️ Không tìm thấy dữ liệu hợp lệ.", "unprocessed": unprocessed_files}
 def main_app():
