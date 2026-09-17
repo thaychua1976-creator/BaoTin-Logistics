@@ -326,13 +326,19 @@ def main_app():
     else:
         group_name_input = selected_option
     
+    
     # 📌 SỬ DỤNG FORM BỌC ĐỂ CHO PHÉP RESET TRẮNG WIDGET FILE_UPLOADER
     form_key = f"zalo_upload_form_{st.session_state['zalo_form_reset_key']}"
-    with st.form(key=form_key):
+    
+    # [CẬP NHẬT 1]: Thêm clear_on_submit=True để tự động dọn dẹp form khi submit
+    with st.form(key=form_key, clear_on_submit=True):
+        
+        # [CẬP NHẬT 2]: Gắn key động trực tiếp vào file_uploader
         uploaded_files = st.file_uploader(
             "Chọn các file ảnh (.jpg, .png) hoặc văn bản (.txt) cần xử lý:", 
             type=["jpg", "jpeg", "png", "txt"], 
-            accept_multiple_files=True
+            accept_multiple_files=True,
+            key=f"uploader_zalo_{st.session_state['zalo_form_reset_key']}"
         )
         
         submitted_upload = st.form_submit_button("📥 Lưu file lên hệ thống Cloud", type="primary", use_container_width=True)
@@ -355,11 +361,11 @@ def main_app():
                     
                 st.success(f"✅ Đã tải lên thành công {saved_count} file vào nhóm `{group_name_input}`.")
                 
-                # --- BỔ SUNG ĐOẠN CODE NÀY LÀM SẠCH FORM ---
-                
-                time.sleep(1.5) # Dừng 1.5 giây để người dùng kịp nhìn thấy thông báo thành công
-                st.session_state["zalo_form_reset_key"] += 1 # Tăng bộ đếm để đổi Key của các UI Widget
-                st.rerun() # Tải lại giao diện để xóa trắng Form Upload và Box chọn Nhóm
+                # [CẬP NHẬT 3]: Tăng biến đếm và load lại trang để xóa hoàn toàn file trên UI
+                import time
+                time.sleep(1.2)
+                st.session_state["zalo_form_reset_key"] += 1
+                st.rerun()
 
     st.markdown("---")
     st.subheader("⚙️ Xử lý dữ liệu")
