@@ -198,8 +198,8 @@ if active_tab == "📋 KHAI BÁO TỜ KHAI MỚI":
             st.markdown("#### 📥 Nhập Liệu Tờ Khai Mới")
             st.info("💡 Hệ thống tự động đọc file Excel (.xls, .xlsx) hoặc PDF để trích xuất: Đơn vị XNK (Tự động điền vào Khách hàng & Tên đối tác), Số lượng hàng, Luồng, Hóa đơn TM.")
             
-            # [CẬP NHẬT] ĐƯA KHỞI TẠO BIẾN LÊN ĐÂY ĐỂ TRÁNH LỖI UNBOUND LOCAL ERROR
-            auto_data = st.session_state["hq_auto_data"]
+            # [CẬP NHẬT] ĐƯA KHỞI TẠO BIẾN LÊN ĐÂY ĐỂ TRÁNH LỖI UNBOUND LOCAL ERROR VÀ KEY ERROR
+            # 1. Kiểm tra và khởi tạo TRƯỚC
             if "hq_auto_data" not in st.session_state: 
                 st.session_state["hq_auto_data"] = {
                     "so_to_khai": "", "so_van_don": "", "extracted_ten_khach_hang": "", "ma_so_thue": "",
@@ -207,6 +207,9 @@ if active_tab == "📋 KHAI BÁO TỜ KHAI MỚI":
                     "loai_to_khai": "Xuat_Khau", "so_hoa_don_tm": "", "kho_cang_lay_hang": "",
                     "ten_doi_tac": "", "ma_loai_hinh": "", "phan_luong": ""
                 }
+                
+            # 2. Sau khi chắc chắn biến đã tồn tại mới tiến hành lấy dữ liệu ra
+            auto_data = st.session_state["hq_auto_data"]
             # --- THÊM KEY ĐỘNG CHO FILE UPLOADER ---
             if "file_uploader_hq_key" not in st.session_state:
                 st.session_state["file_uploader_hq_key"] = "upload_file_to_khai_hq_init"
@@ -313,7 +316,7 @@ if active_tab == "📋 KHAI BÁO TỜ KHAI MỚI":
                                             # Tự động gán tên khách hàng vào textbox Tên Đối Tác
                                             auto_data["ten_doi_tac"] = vals[idx+1]
                                             
-                            st.success(f"✅ Đã trích xuất dữ liệu Excel. Đơn vị XNK: **{auto_data.get('extracted_ten_khach_hang')}**")
+                            st.toast(f"✅ Đã trích xuất dữ liệu Excel. Đơn vị XNK: **{auto_data.get('extracted_ten_khach_hang')}**")
                             
                         
                                 
@@ -718,7 +721,7 @@ elif active_tab == "🔍 DANH SÁCH & QUẢN LÝ TỜ KHAI":
                                 )
                                 
                                 if ok: 
-                                    st.success("✅ Cập nhật thông tin tờ khai thành công!")
+                                    st.toast("✅ Cập nhật thông tin tờ khai thành công!")
                                     time.sleep(1)
                                     if "select_to_khai_action" in st.session_state: del st.session_state["select_to_khai_action"]
                                     st.rerun()
@@ -992,7 +995,7 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
                             )
                             
                             if ok:
-                                st.success(f"✅ Tạo mới dữ liệu liên kết thành công!")
+                                st.toast(f"✅ Tạo mới dữ liệu liên kết thành công!")
                                 st.session_state["form_tao_cont_key"] = f"form_tao_moi_container_batch_{uuid.uuid4()}"
                                 time.sleep(1)
                                 st.rerun()
@@ -1038,7 +1041,7 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
                             if st.button("Xác Nhận Xóa Vĩnh Viễn Container", type="primary"):
                                 ok, msg = delete_container_transaction(db.pool, selected_cont_id, current_user)
                                 if ok:
-                                    st.success("✅ Đã xóa container thành công và reset lựa chọn!")
+                                    st.toast("✅ Đã xóa container thành công và reset lựa chọn!")
                                     if "select_container_action_hq" in st.session_state:
                                         del st.session_state["select_container_action_hq"]
                                     st.rerun()
@@ -1128,7 +1131,7 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
                                                 payload_log = {"so_cont": std_so_cont, "id": selected_cont_id}
                                                 ghi_log_he_thong(cursor_ed, "QUAN_LY_CONTAINER", selected_cont_id, current_user, "CAP_NHAT_CONT_DON_LE", json.dumps(payload_log, ensure_ascii=False))
                                                 conn_ed.commit()
-                                                st.success("✅ Cập nhật container thành công và làm mới giao diện!")
+                                                st.toast("✅ Cập nhật container thành công và làm mới giao diện!")
                                                 if "select_container_action_hq" in st.session_state:
                                                     del st.session_state["select_container_action_hq"]
                                                 st.rerun()
