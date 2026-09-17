@@ -354,6 +354,12 @@ def main_app():
                     saved_count += 1
                     
                 st.success(f"✅ Đã tải lên thành công {saved_count} file vào nhóm `{group_name_input}`.")
+                
+                # --- BỔ SUNG ĐOẠN CODE NÀY LÀM SẠCH FORM ---
+                
+                time.sleep(1.5) # Dừng 1.5 giây để người dùng kịp nhìn thấy thông báo thành công
+                st.session_state["zalo_form_reset_key"] += 1 # Tăng bộ đếm để đổi Key của các UI Widget
+                st.rerun() # Tải lại giao diện để xóa trắng Form Upload và Box chọn Nhóm
 
     st.markdown("---")
     st.subheader("⚙️ Xử lý dữ liệu")
