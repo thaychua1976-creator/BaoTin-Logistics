@@ -70,6 +70,19 @@ def clear_files_and_folders():
     return deleted_count
 
 def process_offline_zalo_files():
+    # [THÊM MỚI] Hàm tra cứu MST từ Database
+    def get_ma_so_thue(ten_kh):
+        if not ten_kh or "db" not in st.session_state:
+            return ""
+        try:
+            sql = "SELECT ma_khach_hang FROM khach_hang WHERE ten_khach_hang = %s LIMIT 1"
+            df_kh = st.session_state['db'].execute_query(sql, (ten_kh,))
+            if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
+                val = df_kh.iloc[0]['ma_khach_hang']
+                return str(val) if pd.notna(val) else ""
+        except: pass
+        return ""
+    
     today_str = datetime.today().strftime('%Y-%m-%d')
     tomorrow_str = (datetime.today() + timedelta(days=1)).strftime('%Y-%m-%d')
     today_date = date.today()
@@ -91,28 +104,25 @@ def process_offline_zalo_files():
     valid_records = []
     unprocessed_files = [] 
     
+    # [CẬP NHẬT] Prompt mới: Loại bỏ Quy tắc lấy tên/MST để AI tập trung tách lộ trình
     prompt = f"""
     Bạn là chuyên gia phân tích dữ liệu Logistics. Nhiệm vụ: Chuyển đổi văn bản thành mảng JSON chứa các chuyến đi độc lập.
 
     **QUY TẮC 1: BÓC TÁCH DỮ LIỆU DẠNG BẢNG**
-    - Nếu ảnh là dạng bảng (VD: "GOLDEN VICTORY OIA | 28,000 | PHUONG DONG | 14H"), BẮT BUỘC mỗi dòng ngang tương ứng với 1 chuyến xe. 
+    - Mỗi dòng ngang tương ứng với 1 chuyến xe. 
 
     **QUY TẮC 2: BÓC TÁCH CHUỖI TEXT TỔNG HỢP**
-    - Nếu khách đặt nhiều xe trong 1 tin nhắn, BẮT BUỘC tách thành các object riêng biệt cho từng chuyến.
+    - Nếu khách đặt nhiều xe trong 1 tin nhắn, tách thành các object riêng biệt cho từng chuyến.
 
-    **QUY TẮC 3: TRÍCH XUẤT THÔNG TIN KHÁCH HÀNG**
-    - Nhận diện "Tên khách hàng" (Tên công ty, xưởng, người đặt xe). Nếu không thấy, để trống "".
-    - Nhận diện "Mã số thuế" (nếu có ghi trong tin nhắn). Nếu không có, để trống "".
-
-    **QUY TẮC 4: CHUẨN HÓA KHỐI LƯỢNG & THỂ TÍCH**
-    - Các con số lớn đứng độc lập (VD: 35,000; 28,000) CHÍNH LÀ khối lượng tính bằng KG. Bỏ dấu phẩy (35,000 -> 35000).
-    - Nếu gặp "T", "TAN", "TẤN" (VD: 1TAN, 6T), nhân số đó với 1000. 
+    **QUY TẮC 3: CHUẨN HÓA KHỐI LƯỢNG & THỂ TÍCH**
+    - Số lớn đứng độc lập (VD: 35,000) là khối lượng (KG). Bỏ dấu phẩy -> 35000.
+    - Gặp "T", "TAN", "TẤN" -> Nhân 1000. 
     - Thể tích (CBM/KHỐI): Lấy chính xác phần số.
 
-    **QUY TẮC 5: TÁCH BIỆT KHO ĐI VÀ KHO ĐẾN**
+    **QUY TẮC 4: TÁCH BIỆT KHO ĐI VÀ KHO ĐẾN**
     - Bắt buộc tách rõ "Địa chỉ kho đi" và "Địa chỉ kho đến". Không được gộp chung.
 
-    **QUY TẮC 6: XỬ LÝ NGÀY THÁNG**
+    **QUY TẮC 5: XỬ LÝ NGÀY THÁNG**
     - "Sáng mai", "mai" -> {tomorrow_str}. "Hôm nay", "tối nay" -> {today_str}.
 
     **SCHEMA JSON YÊU CẦU ĐẦU RA:**
@@ -121,8 +131,6 @@ def process_offline_zalo_files():
         "danh_sach_xe": [
             {{
                 "ngay_chuyen_di": "YYYY-MM-DD",
-                "ma_so_thue": "",
-                "ten_khach_hang": "",
                 "dia_chi_kho_di": "Địa điểm xuất phát",
                 "dia_chi_kho_den": "Điểm giao hàng",
                 "khoi_luong_kg": Số thực,
@@ -168,6 +176,10 @@ def process_offline_zalo_files():
                         if parsed.get("is_booking"):
                             for xe in parsed.get("danh_sach_xe", []):
                                 xe["nhom_zalo_nguon"] = nhom
+                                # [THÊM MỚI] Gán cứng Tên khách & MST từ tên thư mục tải lên
+                                ten_kh_goc = nhom if nhom != "Khong_Xac_Dinh" else ""
+                                xe["ten_khach_hang"] = ten_kh_goc
+                                xe["ma_so_thue"] = get_ma_so_thue(ten_kh_goc)
                                 try:
                                     raw_date = str(xe.get("ngay_chuyen_di", "")).strip()[:10]
                                     ngay = datetime.strptime(raw_date, '%Y-%m-%d').date()
@@ -229,11 +241,11 @@ def process_offline_zalo_files():
         df_new['ngay_chuyen_di'] = df_new.get('ngay_chuyen_di', 'Khong_Xac_Dinh').fillna('Khong_Xac_Dinh').astype(str)
         
         # 1. Bổ sung các cột bị thiếu (nếu AI không trích xuất được để tránh lỗi code)
+        # 1. Bổ sung các cột bị thiếu
         for col in ['ma_so_thue', 'ten_khach_hang', 'dia_chi_kho_di', 'dia_chi_kho_den', 'khoi_luong_kg', 'the_tich_cbm', 'ghi_chu']:
-            if col not in df_new.columns:
-                df_new[col] = ""
+            if col not in df_new.columns: df_new[col] = ""
 
-        # 2. Đổi tên cột cho khớp với file mẫu (Template Điều Xe)
+        # 2. Đổi tên cột cho khớp với file mẫu
         df_export = df_new.rename(columns={
             'ngay_chuyen_di': 'NGAY_CHAY',
             'ma_so_thue': 'MA_SO_THUE',
@@ -249,14 +261,33 @@ def process_offline_zalo_files():
         columns_order = ['NGAY_CHAY', 'MA_SO_THUE', 'TEN_KHACH_HANG', 'DIA_CHI_KHO_DI', 'DIA_CHI_KHO_DEN', 'KHOI_LUONG_KG', 'THE_TICH_CBM', 'GHI_CHU']
         df_export = df_export[columns_order]
         
-        # 4. Ghi đè file Excel mới, chia sheet theo ngày
+        # 4. GỘP DỮ LIỆU VÀ QUẢN LÝ QUA NGÀY
+        if os.path.exists(EXCEL_FILE):
+            # Kiểm tra ngày chỉnh sửa cuối cùng của file
+            file_mod_date = datetime.fromtimestamp(os.path.getmtime(EXCEL_FILE)).date()
+            
+            if file_mod_date == today_date:
+                # Nếu cùng ngày hôm nay: Đọc file cũ, gộp với data mới và xóa trùng lặp
+                try:
+                    dict_df_old = pd.read_excel(EXCEL_FILE, sheet_name=None)
+                    df_old = pd.concat(dict_df_old.values(), ignore_index=True)
+                    df_export = pd.concat([df_old, df_export], ignore_index=True)
+                    df_export = df_export.drop_duplicates() # Chống trùng nếu vô tình quét lại 1 ảnh 2 lần
+                except Exception:
+                    pass
+            else:
+                # Nếu là file tồn đọng từ hôm qua: Xóa để tạo file mới tinh cho ngày hôm nay
+                try: os.remove(EXCEL_FILE)
+                except: pass
+        
+        # 5. Ghi đè file Excel (đã chứa toàn bộ data gộp), chia sheet theo ngày chạy
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
             grouped = df_export.groupby('NGAY_CHAY')
             for date_str, group_df in grouped:
-                sheet_name = str(date_str).split('T')[0][:31] # Tên sheet tối đa 31 ký tự
+                sheet_name = str(date_str).split('T')[0][:31]
                 group_df.to_excel(writer, sheet_name=sheet_name, index=False)
                 
-        return {"status": "success", "message": f"✅ Đã lưu {len(valid_records)} chuyến xe vào Excel đúng chuẩn mẫu tự động điều phối.", "unprocessed": unprocessed_files}
+        return {"status": "success", "message": f"✅ Đã lưu/cộng dồn {len(valid_records)} chuyến xe vào Excel. Dữ liệu sẽ tự reset vào ngày mai.", "unprocessed": unprocessed_files}
     
     return {"status": "warning", "message": "⚠️ Không tìm thấy dữ liệu hợp lệ.", "unprocessed": unprocessed_files}
 def main_app():
