@@ -392,9 +392,13 @@ def main_app():
     
     if os.path.exists(EXCEL_FILE):
         try:
-            # 1. Đọc lại file Excel hệ thống vừa xuất ra để cho người dùng xem trước
+            # 1. Đọc TRỰC TIẾP file tạm mà hệ thống vừa sinh ra từ lần AI chạy gần nhất
             df_preview = pd.read_excel(EXCEL_FILE)
             
+            # Lọc bỏ cột GHI_CHU nếu nó bị rỗng hoàn toàn để bảng preview nhìn gọn gàng hơn
+            if 'GHI_CHU' in df_preview.columns and df_preview['GHI_CHU'].isnull().all():
+                df_preview = df_preview.drop(columns=['GHI_CHU'])
+                
             st.markdown("##### 👁️‍🗨️ XEM TRƯỚC DỮ LIỆU ĐÃ BÓC TÁCH (PREVIEW)")
             st.info("Vui lòng kiểm tra kỹ các cột Ngày, Khách hàng, Điểm đi/đến, và Tải trọng trước khi lưu về máy.")
             st.dataframe(df_preview, use_container_width=True)
@@ -431,7 +435,7 @@ def main_app():
                 clear_files_only() # Xóa luôn các ảnh Zalo đầu vào
                 
                 st.session_state["zalo_form_reset_key"] += 1
-                st.toast("🎉 Đã tải xong! Hệ thống đã tự động dọn sạch file rác của phiên làm việc này.")
+                st.toast("🎉 Hệ thống đã tự động dọn sạch file rác của phiên làm việc này.")
                 time.sleep(1.5)
                 st.rerun()
                 
