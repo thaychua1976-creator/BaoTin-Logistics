@@ -104,7 +104,7 @@ def process_offline_zalo_files():
     valid_records = []
     unprocessed_files = [] 
     
-    # [CẬP NHẬT] Prompt mới: Lồng ghép quy tắc xử lý bảng hàng AIR, ô gộp và làm sạch "closing time"
+    ## [CẬP NHẬT] Prompt mới: Chốt chặt logic quy đổi Khối lượng từ chữ OUT SIDE TRUCK
     prompt = f"""
     Bạn là chuyên gia phân tích dữ liệu Logistics. Nhiệm vụ: Chuyển đổi văn bản thành mảng JSON chứa các chuyến đi độc lập.
 
@@ -114,10 +114,10 @@ def process_offline_zalo_files():
     **QUY TẮC 2: BÓC TÁCH CHUỖI TEXT TỔNG HỢP**
     - Nếu khách đặt nhiều xe trong 1 tin nhắn, tách thành các object riêng biệt cho từng chuyến.
 
-    **QUY TẮC 3: CHUẨN HÓA KHỐI LƯỢNG & THỂ TÍCH**
-    - Số lớn đứng độc lập (VD: 35,000) là khối lượng (KG). Bỏ dấu phẩy -> 35000.
-    - Gặp "T", "TAN", "TẤN" -> Nhân 1000. 
-    - Thể tích (CBM/KHỐI): Lấy chính xác phần số.
+    **QUY TẮC 3: CHUẨN HÓA KHỐI LƯỢNG BOOK XE (QUAN TRỌNG NHẤT)**
+    - NẾU TRONG BẢNG CÓ CỘT "OUT SIDE TRUCK" (Hoặc quy định xe mấy Tấn): Khối lượng book xe (`khoi_luong_kg`) BẮT BUỘC phải được tính ra số KG từ số Tấn của xe đó (Ví dụ: "OUT SIDE TRUCK 1T" -> 1000, "OUT SIDE TRUCK 8T" -> 8000, "2.5T" -> 2500). 
+    - Các con số lớn ở cột khác (VD: 16717, 35000, 200, 703) chỉ là số lượng lượng hàng hóa, TUYỆT ĐỐI KHÔNG lấy làm `khoi_luong_kg`. Hãy đưa các số này vào `ghi_chu` (VD: "Số lượng hàng: 35000").
+    - CHỈ KHI KHÔNG CÓ cột loại xe, thì mới dùng số đứng độc lập làm `khoi_luong_kg`.
 
     **QUY TẮC 4: TÁCH BIỆT KHO ĐI VÀ KHO ĐẾN (LÀM SẠCH TEXT)**
     - Bắt buộc tách rõ "Địa chỉ kho đi" và "Địa chỉ kho đến". 
@@ -128,8 +128,8 @@ def process_offline_zalo_files():
     - Thời gian (Giờ giấc): Có thể nằm ở cột riêng (VD: "9H") hoặc lẫn trong điểm đến (VD: "16:00", "15:00 PM"). Hãy trích xuất thời gian và đưa vào trường "ghi_chu".
 
     **QUY TẮC 6: XỬ LÝ LOẠI XE YÊU CẦU & Ô BỊ GỘP (MERGED CELLS)**
-    - Nhận diện cột loại xe (thường có chữ "OUT SIDE TRUCK"). CHỈ LẤY SỐ TẤN (VD: "OUT SIDE TRUCK 1T" -> "1T").
-    - NẾU Ô LOẠI XE BỊ GỘP (dùng chung cho nhiều dòng bên trái): BẮT BUỘC tạo các chuyến xe riêng biệt cho từng dòng điểm đến, và GÁN CHUNG loại xe đó cho tất cả các chuyến này.
+    - Nhận diện cột loại xe (thường có chữ "OUT SIDE TRUCK"). CHỈ LẤY SỐ TẤN cho trường `loai_xe_yeu_cau` (VD: "OUT SIDE TRUCK 1T" -> "1T").
+    - NẾU Ô LOẠI XE BỊ GỘP (dùng chung cho nhiều dòng bên trái): BẮT BUỘC tạo các chuyến xe riêng biệt cho từng dòng điểm đến. GÁN CHUNG loại xe đó, VÀ GÁN CHUNG CẢ `khoi_luong_kg` quy đổi của xe đó cho tất cả các chuyến này.
 
     **SCHEMA JSON YÊU CẦU ĐẦU RA:**
     {{
@@ -142,7 +142,7 @@ def process_offline_zalo_files():
                 "khoi_luong_kg": Số thực,
                 "the_tich_cbm": Số thực,
                 "loai_xe_yeu_cau": "Số tấn (VD: 1T, 8T)",
-                "ghi_chu": "Chi tiết giờ giấc (VD: 9H, 16:00), tên xưởng..."
+                "ghi_chu": "Chi tiết giờ giấc (VD: 9H, 16:00), Số lượng hàng..."
             }}
         ]
     }}
@@ -269,9 +269,7 @@ def process_offline_zalo_files():
         columns_order = ['NGAY_CHAY', 'MA_SO_THUE', 'TEN_KHACH_HANG', 'DIA_CHI_KHO_DI', 'DIA_CHI_KHO_DEN', 'KHOI_LUONG_KG', 'THE_TICH_CBM', 'LOAI_XE_YEU_CAU', 'GHI_CHU']
         df_export = df_export[columns_order]
 
-        # 3. Sắp xếp lại thứ tự cột chuẩn xác
-        columns_order = ['NGAY_CHAY', 'MA_SO_THUE', 'TEN_KHACH_HANG', 'DIA_CHI_KHO_DI', 'DIA_CHI_KHO_DEN', 'KHOI_LUONG_KG', 'THE_TICH_CBM', 'GHI_CHU']
-        df_export = df_export[columns_order]
+        
         
         # 4. KHÔNG GỘP DỮ LIỆU - PHIÊN NÀO KẾT THÚC PHIÊN ĐÓ
         if os.path.exists(EXCEL_FILE):
@@ -422,7 +420,7 @@ def main_app():
             st.markdown("<br>", unsafe_allow_html=True)
             
             # Nút thủ công (dành cho trường hợp thấy data bị sai, muốn hủy bỏ)
-            if st.button("❌ Dữ liệu bóc tách bị sai - Xóa trắng để quét lại", type="secondary", use_container_width=True):
+            if st.button("❌ Xóa trắng để quét lại", type="secondary", use_container_width=True):
                 da_tai_xong = True # Ép chạy logic xóa bên dưới
                 
             # NẾU NGƯỜI DÙNG ĐÃ BẤM TẢI XONG (HOẶC BẤM HỦY) -> LẬP TỨC DỌN SẠCH HỆ THỐNG
