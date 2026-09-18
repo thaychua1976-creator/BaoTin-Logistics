@@ -261,33 +261,21 @@ def process_offline_zalo_files():
         columns_order = ['NGAY_CHAY', 'MA_SO_THUE', 'TEN_KHACH_HANG', 'DIA_CHI_KHO_DI', 'DIA_CHI_KHO_DEN', 'KHOI_LUONG_KG', 'THE_TICH_CBM', 'GHI_CHU']
         df_export = df_export[columns_order]
         
-        # 4. GỘP DỮ LIỆU VÀ QUẢN LÝ QUA NGÀY
+        # 4. KHÔNG GỘP DỮ LIỆU - PHIÊN NÀO KẾT THÚC PHIÊN ĐÓ
         if os.path.exists(EXCEL_FILE):
-            # Kiểm tra ngày chỉnh sửa cuối cùng của file
-            file_mod_date = datetime.fromtimestamp(os.path.getmtime(EXCEL_FILE)).date()
-            
-            if file_mod_date == today_date:
-                # Nếu cùng ngày hôm nay: Đọc file cũ, gộp với data mới và xóa trùng lặp
-                try:
-                    dict_df_old = pd.read_excel(EXCEL_FILE, sheet_name=None)
-                    df_old = pd.concat(dict_df_old.values(), ignore_index=True)
-                    df_export = pd.concat([df_old, df_export], ignore_index=True)
-                    df_export = df_export.drop_duplicates() # Chống trùng nếu vô tình quét lại 1 ảnh 2 lần
-                except Exception:
-                    pass
-            else:
-                # Nếu là file tồn đọng từ hôm qua: Xóa để tạo file mới tinh cho ngày hôm nay
-                try: os.remove(EXCEL_FILE)
-                except: pass
+            try: 
+                os.remove(EXCEL_FILE)
+            except Exception: 
+                pass
         
-        # 5. Ghi đè file Excel (đã chứa toàn bộ data gộp), chia sheet theo ngày chạy
+        # 5. Ghi đè file Excel mới tinh (Chỉ chứa data của lần quét hiện tại)
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
             grouped = df_export.groupby('NGAY_CHAY')
             for date_str, group_df in grouped:
                 sheet_name = str(date_str).split('T')[0][:31]
                 group_df.to_excel(writer, sheet_name=sheet_name, index=False)
                 
-        return {"status": "success", "message": f"✅ Đã lưu/cộng dồn {len(valid_records)} chuyến xe vào Excel. Dữ liệu sẽ tự reset vào ngày mai.", "unprocessed": unprocessed_files}
+        return {"status": "success", "message": f"✅ Đã lưu {len(valid_records)} chuyến xe vào Excel. File sẽ tự động xóa sau khi bạn tải về.", "unprocessed": unprocessed_files}
     
     return {"status": "warning", "message": "⚠️ Không tìm thấy dữ liệu hợp lệ.", "unprocessed": unprocessed_files}
 def main_app():
@@ -386,42 +374,57 @@ def main_app():
                     for f in result["unprocessed"]:
                         st.markdown(f"- `{f}`")
 
+        
     st.markdown("---")
     st.subheader("📥 Tải kết quả tổng hợp")
     
     if os.path.exists(EXCEL_FILE):
-        with open(EXCEL_FILE, "rb") as file:
-            file_bytes = file.read()
+        try:
+            # 1. Đọc lại file Excel hệ thống vừa xuất ra để cho người dùng xem trước
+            df_preview = pd.read_excel(EXCEL_FILE)
             
-        st.download_button(
-            label="⬇️ Tải file Danh_Sach_Book_Xe_Tong_Hop.xlsx",
-            data=file_bytes,
-            file_name="Danh_Sach_Book_Xe_Tong_Hop.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
-            use_container_width=True
-        )
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # 📌 NÚT XÓA TRẮNG TOÀN BỘ PHIÊN LÀM VIỆC VÀ GIAO DIỆN UPLOAD
-        if st.button("🧹 Hoàn tất tải xuống / Xoá trắng form cho phiên mới", type="secondary", use_container_width=True):
-            # 1. Xóa file Excel tổng hợp
-            try:
-                if os.path.exists(EXCEL_FILE):
-                    os.remove(EXCEL_FILE)
-            except Exception:
-                pass
+            st.markdown("##### 👁️‍🗨️ XEM TRƯỚC DỮ LIỆU ĐÃ BÓC TÁCH (PREVIEW)")
+            st.info("Vui lòng kiểm tra kỹ các cột Ngày, Khách hàng, Điểm đi/đến, và Tải trọng trước khi lưu về máy.")
+            st.dataframe(df_preview, use_container_width=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # 2. Xử lý nút Tải về
+            with open(EXCEL_FILE, "rb") as file:
+                file_bytes = file.read()
                 
-            # 2. Xóa toàn bộ file ảnh/txt trong thư mục zalo_downloads và làm sạch thư mục rỗng
-            deleted_files = clear_files_only()
+            # Gán biến da_tai_xong để bắt sự kiện click của người dùng
+            da_tai_xong = st.download_button(
+                label="✅ TÔI XÁC NHẬN DỮ LIỆU ĐÚNG - TẢI XUỐNG NGAY",
+                data=file_bytes,
+                file_name=f"Book_Xe_{datetime.now().strftime('%H%M%S_%d%m%Y')}.xlsx", 
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                use_container_width=True
+            )
             
-            # 3. Tăng bộ đếm form key để ép Streamlit tạo mới hoàn toàn các widget (làm trống file_uploader)
-            st.session_state["zalo_form_reset_key"] += 1
+            st.markdown("<br>", unsafe_allow_html=True)
             
-            st.success(f"✅ Đã dọn sạch {deleted_files} file rác, xóa file Excel kết quả và làm mới hoàn toàn giao diện cho phiên mới!")
-            time.sleep(1.2)
-            st.rerun()
+            # Nút thủ công (dành cho trường hợp thấy data bị sai, muốn hủy bỏ)
+            if st.button("❌ Dữ liệu bóc tách bị sai - Xóa trắng để quét lại", type="secondary", use_container_width=True):
+                da_tai_xong = True # Ép chạy logic xóa bên dưới
+                
+            # NẾU NGƯỜI DÙNG ĐÃ BẤM TẢI XONG (HOẶC BẤM HỦY) -> LẬP TỨC DỌN SẠCH HỆ THỐNG
+            if da_tai_xong:
+                try:
+                    if os.path.exists(EXCEL_FILE):
+                        os.remove(EXCEL_FILE)
+                except Exception: pass
+                
+                clear_files_only() # Xóa luôn các ảnh Zalo đầu vào
+                
+                st.session_state["zalo_form_reset_key"] += 1
+                st.toast("🎉 Đã tải xong! Hệ thống đã tự động dọn sạch file rác của phiên làm việc này.")
+                time.sleep(1.5)
+                st.rerun()
+                
+        except Exception as e:
+            st.error(f"Lỗi hiển thị dữ liệu Preview: {e}")
     else:
         st.info("Chưa có dữ liệu Excel nào được xuất ra trên hệ thống.")
 if __name__ == "__main__":
