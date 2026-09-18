@@ -104,7 +104,7 @@ def process_offline_zalo_files():
     valid_records = []
     unprocessed_files = [] 
     
-    # [CẬP NHẬT] Prompt mới: Loại bỏ Quy tắc lấy tên/MST để AI tập trung tách lộ trình
+    # [CẬP NHẬT] Prompt mới: Lồng ghép quy tắc xử lý bảng hàng AIR, ô gộp và làm sạch "closing time"
     prompt = f"""
     Bạn là chuyên gia phân tích dữ liệu Logistics. Nhiệm vụ: Chuyển đổi văn bản thành mảng JSON chứa các chuyến đi độc lập.
 
@@ -119,11 +119,17 @@ def process_offline_zalo_files():
     - Gặp "T", "TAN", "TẤN" -> Nhân 1000. 
     - Thể tích (CBM/KHỐI): Lấy chính xác phần số.
 
-    **QUY TẮC 4: TÁCH BIỆT KHO ĐI VÀ KHO ĐẾN**
-    - Bắt buộc tách rõ "Địa chỉ kho đi" và "Địa chỉ kho đến". Không được gộp chung.
+    **QUY TẮC 4: TÁCH BIỆT KHO ĐI VÀ KHO ĐẾN (LÀM SẠCH TEXT)**
+    - Bắt buộc tách rõ "Địa chỉ kho đi" và "Địa chỉ kho đến". 
+    - ĐẶC BIỆT: Loại bỏ các từ dư thừa như "closing time", "CLOSING TIME T7" khỏi Điểm đến. Chỉ lấy tên địa danh cốt lõi (VD: "PHU HUU closing time 16:00" -> "PHU HUU", "AIR CC - KHO SCSC (CLOSING TIME T7)" -> "AIR CC - KHO SCSC").
 
-    **QUY TẮC 5: XỬ LÝ NGÀY THÁNG**
-    - "Sáng mai", "mai" -> {tomorrow_str}. "Hôm nay", "tối nay" -> {today_str}.
+    **QUY TẮC 5: XỬ LÝ NGÀY THÁNG VÀ THỜI GIAN**
+    - Ngày đi: "Sáng mai", "mai" -> {tomorrow_str}. "Hôm nay", "tối nay" -> {today_str}.
+    - Thời gian (Giờ giấc): Có thể nằm ở cột riêng (VD: "9H") hoặc lẫn trong điểm đến (VD: "16:00", "15:00 PM"). Hãy trích xuất thời gian và đưa vào trường "ghi_chu".
+
+    **QUY TẮC 6: XỬ LÝ LOẠI XE YÊU CẦU & Ô BỊ GỘP (MERGED CELLS)**
+    - Nhận diện cột loại xe (thường có chữ "OUT SIDE TRUCK"). CHỈ LẤY SỐ TẤN (VD: "OUT SIDE TRUCK 1T" -> "1T").
+    - NẾU Ô LOẠI XE BỊ GỘP (dùng chung cho nhiều dòng bên trái): BẮT BUỘC tạo các chuyến xe riêng biệt cho từng dòng điểm đến, và GÁN CHUNG loại xe đó cho tất cả các chuyến này.
 
     **SCHEMA JSON YÊU CẦU ĐẦU RA:**
     {{
@@ -132,10 +138,11 @@ def process_offline_zalo_files():
             {{
                 "ngay_chuyen_di": "YYYY-MM-DD",
                 "dia_chi_kho_di": "Địa điểm xuất phát",
-                "dia_chi_kho_den": "Điểm giao hàng",
+                "dia_chi_kho_den": "Điểm giao hàng (Đã lọc closing time)",
                 "khoi_luong_kg": Số thực,
                 "the_tich_cbm": Số thực,
-                "ghi_chu": "Chi tiết giờ giấc, tên xưởng..."
+                "loai_xe_yeu_cau": "Số tấn (VD: 1T, 8T)",
+                "ghi_chu": "Chi tiết giờ giấc (VD: 9H, 16:00), tên xưởng..."
             }}
         ]
     }}
@@ -241,8 +248,8 @@ def process_offline_zalo_files():
         df_new['ngay_chuyen_di'] = df_new.get('ngay_chuyen_di', 'Khong_Xac_Dinh').fillna('Khong_Xac_Dinh').astype(str)
         
         # 1. Bổ sung các cột bị thiếu (nếu AI không trích xuất được để tránh lỗi code)
-        # 1. Bổ sung các cột bị thiếu
-        for col in ['ma_so_thue', 'ten_khach_hang', 'dia_chi_kho_di', 'dia_chi_kho_den', 'khoi_luong_kg', 'the_tich_cbm', 'ghi_chu']:
+        # 1. Bổ sung các cột bị thiếu (bao gồm cả cột loai_xe_yeu_cau mới)
+        for col in ['ma_so_thue', 'ten_khach_hang', 'dia_chi_kho_di', 'dia_chi_kho_den', 'khoi_luong_kg', 'the_tich_cbm', 'loai_xe_yeu_cau', 'ghi_chu']:
             if col not in df_new.columns: df_new[col] = ""
 
         # 2. Đổi tên cột cho khớp với file mẫu
@@ -254,8 +261,13 @@ def process_offline_zalo_files():
             'dia_chi_kho_den': 'DIA_CHI_KHO_DEN',
             'khoi_luong_kg': 'KHOI_LUONG_KG',
             'the_tich_cbm': 'THE_TICH_CBM',
+            'loai_xe_yeu_cau': 'LOAI_XE_YEU_CAU',
             'ghi_chu': 'GHI_CHU'
         })
+
+        # 3. Sắp xếp lại thứ tự cột chuẩn xác
+        columns_order = ['NGAY_CHAY', 'MA_SO_THUE', 'TEN_KHACH_HANG', 'DIA_CHI_KHO_DI', 'DIA_CHI_KHO_DEN', 'KHOI_LUONG_KG', 'THE_TICH_CBM', 'LOAI_XE_YEU_CAU', 'GHI_CHU']
+        df_export = df_export[columns_order]
 
         # 3. Sắp xếp lại thứ tự cột chuẩn xác
         columns_order = ['NGAY_CHAY', 'MA_SO_THUE', 'TEN_KHACH_HANG', 'DIA_CHI_KHO_DI', 'DIA_CHI_KHO_DEN', 'KHOI_LUONG_KG', 'THE_TICH_CBM', 'GHI_CHU']
@@ -350,7 +362,7 @@ def main_app():
                 st.success(f"✅ Đã tải lên thành công {saved_count} file vào nhóm `{group_name_input}`.")
                 
                 # [CẬP NHẬT 3]: Tăng biến đếm và load lại trang để xóa hoàn toàn file trên UI
-                import time
+               
                 time.sleep(1.2)
                 st.session_state["zalo_form_reset_key"] += 1
                 st.rerun()
