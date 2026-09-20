@@ -68,7 +68,16 @@ def main():
         return
 
     print("📖 Bước 1: Đọc dữ liệu từ Excel...")
-    df = pd.read_excel(file_path, sheet_name='Sheet1', header=4)
+    df = pd.read_excel(
+    file_path, 
+    sheet_name='Sheet1', 
+    header=4,
+    dtype={
+        'CCCD': str, 
+        'GPLX': str,
+        'SĐT': str  # Nếu có cột SĐT bạn cũng nên thêm vào đây
+    }
+)
     # BƯỚC QUAN TRỌNG: Làm sạch tên cột ngay sau khi đọc
     # Loại bỏ khoảng trắng thừa hai đầu, chuyển hết thành chữ hoa
     df.columns = [str(c).strip().upper() for c in df.columns]

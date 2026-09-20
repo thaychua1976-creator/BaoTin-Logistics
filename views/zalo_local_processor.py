@@ -104,32 +104,33 @@ def process_offline_zalo_files():
     valid_records = []
     unprocessed_files = [] 
     
-    ## [CẬP NHẬT] Prompt mới: Chốt chặt logic quy đổi Khối lượng từ chữ OUT SIDE TRUCK
+    # [CẬP NHẬT] Prompt mới: Gộp các điểm đến của ô merge thành 1 chuyến duy nhất và sửa lỗi nhận diện 1T
     prompt = f"""
     Bạn là chuyên gia phân tích dữ liệu Logistics. Nhiệm vụ: Chuyển đổi văn bản thành mảng JSON chứa các chuyến đi độc lập.
 
     **QUY TẮC 1: BÓC TÁCH DỮ LIỆU DẠNG BẢNG**
-    - Mỗi dòng ngang tương ứng với 1 chuyến xe. 
+    - Mỗi dòng ngang tương ứng với 1 chuyến xe, TRỪ KHI có ô bị gộp (Merged Cells) ở cột loại xe.
 
     **QUY TẮC 2: BÓC TÁCH CHUỖI TEXT TỔNG HỢP**
     - Nếu khách đặt nhiều xe trong 1 tin nhắn, tách thành các object riêng biệt cho từng chuyến.
 
     **QUY TẮC 3: CHUẨN HÓA KHỐI LƯỢNG BOOK XE (QUAN TRỌNG NHẤT)**
     - NẾU TRONG BẢNG CÓ CỘT "OUT SIDE TRUCK" (Hoặc quy định xe mấy Tấn): Khối lượng book xe (`khoi_luong_kg`) BẮT BUỘC phải được tính ra số KG từ số Tấn của xe đó (Ví dụ: "OUT SIDE TRUCK 1T" -> 1000, "OUT SIDE TRUCK 8T" -> 8000, "2.5T" -> 2500). 
-    - Các con số lớn ở cột khác (VD: 16717, 35000, 200, 703) chỉ là số lượng lượng hàng hóa, TUYỆT ĐỐI KHÔNG lấy làm `khoi_luong_kg`. Hãy đưa các số này vào `ghi_chu` (VD: "Số lượng hàng: 35000").
+    - Các con số lớn ở cột khác (VD: 16717, 35000, 200, 703) chỉ là số lượng hàng hóa, TUYỆT ĐỐI KHÔNG lấy làm `khoi_luong_kg`. Hãy đưa các số này vào `ghi_chu` (VD: "Số lượng hàng: 35000").
     - CHỈ KHI KHÔNG CÓ cột loại xe, thì mới dùng số đứng độc lập làm `khoi_luong_kg`.
 
     **QUY TẮC 4: TÁCH BIỆT KHO ĐI VÀ KHO ĐẾN (LÀM SẠCH TEXT)**
     - Bắt buộc tách rõ "Địa chỉ kho đi" và "Địa chỉ kho đến". 
-    - ĐẶC BIỆT: Loại bỏ các từ dư thừa như "closing time", "CLOSING TIME T7" khỏi Điểm đến. Chỉ lấy tên địa danh cốt lõi (VD: "PHU HUU closing time 16:00" -> "PHU HUU", "AIR CC - KHO SCSC (CLOSING TIME T7)" -> "AIR CC - KHO SCSC").
+    - ĐẶC BIỆT: Loại bỏ các từ dư thừa như "closing time", "CLOSING TIME T7" khỏi Điểm đến. Chỉ lấy tên địa danh cốt lõi.
 
     **QUY TẮC 5: XỬ LÝ NGÀY THÁNG VÀ THỜI GIAN**
     - Ngày đi: "Sáng mai", "mai" -> {tomorrow_str}. "Hôm nay", "tối nay" -> {today_str}.
-    - Thời gian (Giờ giấc): Có thể nằm ở cột riêng (VD: "9H") hoặc lẫn trong điểm đến (VD: "16:00", "15:00 PM"). Hãy trích xuất thời gian và đưa vào trường "ghi_chu".
+    - Thời gian (Giờ giấc): Có thể nằm ở cột riêng (VD: "9H") hoặc lẫn trong điểm đến. Hãy trích xuất thời gian và đưa vào trường "ghi_chu".
 
-    **QUY TẮC 6: XỬ LÝ LOẠI XE YÊU CẦU & Ô BỊ GỘP (MERGED CELLS)**
-    - Nhận diện cột loại xe (thường có chữ "OUT SIDE TRUCK"). CHỈ LẤY SỐ TẤN cho trường `loai_xe_yeu_cau` (VD: "OUT SIDE TRUCK 1T" -> "1T").
-    - NẾU Ô LOẠI XE BỊ GỘP (dùng chung cho nhiều dòng bên trái): BẮT BUỘC tạo các chuyến xe riêng biệt cho từng dòng điểm đến. GÁN CHUNG loại xe đó, VÀ GÁN CHUNG CẢ `khoi_luong_kg` quy đổi của xe đó cho tất cả các chuyến này.
+    **QUY TẮC 6: XỬ LÝ LOẠI XE YÊU CẦU & Ô BỊ GỘP (MERGED CELLS) - RẤT QUAN TRỌNG**
+    - Nhận diện cột loại xe (thường có chữ "OUT SIDE TRUCK"). Đọc thật cẩn thận số Tấn (VD: "1T" là 1 Tấn, tuyệt đối không được đọc nhầm thành "11T"). CHỈ LẤY SỐ TẤN cho trường `loai_xe_yeu_cau` (VD: "1T", "8T").
+    - NẾU Ô LOẠI XE BỊ GỘP (dùng chung cho nhiều dòng bên trái, VD: 3 điểm đến sân bay dùng chung 1 xe 1T): BẮT BUỘC CHỈ TẠO 1 CHUYẾN XE DUY NHẤT đại diện cho khối này. 
+    - Hãy gộp tên của tất cả các điểm đến trong khối đó thành một chuỗi (VD: "AIR CC HỜ, AIR CC - KHO SCSC, TCS- AIR CC") và đưa vào trường `dia_chi_kho_den` (và có thể nhắc lại trong `ghi_chu`). Gán khối lượng `khoi_luong_kg` quy đổi tương ứng với chiếc xe dùng chung đó.
 
     **SCHEMA JSON YÊU CẦU ĐẦU RA:**
     {{
@@ -138,11 +139,11 @@ def process_offline_zalo_files():
             {{
                 "ngay_chuyen_di": "YYYY-MM-DD",
                 "dia_chi_kho_di": "Địa điểm xuất phát",
-                "dia_chi_kho_den": "Điểm giao hàng (Đã lọc closing time)",
+                "dia_chi_kho_den": "Điểm giao hàng (Gộp chuỗi nếu 1 xe giao nhiều điểm)",
                 "khoi_luong_kg": Số thực,
                 "the_tich_cbm": Số thực,
                 "loai_xe_yeu_cau": "Số tấn (VD: 1T, 8T)",
-                "ghi_chu": "Chi tiết giờ giấc (VD: 9H, 16:00), Số lượng hàng..."
+                "ghi_chu": "Chi tiết giờ giấc, Số lượng hàng, Các điểm đến gộp..."
             }}
         ]
     }}

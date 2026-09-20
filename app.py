@@ -1,369 +1,270 @@
 import streamlit as st
-import sys,time
+import sys, time
 import pandas as pd
 import bcrypt
 
-# =====================================================================
-# BƯỚC 1: KHỞI TẠO PAGE CONFIG (BẮT BUỘC ĐỂ ĐẦU TIÊN)
-# =====================================================================
-st.set_page_config(
-    page_title="HỆ THỐNG QUẢN LÝ LOGISTICS BẢO TÍN",
-    page_icon="🚚", 
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-
-# =====================================================================
-# BƯỚC 2: CSS TÙY CHỈNH GIAO DIỆN (ĐÃ NÂNG CẤP MENU & TRÀN MÀN HÌNH)
-# =====================================================================
-st.markdown("""
-    <style>
-        /* ===================================================== */
-        /* CSS ÉP TRÀN MÀN HÌNH VÀ BỎ KHOẢNG TRẮNG PHÍA TRÊN */
-        /* ===================================================== */
-        .block-container {
-            padding-top: 2.5rem !important;
-            padding-bottom: 1rem !important;
-            padding-left: 1rem !important;
-            padding-right: 1rem !important;
-            max-width: 98% !important;
+def show_page():
+    # 1. Hàm tùy chỉnh CSS giao diện
+    def apply_custom_appearance():
+        custom_css = """
+        <style>
+        button, input, select {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
         }
-        
-        [data-testid="stAppViewBlockContainer"] {
-            padding-top: 2.5rem !important;
-        }
+        </style>
+        """
+        st.markdown(custom_css, unsafe_allow_html=True)
 
-        /* Ẩn dòng chữ hướng dẫn Press Enter to submit */
-        div[data-testid="InputInstructions"] {
-            display: none !important;
-            visibility: hidden !important;
-        }
+    apply_custom_appearance()
 
-        /* Thiết lập thanh Sidebar */
-        [data-testid="stSidebar"] {
-            background-color: #f8fafc !important; 
-            border-right: 2px solid #e2e8f0;
-            min-width: 330px !important; 
-            max-width: 330px !important;
-        }
-
-        /* ===================================================== */
-        /* CSS PHÂN CẤP MENU: MỤC CHÍNH CHỮ NỔI, MỤC CON LÙI VÀO */
-        /* ===================================================== */
-        
-        /* 1. Tiêu đề Mục chính (Category Headers - Cài đặt mặc định) */
-        [data-testid="stSidebarNav"] span[data-testid="stSidebarNavSeparator"] + span,
-        [data-testid="stSidebarNav"] ul li div {
-            font-size: 16px !important;
-            font-weight: 800 !important;
-            color: #0b5394 !important;
-            text-transform: uppercase !important;
-            letter-spacing: 0.5px !important;
-            padding-bottom: 5px;
-            margin-top: 15px;
-            border-bottom: 2px solid #cbd5e1;
-        }
-        
-        /* 1.1 TÙY CHỈNH RIÊNG CHO MỤC "DANH MỤC QUẢN TRỊ" */
-        [data-testid="stSidebarNav"] > ul > li:nth-child(2) > div {
-            color: #d32f2f !important; 
-            font-size: 17px !important;
-            text-shadow: 1px 1px 0 #999, 
-                         2px 2px 0 #777, 
-                         3px 3px 2px rgba(0,0,0,0.4) !important; 
-            border-bottom: 2px solid #d32f2f !important;
-            padding-bottom: 8px !important;
-            margin-top: 25px !important;
-        }
-
-        /* 2. Mục con (Sub-items - Các trang chức năng) - Lùi vào trong */
-        [data-testid="stSidebarNav"] ul li ul li {
-            margin-left: 25px !important; 
-            border-left: 2px solid #e2e8f0;
-        }
-
-        /* 3. Định dạng chữ của Mục con */
-        [data-testid="stSidebarNav"] ul li ul li a span {
-            font-size: 16px !important; 
-            font-weight: 600 !important;  
-            color: #334155 !important;
-            text-transform: none !important;
-            border-bottom: none !important;
-            margin-top: 0px !important;
-        }
-
-        /* Hiệu ứng Hover cho Mục con */
-        [data-testid="stSidebarNav"] ul li ul li:hover {
-            background-color: #e2e8f0 !important; 
-            border-left: 3px solid #0b5394 !important;
-            border-radius: 0 6px 6px 0;
-            transition: all 0.2s ease-in-out; 
-        }
-        
-        /* Khi Mục con đang được chọn (Active) */
-        [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] {
-            background-color: #dbeafe !important;
-            border-left: 3px solid #0b5394 !important;
-        }
-        [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] a span {
-            color: #0b5394 !important;
-            font-weight: 800 !important;
-        }
-
-        /* Định dạng nút bấm trong Sidebar */
-        [data-testid="stSidebar"] .stButton button {
-            width: 100%;
-            font-size: 15px !important;
-            font-weight: bold !important;
-            border-radius: 6px !important;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-# =====================================================================
-# BƯỚC 3: TIÊU ĐỀ TRANG CHỦ & KHỞI TẠO DATABASE
-# =====================================================================
-
-   #<h1 style='text-align: center; color: #0b5394; font-family: "Segoe UI", Arial, sans-serif; font-weight: 800; font-size: 34px; letter-spacing: 1px;'>
-   #            🚚 HỆ THỐNG QUẢN LÝ LOGISTICS BẢO TÍN
-   #</h1> 
-   # <p style='text-align: center; color: #64748b; font-size: 15px; font-weight: 500; margin-top: 5px; margin-bottom: 15px;'>
-   #             Trung tâm điều hành vận tải đường bộ • Dữ liệu số hóa thời gian thực
-   #<hr style='border: 0; height: 2px; background-image: linear-gradient(to right, rgba(11, 83, 148, 0), rgba(11, 83, 148, 0.75), rgba(11, 83, 148, 0));'>
-   # </p>
-
-if 'db_config' in sys.modules:
-    del sys.modules['db_config']
-
-@st.cache_resource
-def init_database_pool():
-    from db_config import Database
-    return Database()
-
-
-
-db = init_database_pool()
-st.session_state['db'] = db
-# Khởi tạo ngay sau khi có db_pool
-
-
-# =====================================================================
-# BƯỚC 4: XỬ LÝ TRẠNG THÁI ĐĂNG NHẬP (GIAO DIỆN & LOGIC)
-# =====================================================================
-if 'logged_in' not in st.session_state:
-    st.session_state['logged_in'] = False
-
-# Khởi tạo trạng thái ẩn/hiện mật khẩu
-if 'hien_mat_khau' not in st.session_state:
-    st.session_state['hien_mat_khau'] = False
-
-def toggle_password():
-    st.session_state['hien_mat_khau'] = not st.session_state['hien_mat_khau']
-
-if not st.session_state['logged_in']:
-    st.markdown("<h3 style='text-align: center;'>🔐 ĐĂNG NHẬP HỆ THỐNG</h3>", unsafe_allow_html=True)
-    
-    col_l1, col_l2, col_l3 = st.columns([1, 1, 1])
-    with col_l2:
-        # Hàm callback kích hoạt trạng thái đăng nhập khi người dùng ấn Enter
-        def trigger_login():
-            st.session_state['do_login'] = True
-
-        # không gắn Gắn sự kiện on_change:on_change=trigger_login để ấn Enter ở ô Tên đăng nhập cũng tự động gửi: vì sẽ gửi khi chưa điền pass
-        username = st.text_input("Tên đăng nhập", autocomplete="off")
-        
-        # CĂN CHỈNH ĐÁY: Dùng vertical_alignment="bottom" để nút con mắt tự động nằm bằng ngang với ô nhập mật khẩu
-        col_pw, col_eye = st.columns([9, 2], vertical_alignment="bottom")
-        
-        with col_pw:
-            if not st.session_state['hien_mat_khau']:
-                css_masking = """
-                <style>
-                    input[aria-label="Mật khẩu"] {
-                        -webkit-text-security: disc !important;
-                    }
-                </style>
-                """
-                st.markdown(css_masking, unsafe_allow_html=True)
+    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar
+    st.markdown("""
+        <style>
+            .block-container {
+                padding-top: 1rem !important;
+                padding-bottom: 1rem !important;
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
+                max-width: 98% !important;
+            }
             
-            # Gắn sự kiện on_change để ấn Enter sau khi nhập xong mật khẩu
-            password = st.text_input("Mật khẩu", autocomplete="off", on_change=trigger_login)
+            [data-testid="stAppViewBlockContainer"] {
+                padding-top: 1rem !important;
+            }
+
+            div[data-testid="InputInstructions"] {
+                display: none !important;
+                visibility: hidden !important;
+            }
+
+            [data-testid="stSidebar"] {
+                background-color: #f8fafc !important; 
+                border-right: 2px solid #e2e8f0;
+                min-width: 330px !important; 
+                max-width: 330px !important;
+            }
+
+            [data-testid="stSidebarNav"] span[data-testid="stSidebarNavSeparator"] + span,
+            [data-testid="stSidebarNav"] ul li div {
+                font-size: 16px !important;
+                font-weight: 800 !important;
+                color: #0b5394 !important;
+                text-transform: uppercase !important;
+                letter-spacing: 0.5px !important;
+                padding-bottom: 5px;
+                margin-top: 15px;
+                border-bottom: 2px solid #cbd5e1;
+            }
             
-        with col_eye:
-            icon = "👁️‍🗨️" if st.session_state['hien_mat_khau'] else "👁️"
-            st.button(icon, on_click=toggle_password, help="Ẩn/Hiện mật khẩu", use_container_width=True)
+            [data-testid="stSidebarNav"] > ul > li:nth-child(2) > div {
+                color: #d32f2f !important; 
+                font-size: 17px !important;
+                border-bottom: 2px solid #d32f2f !important;
+                padding-bottom: 8px !important;
+                margin-top: 25px !important;
+            }
+
+            [data-testid="stSidebarNav"] ul li ul li {
+                margin-left: 25px !important; 
+                border-left: 2px solid #e2e8f0;
+            }
+
+            [data-testid="stSidebarNav"] ul li ul li a span {
+                font-size: 16px !important; 
+                font-weight: 600 !important;  
+                color: #334155 !important;
+                text-transform: none !important;
+                border-bottom: none !important;
+            }
+
+            [data-testid="stSidebarNav"] ul li ul li:hover {
+                background-color: #e2e8f0 !important; 
+                border-left: 3px solid #0b5394 !important;
+                border-radius: 0 6px 6px 0;
+            }
             
-        st.markdown("<br>", unsafe_allow_html=True)
-        submit = st.button("Đăng Nhập", type="primary", use_container_width=True)
+            [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] {
+                background-color: #dbeafe !important;
+                border-left: 3px solid #0b5394 !important;
+            }
+            [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] a span {
+                color: #0b5394 !important;
+                font-weight: 800 !important;
+            }
+
+            [data-testid="stSidebar"] .stButton button {
+                width: 100%;
+                font-size: 15px !important;
+                font-weight: bold !important;
+                border-radius: 6px !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # 3. Khởi tạo Database Pool
+    if 'db_config' in sys.modules:
+        del sys.modules['db_config']
+
+    @st.cache_resource
+    def init_database_pool():
+        from db_config import Database
+        return Database()
+
+    db = init_database_pool()
+    st.session_state['db'] = db
+
+    # 4. Xử lý Trạng thái Đăng nhập
+    if 'logged_in' not in st.session_state:
+        st.session_state['logged_in'] = False
+
+    if 'hien_mat_khau' not in st.session_state:
+        st.session_state['hien_mat_khau'] = False
+
+    def toggle_password():
+        st.session_state['hien_mat_khau'] = not st.session_state['hien_mat_khau']
+
+    if not st.session_state['logged_in']:
+        st.markdown("<h3 style='text-align: center; color: #0B2E9E;'>🔐 ĐĂNG NHẬP HỆ THỐNG ERP BẢO TÍN</h3>", unsafe_allow_html=True)
         
-        # Chấp nhận thao tác Click nút "Đăng Nhập" HOẶC người dùng ấn phím Enter
-        if submit or st.session_state.get('do_login', False):
-            st.session_state['do_login'] = False # Reset lại cờ trạng thái
-            # Thêm hiệu ứng loading và câu thông báo chờ
-            with st.spinner("Bạn vui lòng đợi tí, hệ thống đang tiến hành xác minh người sử dụng..."):
-                # Thêm import time (nếu trên đầu file chưa có) để tạo chút độ trễ ảo giúp người dùng kịp đọc thông báo (tùy chọn)
+        col_l1, col_l2, col_l3 = st.columns([1, 1, 1])
+        with col_l2:
+            def trigger_login():
+                st.session_state['do_login'] = True
+
+            username = st.text_input("Tên đăng nhập", autocomplete="off")
+            
+            col_pw, col_eye = st.columns([9, 2], vertical_alignment="bottom")
+            
+            with col_pw:
+                if not st.session_state['hien_mat_khau']:
+                    css_masking = """
+                    <style>
+                        input[aria-label="Mật khẩu"] {
+                            -webkit-text-security: disc !important;
+                        }
+                    </style>
+                    """
+                    st.markdown(css_masking, unsafe_allow_html=True)
                 
-                time.sleep(1)
+                password = st.text_input("Mật khẩu", autocomplete="off", on_change=trigger_login)
+                
+            with col_eye:
+                icon = "👁️‍🗨️" if st.session_state['hien_mat_khau'] else "👁️"
+                st.button(icon, on_click=toggle_password, help="Ẩn/Hiện mật khẩu", use_container_width=True)
+                
+            #st.markdown("<br>", unsafe_allow_html=True)
+            #submit = st.button("Đăng Nhập", type="primary", use_container_width=True)
+            st.markdown("<br>", unsafe_allow_html=True)
             
-            # Truy vấn dữ liệu từ database
-            sql = "SELECT id, role, password, nhan_vien_id, ho_ten FROM users WHERE username = %s"
-            result = db.execute_query(sql, (username,))
-            
-            if isinstance(result, pd.DataFrame) and not result.empty:
-                hashed_password_db = result.iloc[0]['password']
-                try:
-                    is_correct = bcrypt.checkpw(
-                        password.encode('utf-8'), 
-                        hashed_password_db.encode('utf-8')
-                    )
-                except ValueError:
-                    is_correct = False
-                    
-                if is_correct:
-                    st.session_state['logged_in'] = True
-                    st.session_state['username'] = username
-                    st.session_state['role'] = result.iloc[0]['role']
-                    st.session_state['nhan_vien_id'] = result.iloc[0]['nhan_vien_id'] 
-                    # Lưu trữ Tên Hiển Thị (Họ tên) vào Session State
-                    st.session_state['ho_ten'] = result.iloc[0]['ho_ten']
-                    
-                    st.success("Đăng nhập thành công! Đang chuyển hướng...") 
-                    time.sleep(0.5) # Dừng 0.5s để hiện câu success trước khi load lại trang
-                    st.rerun() 
+            # Chia 2 nút Đăng nhập & Quay lại để người dùng có thể thoát ra website
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                submit = st.button("Đăng Nhập", type="primary", use_container_width=True)
+            with col_btn2:
+                # Nút xả chốt khóa session để về lại trang chủ
+                if st.button("⬅️ Trở về Website", use_container_width=True):
+                    st.session_state['in_erp'] = False
+                    st.query_params["page"] = "home"
+                    st.rerun()
+            if submit or st.session_state.get('do_login', False):
+                st.session_state['do_login'] = False
+                with st.spinner("Đang xác minh thông tin..."):
+                    time.sleep(0.5)
+                
+                sql = "SELECT id, role, password, nhan_vien_id, ho_ten FROM users WHERE username = %s"
+                result = db.execute_query(sql, (username,))
+                
+                if isinstance(result, pd.DataFrame) and not result.empty:
+                    hashed_password_db = result.iloc[0]['password']
+                    try:
+                        is_correct = bcrypt.checkpw(
+                            password.encode('utf-8'), 
+                            hashed_password_db.encode('utf-8')
+                        )
+                    except ValueError:
+                        is_correct = False
+                        
+                    if is_correct:
+                        st.session_state['logged_in'] = True
+                        st.session_state['username'] = username
+                        st.session_state['role'] = result.iloc[0]['role']
+                        st.session_state['nhan_vien_id'] = result.iloc[0]['nhan_vien_id'] 
+                        st.session_state['ho_ten'] = result.iloc[0]['ho_ten']
+                        
+                        st.success("Đăng nhập thành công!") 
+                        time.sleep(0.5)
+                        st.rerun() 
+                    else:
+                        st.error("❌ Sai mật khẩu!")
                 else:
-                    st.error("❌ Sai mật khẩu!")
-            else:
-                st.error("❌ Tài khoản không tồn tại!")
-else:
-    # =====================================================================
-    # BƯỚC 5: HIỂN THỊ MENU & ROUTING (SAU KHI ĐĂNG NHẬP THÀNH CÔNG)
-    # =====================================================================
-    
-    # Sử dụng `ho_ten` lấy từ cơ sở dữ liệu làm lời chào thay vì `username`
-    ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
-    
-    st.sidebar.markdown(f"""
-        <div style='background-color: #f1f5f9; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 20px; border-left: 5px solid #0b5394; box-shadow: 0 1px 3px rgba(0,0,0,0.05);'>
-            <p style='margin: 0; font-size: 13px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;'>
-                👋 Xin chào,
-            </p>
-            <h4 style='margin: 5px 0 0 0; color: #0b5394; font-weight: 800; font-size: 17px; font-family: "Segoe UI", Arial, sans-serif;'>
-                {ten_hien_thi}
-            </h4>
-            <div style='margin-top: 5px; font-size: 11px; color: #22c55e; font-weight: bold;'>
-                ● Tài khoản đang hoạt động
-            </div>
-        </div>
-    """, unsafe_allow_html=True)   
-
-    # Khai báo đường dẫn đến các trang chức năng
-    page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", default=True)
-    page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝")
-    page_bao_cao   = st.Page("views/bao_cao.py", title="Thông kê lương & Công Nợ KH", icon="📊")
-    page_nhan_vien = st.Page("views/nhan_vien.py", title="Quản lý Nhân viên", icon="🧑‍✈️")
-    page_khach_hang = st.Page("views/khach_hang.py", title="Quản lý Khách hàng", icon="🧑")
-    page_to_khai_hq = st.Page("views/khai_bao_hq.py", title="Khai báo Hải Quan", icon="🧑‍✈️")
-    page_quan_ly_co = st.Page("views/quan_ly_co.py", title="Quản lý CO", icon="🧑‍✈️")
-    page_doi_xe    = st.Page("views/doi_xe.py", title="Quản lý Đội xe", icon="🚛")
-    page_phap_ly_xe    = st.Page("views/phap_ly_xe.py", title="Quản lý pháp lý xe", icon="🚛")
-    page_tai_khoan = st.Page("views/tai_khoan.py", title="Quản lý tài khoản user", icon="👤")
-    page_kinh_doanh_result= st.Page("views/kinh_doanh_result.py", title="Kết quả Kinh doanh", icon="📈")
-    page_app_tai_xe = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", default=True)
-    page_tool_zalo= st.Page("views/zalo_local_processor.py", title=" Lấy thông tin book từ Zalo", icon="🚛")
-    page_tool_import_pricing= st.Page("views/import_pricing_ui_2.py", title=" Thiết lập bảng giá và phụ phí ", icon="📈")
-    page_tool_import_phu_cap= st.Page("views/config_phu_cap.py", title=" Thiết lập phụ cấp Tài xế  ", icon="📈")
-    #page_tool_import_pricing_first= st.Page("views/import_pricing_ui_first.py", title=" Tool Import Pricing First", icon="📈")
-    page_tool_import_pricing_haiquan= st.Page("views/ui_hai_quan.py", title=" Thiết lập bảng giá hải quan ", icon="📈")
-    page_tool_fuel_manager= st.Page("views/fuel_manager_ui.py", title="Quản lý nhiên liệu/Hiệu suất", icon="🚛")
-    page_tool_backup_database= st.Page("views/backup_database.py", title="Backup Database", icon="🚛")
-
-    # Phân quyền (RBAC) cấu trúc danh mục
-    role = st.session_state.get('role', 'User')
-    
-    if role == 'Admin':
-        pages_structure = {
-            "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di,page_to_khai_hq,page_quan_ly_co,page_tool_fuel_manager, page_phap_ly_xe],
-            "📦 NGHIỆP VỤ KẾ TOÁN": [page_quyet_toan, page_bao_cao],
-            "📦 TOOL TIỆN ÍCH": [page_tool_import_pricing,page_tool_import_phu_cap,page_tool_import_pricing_haiquan,page_tool_backup_database, page_tool_zalo],
-            "⚙️ DANH MỤC QUẢN TRỊ": [page_nhan_vien, page_doi_xe,page_khach_hang, page_tai_khoan, page_kinh_doanh_result]
-        }
-    elif role == 'Tai_Xe':
-        pages_structure = {
-            "📱 ỨNG DỤNG TÀI XẾ": [page_app_tai_xe]
-        }
+                    st.error("❌ Tài khoản không tồn tại!")
+    else:
+        # 5. Hiển thị Navigation & Menu ERP khi đã đăng nhập
+        ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
         
-    elif role == 'Ke_Toan':
+        st.sidebar.markdown(f"""
+            <div style='background-color: #f1f5f9; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 20px; border-left: 5px solid #0b5394; box-shadow: 0 1px 3px rgba(0,0,0,0.05);'>
+                <p style='margin: 0; font-size: 13px; color: #64748b; font-weight: bold; text-transform: uppercase;'>
+                    👋 Xin chào,
+                </p>
+                <h4 style='margin: 5px 0 0 0; color: #0b5394; font-weight: 800; font-size: 17px;'>
+                    {ten_hien_thi}
+                </h4>
+                <div style='margin-top: 5px; font-size: 11px; color: #22c55e; font-weight: bold;'>
+                    ● Tài khoản đang hoạt động
+                </div>
+            </div>
+        """, unsafe_allow_html=True)   
+
+        page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", default=True)
+        page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝")
+        page_bao_cao   = st.Page("views/bao_cao.py", title="Thông kê lương & Công Nợ KH", icon="📊")
+        page_nhan_vien = st.Page("views/nhan_vien.py", title="Quản lý Nhân viên", icon="🧑‍✈️")
+        page_khach_hang = st.Page("views/khach_hang.py", title="Quản lý Khách hàng", icon="🧑")
+        page_to_khai_hq = st.Page("views/khai_bao_hq.py", title="Khai báo Hải Quan", icon="🧑‍✈️")
+        page_quan_ly_co = st.Page("views/quan_ly_co.py", title="Quản lý CO", icon="🧑‍✈️")
+        page_doi_xe    = st.Page("views/doi_xe.py", title="Quản lý Đội xe", icon="🚛")
+        page_phap_ly_xe    = st.Page("views/phap_ly_xe.py", title="Quản lý pháp lý xe", icon="🚛")
+        page_tai_khoan = st.Page("views/tai_khoan.py", title="Quản lý tài khoản user", icon="👤")
+        page_kinh_doanh_result= st.Page("views/kinh_doanh_result.py", title="Kết quả Kinh doanh", icon="📈")
+        page_app_tai_xe = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", default=True)
+        page_tool_zalo= st.Page("views/zalo_local_processor.py", title=" Lấy thông tin book từ Zalo", icon="🚛")
+        page_tool_import_pricing= st.Page("views/import_pricing_ui_2.py", title=" Thiết lập bảng giá và phụ phí ", icon="📈")
+        page_tool_import_phu_cap= st.Page("views/config_phu_cap.py", title=" Thiết lập phụ cấp Tài xế  ", icon="📈")
+        page_tool_import_pricing_haiquan= st.Page("views/ui_hai_quan.py", title=" Thiết lập bảng giá hải quan ", icon="📈")
+        page_tool_fuel_manager= st.Page("views/fuel_manager_ui.py", title="Quản lý nhiên liệu/Hiệu suất", icon="🚛")
+        page_tool_backup_database= st.Page("views/backup_database.py", title="Backup Database", icon="🚛")
+
+        role = st.session_state.get('role', 'User')
+        
+        if role == 'Admin':
+            pages_structure = {
+                "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di,page_to_khai_hq,page_quan_ly_co,page_tool_fuel_manager, page_phap_ly_xe],
+                "📦 NGHIỆP VỤ KẾ TOÁN": [page_quyet_toan, page_bao_cao],
+                "📦 TOOL TIỆN ÍCH": [page_tool_import_pricing,page_tool_import_phu_cap,page_tool_import_pricing_haiquan,page_tool_backup_database, page_tool_zalo],
+                "⚙️ DANH MỤC QUẢN TRỊ": [page_nhan_vien, page_doi_xe,page_khach_hang, page_tai_khoan, page_kinh_doanh_result]
+            }
+        elif role == 'Tai_Xe':
+            pages_structure = {
+                "📱 ỨNG DỤNG TÀI XẾ": [page_app_tai_xe]
+            }
+        elif role == 'Ke_Toan':
             pages_structure = {
                 "📱 NGHIỆP VỤ KẾ TOÁN": [page_quyet_toan, page_bao_cao]
             }
-    else:
-        pages_structure = {
-            "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di,page_to_khai_hq,page_quan_ly_co,page_tool_fuel_manager,page_phap_ly_xe],
-            "📦 TOOL TIỆN ÍCH": [page_tool_import_pricing,page_tool_import_phu_cap,page_tool_import_pricing_haiquan,page_tool_backup_database, page_tool_zalo]
-        }
+        else:
+            pages_structure = {
+                "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di,page_to_khai_hq,page_quan_ly_co,page_tool_fuel_manager,page_phap_ly_xe],
+                "📦 TOOL TIỆN ÍCH": [page_tool_import_pricing,page_tool_import_phu_cap,page_tool_import_pricing_haiquan,page_tool_backup_database, page_tool_zalo]
+            }
+            
+        pg = st.navigation(pages_structure, position="sidebar")
         
-    pg = st.navigation(pages_structure, position="sidebar")
-    
-    with st.sidebar:
-        st.write("") 
-        
-        # --- BẮT ĐẦU: CHỨC NĂNG ĐỔI MẬT KHẨU CÁ NHÂN ---
-        with st.expander("      🔑 Đổi mật khẩu     "):
-            with st.form("form_change_password"):
-                old_pw = st.text_input("Mật khẩu hiện tại", type="password")
-                new_pw = st.text_input("Mật khẩu mới", type="password")
-                confirm_pw = st.text_input("Xác nhận mật khẩu mới", type="password")
-                
-                if st.form_submit_button("Cập nhật mật khẩu", type="primary", use_container_width=True):
-                    if not old_pw or not new_pw or not confirm_pw:
-                        st.error("⚠️ Vui lòng điền đủ các trường!")
-                    elif new_pw != confirm_pw:
-                        st.error("⚠️ Mật khẩu xác nhận không khớp!")
-                    else:
-                        conn = db.pool.get_connection()
-                        try:
-                            cursor = conn.cursor(dictionary=True)
-                            
-                            # 1. Truy vấn mật khẩu hiện tại từ DB để đối chiếu
-                            cursor.execute("SELECT id, password FROM users WHERE username = %s", (st.session_state['username'],))
-                            user_db = cursor.fetchone()
-                            
-                            if user_db and bcrypt.checkpw(old_pw.encode('utf-8'), user_db['password'].encode('utf-8')):
-                                # 2. Băm (Hash) mật khẩu mới
-                                new_hashed = bcrypt.hashpw(new_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-                                
-                                # 3. Cập nhật vào DB với Transaction
-                                conn.autocommit = False
-                                cursor.execute("UPDATE users SET password = %s WHERE id = %s", (new_hashed, user_db['id']))
-                                
-                                # 4. Kiểm tra rowcount & Ghi Audit Log
-                                if cursor.rowcount >= 0:
-                                    import json
-                                    try:
-                                        from audit_logger import ghi_log_he_thong
-                                        chi_tiet_log = json.dumps({"ghi_chu": "User tự đổi mật khẩu cá nhân"}, ensure_ascii=False)
-                                        ghi_log_he_thong(cursor, "QUAN_LY_TAI_KHOAN", user_db['id'], st.session_state['username'], "DOI_MAT_KHAU_CA_NHAN", chi_tiet_log)
-                                    except ImportError:
-                                        pass # Bỏ qua nếu module chưa sẵn sàng
-                                        
-                                    conn.commit()
-                                    st.success("✅ Đổi mật khẩu thành công!")
-                                else:
-                                    conn.rollback()
-                                    st.error("❌ Lỗi khi cập nhật cơ sở dữ liệu!")
-                            else:
-                                st.error("❌ Mật khẩu hiện tại không chính xác!")
-                        except Exception as e:
-                            conn.rollback()
-                            st.error(f"❌ Lỗi hệ thống: {e}")
-                        finally:
-                            cursor.close()
-                            conn.close()
-        # --- KẾT THÚC: CHỨC NĂNG ĐỔI MẬT KHẨU CÁ NHÂN ---
+        with st.sidebar:
+            if st.button("🚪 Đăng xuất hệ thống", type="secondary", use_container_width=True):
+                st.session_state.clear()
+                st.rerun()
 
-        if st.button("🚪 Đăng xuất hệ thống", type="secondary", use_container_width=True):
-            st.session_state.clear()
-            st.rerun()
-
-    pg.run()
+        pg.run()
