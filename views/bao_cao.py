@@ -698,6 +698,22 @@ with tab_bc1:
                 df_result['Ngày Chạy'] = df_result['Ngày hiển thị'] 
                 df_result['Số Container'] = df_result['Số Container'].fillna('')
 
+                # --- BỌC LỖI NAN, FLOAT CAST VÀ TÍNH TỔNG DOANH THU ---
+                # Đảm bảo các cột tính toán là số nguyên, thay NaN/Null bằng 0 để tránh lỗi 'cannot convert float NaN to integer'
+                money_columns_calc = ['Doanh Thu Cước', 'Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác']
+                for col in money_columns_calc:
+                    if col in df_result.columns:
+                        df_result[col] = pd.to_numeric(df_result[col], errors='coerce').fillna(0)
+                
+                # Tạo cột Tổng Doanh Thu (Doanh thu chuyến + Phí BX + Phí HQ + Phí Khác)
+                df_result['Tổng Doanh Thu'] = (
+                    df_result['Doanh Thu Cước'] + 
+                    df_result['Phí Hải Quan'] + 
+                    df_result['Phí Bốc Xếp'] + 
+                    df_result['Phí Khác']
+                )
+                # --------------------------------------------------------
+
                 # 2. Logic phân loại chuẩn xác: Dựa vào Tên Loại Xe hoặc có Số Cont
                 # 2. Logic phân loại chuẩn xác: Dựa vào Tên Loại Xe hoặc có Số Cont
                 def check_is_cont(row):
@@ -738,27 +754,45 @@ with tab_bc1:
                     
                     cols_tai = [
                         'Mã Chuyến', 'Ngày Chạy', 'Khách Hàng', 'Biển Số Xe', 'Loại Xe', 'Tải Trọng', 'Tài Xế', 'Lộ Trình',
-                        'Phụ cấp tài xế','Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Ghi chú'
+                        'Phụ cấp tài xế','Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Tổng Doanh Thu', 'Ghi chú'
                     ]
                     cols_cont = [
                         'Mã Chuyến', 'Ngày Chạy', 'Khách Hàng', 'Biển Số Xe', 'Loại Xe', 'Tài Xế', 'Lộ Trình',
-                        'Doanh Thu Cước', # THÊM MỚI CHỈ DÀNH CHO BÁO CÁO CONTAINER
-                        'Số Container', 'Loại Cont', 'Phí Nâng ON', 'Phí Hạ OFF', 'Phí CSHT', 'Phí Lưu Bãi', 'Phí Kiểm Dịch', 'Phí BOT',
-                        'Phụ cấp tài xế','Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Ghi chú'
+                        'Doanh Thu Cước', 'Số Container', 'Loại Cont', 'Phí Nâng ON', 'Phí Hạ OFF', 'Phí CSHT', 'Phí Lưu Bãi', 'Phí Kiểm Dịch', 'Phí BOT',
+                        'Phụ cấp tài xế','Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Tổng Doanh Thu', 'Ghi chú'
                     ]
                     
                     df_tai_all = df_result[~df_result['Is_Cont']].drop_duplicates(subset=['Mã Chuyến'])[cols_tai]
                     df_cont_all = df_result[df_result['Is_Cont']][cols_cont]
                     
-                    def auto_fit_columns(worksheet, df):
+                    def auto_fit_columns_and_total(worksheet, df, money_format, bold_format):
+                        # 1. Căn chỉnh độ rộng cột và ép định dạng tiền tệ (chống số thập phân .0)
                         for idx, col in enumerate(df.columns):
                             series_str = df[col].fillna("").astype(str)
                             max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
-                            worksheet.set_column(idx, idx, min(max_len, 50))
+                            
+                            # Nhận diện cột tiền tệ để gán format #,##0
+                            if col in ['Doanh Thu Cước', 'Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Tổng Doanh Thu', 'Phụ cấp tài xế', 'Phí Nâng ON', 'Phí Hạ OFF', 'Phí CSHT', 'Phí Lưu Bãi', 'Phí Kiểm Dịch', 'Phí BOT']:
+                                worksheet.set_column(idx, idx, min(max_len, 50), money_format)
+                            else:
+                                worksheet.set_column(idx, idx, min(max_len, 50))
+
+                        # 2. Tính và ghi dòng Tổng Cộng ở dưới cùng của File Excel
+                        if 'Tổng Doanh Thu' in df.columns and not df.empty:
+                            last_row = len(df) + 1 # Tính cả dòng Header (row 0)
+                            col_idx = df.columns.get_loc('Tổng Doanh Thu')
+                            tong_doanh_thu_sum = df['Tổng Doanh Thu'].sum()
+                            
+                            worksheet.write(last_row, col_idx - 1, "Tổng Doanh thu có được:", bold_format)
+                            worksheet.write(last_row, col_idx, tong_doanh_thu_sum, money_format)
 
                     existing_sheets_tab1 = []
                     header_format_tai = writer.book.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#0b5394', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
                     header_format_cont = writer.book.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#0f9d58', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+                    
+                    # Bổ sung format tiền tệ chuẩn (cắt đuôi thập phân) và in đậm
+                    money_fmt = writer.book.add_format({'num_format': '#,##0', 'valign': 'vcenter', 'border': 1})
+                    bold_fmt = writer.book.add_format({'bold': True, 'valign': 'vcenter', 'align': 'right'})
 
                     # --- SHEET TỔNG HỢP XE TẢI ---
                     if not df_tai_all.empty:
@@ -767,7 +801,7 @@ with tab_bc1:
                         ws_th_tai = writer.sheets[sheet_th_tai]
                         for col_num, col_name in enumerate(df_tai_all.columns):
                             ws_th_tai.write(0, col_num, col_name, header_format_tai)
-                        auto_fit_columns(ws_th_tai, df_tai_all)
+                        auto_fit_columns_and_total(ws_th_tai, df_tai_all, money_fmt, bold_fmt)
                     
                     # --- SHEET TỔNG HỢP XE CONT ---
                     if not df_cont_all.empty:
@@ -776,7 +810,7 @@ with tab_bc1:
                         ws_th_cont = writer.sheets[sheet_th_cont]
                         for col_num, col_name in enumerate(df_cont_all.columns):
                             ws_th_cont.write(0, col_num, col_name, header_format_cont)
-                        auto_fit_columns(ws_th_cont, df_cont_all)
+                        auto_fit_columns_and_total(ws_th_cont, df_cont_all,money_fmt, bold_fmt)
 
                     # --- SHEET CHI TIẾT TỪNG TÀI XẾ ---
                     for tx_name, df_group in df_result.groupby('Tài Xế'):
@@ -789,7 +823,7 @@ with tab_bc1:
                             ws_tx_tai = writer.sheets[sheet_tai_tx]
                             for col_num, col_name in enumerate(df_tx_tai.columns):
                                 ws_tx_tai.write(0, col_num, col_name, header_format_tai)
-                            auto_fit_columns(ws_tx_tai, df_tx_tai)
+                            auto_fit_columns_and_total(ws_tx_tai, df_tx_tai,money_fmt, bold_fmt)
                         
                         df_tx_cont = df_group[df_group['Is_Cont']][cols_cont]
                         if not df_tx_cont.empty:
@@ -798,7 +832,7 @@ with tab_bc1:
                             ws_tx_cont = writer.sheets[sheet_cont_tx]
                             for col_num, col_name in enumerate(df_tx_cont.columns):
                                 ws_tx_cont.write(0, col_num, col_name, header_format_cont)
-                            auto_fit_columns(ws_tx_cont, df_tx_cont)
+                            auto_fit_columns_and_total(ws_tx_cont, df_tx_cont,money_fmt, bold_fmt)
                             
                 st.download_button(
                     label="📥 TẢI FILE EXCEL BÁO CÁO",
@@ -809,15 +843,16 @@ with tab_bc1:
                 )
                 
                 st.markdown("<br><b>📊 Bảng xem trước dữ liệu Báo cáo:</b>", unsafe_allow_html=True)
-                preview_cols = ['Mã Chuyến', 'Ngày Chạy', 'Khách Hàng', 'Biển Số Xe', 'Loại Xe', 'Tài Xế', 'Lộ Trình', 'Số Container','Doanh Thu Cước', 'Phụ cấp tài xế', 'Phí Hải Quan', 'Phí Bốc Xếp']
+                preview_cols = ['Mã Chuyến', 'Ngày Chạy', 'Khách Hàng', 'Biển Số Xe', 'Loại Xe', 'Tài Xế', 'Lộ Trình', 'Số Container','Doanh Thu Cước', 'Phụ cấp tài xế', 'Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Tổng Doanh Thu']
                 df_app_display = df_result[preview_cols].copy()
                 
                 gb = GridOptionsBuilder.from_dataframe(df_app_display)
                 gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=130)
                 gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=12)
                 
-                money_columns = ['Doanh Thu Cước','Phụ cấp tài xế', 'Phí Hải Quan', 'Phí Bốc Xếp']
+                money_columns = ['Doanh Thu Cước','Phụ cấp tài xế', 'Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Tổng Doanh Thu']
                 for col in money_columns:
+                    # JavaScript Math.floor() giúp triệt tiêu hoàn toàn số dư thập phân .0 trước khi thêm dấu phẩy
                     gb.configure_column(col, type=["numericColumn", "numberColumnFilter"], valueFormatter="Math.floor(value).toString().replace(/(\\d)(?=(\\d{3})+(?!\\d))/g, '$1,') + ' đ'")
                 
                 custom_css = {".ag-header-cell": {"background-color": "#0b5394 !important"}, ".ag-header-cell-text": {"color": "white !important", "font-weight": "bold !important"}}
