@@ -16,12 +16,26 @@ class Database:
         
     def _init_pool(self):
         """Hàm nội bộ để khởi tạo Pool khi thực sự cần thiết."""
+        # Ưu tiên đọc từ st.secrets (khi chạy trên Streamlit Cloud), nếu không có mới dùng os.getenv (chạy Local)
+        if "mysql" in st.secrets:
+            db_host = st.secrets["mysql"]["host"]
+            db_port = int(st.secrets["mysql"]["port"])
+            db_user = st.secrets["mysql"]["user"]
+            db_pass = st.secrets["mysql"]["password"]
+            db_name = st.secrets["mysql"]["database"]
+        else:
+            db_host = os.getenv("DB_HOST")
+            db_port = int(os.getenv("DB_PORT", 25060))
+            db_user = os.getenv("DB_USER")
+            db_pass = os.getenv("DB_PASS")
+            db_name = os.getenv("DB_NAME")
+
         db_config = {
-            "host": os.getenv("DB_HOST"),
-            "port": int(os.getenv("DB_PORT", 25060)),
-            "user": os.getenv("DB_USER"),
-            "password": os.getenv("DB_PASS"),
-            "database": os.getenv("DB_NAME"),
+            "host": db_host,
+            "port": db_port,
+            "user": db_user,
+            "password": db_pass,
+            "database": db_name,
             "ssl_ca": "ca.pem",
             "ssl_disabled": False,
             "pool_reset_session": True 
