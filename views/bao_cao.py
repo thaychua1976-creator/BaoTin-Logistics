@@ -777,7 +777,7 @@ with tab_bc1:
                             'Phí Nâng ON', 'Phí Hạ OFF', 'Phí CSHT', 'Phí Lưu Bãi', 'Phí Kiểm Dịch', 'Phí BOT'
                         ]
 
-                        # 1. Căn chỉnh độ rộng cột và ép định dạng tiền tệ (KHÔNG BORDER để tránh kẻ ô vô tận)
+                        # 1. Căn chỉnh độ rộng cột và ép định dạng tiền tệ (KHÔNG BORDER)
                         for idx, col in enumerate(df.columns):
                             series_str = df[col].fillna("").astype(str)
                             max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
@@ -791,14 +791,14 @@ with tab_bc1:
                         if not df.empty:
                             last_row = len(df) + 1 # Dòng ngay dưới cùng của bảng dữ liệu
                             
-                            # Ghi nhãn "TỔNG CỘNG" ở cột đầu tiên (Cột Mã Chuyến)
+                            # Ghi duy nhất nhãn "TỔNG CỘNG:" ở cột A (index 0) để không đè lên bất kỳ cột tiền nào
                             worksheet.write(last_row, 0, "TỔNG CỘNG:", bold_format)
                             
                             for idx, col in enumerate(df.columns):
                                 if col in target_money_cols:
-                                    # Sử dụng hàm sum() của Pandas trên cột đã được làm sạch (fillna(0)) ở Bước 1
+                                    # Trích xuất tổng của từng cột tiền tệ tương ứng
                                     sum_val = df[col].sum()
-                                    # Áp dụng format CÓ viền và in đậm riêng cho các ô chứa kết quả tổng
+                                    # Điền kết quả vào đúng tọa độ cột của nó với format in đậm và có khung viền
                                     worksheet.write(last_row, idx, sum_val, money_total_fmt)
 
                         # 2. Tính và ghi dòng Tổng Cộng ở dưới cùng của File Excel CÓ BORDER
