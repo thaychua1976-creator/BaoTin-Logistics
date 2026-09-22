@@ -70,7 +70,7 @@ header {{ visibility: hidden; }}
 }}
 
 .nav-item {{
-    font-size: 19px;
+    font-size: 18px;
     font-weight: 600;
     transition: opacity 0.2s;
     color: #ffffff !important; 
