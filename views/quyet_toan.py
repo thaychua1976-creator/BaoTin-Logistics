@@ -822,25 +822,23 @@ with tab1:
                     else:
                         st.warning("⚠️ Tuyến đường này chưa có trong Bảng giá. Vui lòng tự nhập cước vào ô bên dưới:")
 
-                    label_dt = (
-                        "<span style='color: #0b5394; font-weight: bold;'>Doanh thu cước khách (VNĐ) - TỔNG 2 CHIỀU:</span>" 
+                    label_dt_html = (
+                        "<p style='color: #0b5394; font-weight: bold; margin-bottom: 2px;'>Doanh thu cước khách (VNĐ) - TỔNG 2 CHIỀU:</p>" 
                         if (is_hang_ve_ui and st.session_state.get(f"note_ve_{cd_id}")) 
-                        else "<span style='color: #0b5394; font-weight: bold;'>Doanh thu cước khách (VNĐ):</span>"
+                        else "<p style='color: #0b5394; font-weight: bold; margin-bottom: 2px;'>Doanh thu cước khách (VNĐ):</p>"
                     )
-                    if is_hang_ve_ui and st.session_state.get(f"note_ve_{cd_id}"):
-                        st.markdown("<p style='color: #0b5394; font-weight: bold; margin-bottom: 2px;'>Doanh thu cước khách (VNĐ) - TỔNG 2 CHIỀU:</p>", unsafe_allow_html=True)
-                    else:
-                        st.markdown("<p style='color: #0b5394; font-weight: bold; margin-bottom: 2px;'>Doanh thu cước khách (VNĐ):</p>", unsafe_allow_html=True)
+                    
+                    st.markdown(label_dt_html, unsafe_allow_html=True)
 
                     # Mở rộng Key động: Bắt sự thay đổi của cả Hàng về, Bao chuyến, Loại xe, Loại hàng hóa và Loại cont
                     dynamic_key = f"dt_input_{cd_id}_{is_hang_ve_ui}_{is_bao_chuyen_ui}_{loai_xe_bao_ui}_{loai_hang_ui}_{loai_cont_ui}"
 
                     doanh_thu_input = st.text_input(
-                        label="",  # Để trống label mặc định vì đã dùng st.markdown bên trên tạo màu
+                        label="Doanh thu cước khách", # Giữ label tĩnh để Streamlit không báo lỗi, nhưng sẽ ẩn đi
                         value=f"{doanh_thu_hien_tai:,.0f}" if doanh_thu_hien_tai > 0 else "",
                         placeholder="0",
                         key=dynamic_key,
-                        label_visibility="collapsed"
+                        label_visibility="collapsed" # Ẩn label mặc định của Streamlit
                     )
 
                     is_save_to_rc = False
