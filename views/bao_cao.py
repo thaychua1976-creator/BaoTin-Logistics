@@ -648,7 +648,7 @@ with tab_bc1:
                 tx_clause = "AND cdtx.tai_xe_id = %s"
                 params_bc1.append(tai_xe_duoc_chon)
 
-            # 1. Bổ sung cột loai_xe vào SQL để nhận diện chính xác Đầu Kéo / Remooc
+            # 1. Bổ sung cột loai_xe vào SQL để nhận diện chính xác Đầu Kéo / Remooc và thêm Doanh Thu
             sql_raw_data = f"""
                 SELECT 
                     cd.id AS 'Mã Chuyến', 
@@ -660,6 +660,10 @@ with tab_bc1:
                     COALESCE(nv.ho_ten, cd.tai_xe_ngoai_ten) AS 'Tài Xế', 
                     cd.dia_diem_giao_nhan AS 'Lộ Trình', 
                     cd.khoi_luong_kg AS 'Trọng tải (kg)', 
+                    
+                    /* BỔ SUNG: Truy xuất doanh thu chuyến để tính lương xe Cont */
+                    CAST(COALESCE(cd.doanh_thu, 0) AS DECIMAL(15,2)) AS 'Doanh Thu Cước',
+                    
                     CAST(COALESCE(cd.tien_them, 0) AS DECIMAL(15,2)) AS 'Phụ cấp tài xế',
                     CAST(COALESCE(cd.phi_hai_quan, 0) AS DECIMAL(15,2)) AS 'Phí Hải Quan',
                     CAST(COALESCE(cd.phi_boc_xep, 0) AS DECIMAL(15,2)) AS 'Phí Bốc Xếp',
@@ -738,6 +742,7 @@ with tab_bc1:
                     ]
                     cols_cont = [
                         'Mã Chuyến', 'Ngày Chạy', 'Khách Hàng', 'Biển Số Xe', 'Loại Xe', 'Tài Xế', 'Lộ Trình',
+                        'Doanh Thu Cước', # THÊM MỚI CHỈ DÀNH CHO BÁO CÁO CONTAINER
                         'Số Container', 'Loại Cont', 'Phí Nâng ON', 'Phí Hạ OFF', 'Phí CSHT', 'Phí Lưu Bãi', 'Phí Kiểm Dịch', 'Phí BOT',
                         'Phụ cấp tài xế','Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Ghi chú'
                     ]
@@ -804,14 +809,14 @@ with tab_bc1:
                 )
                 
                 st.markdown("<br><b>📊 Bảng xem trước dữ liệu Báo cáo:</b>", unsafe_allow_html=True)
-                preview_cols = ['Mã Chuyến', 'Ngày Chạy', 'Khách Hàng', 'Biển Số Xe', 'Loại Xe', 'Tài Xế', 'Lộ Trình', 'Số Container', 'Phụ cấp tài xế', 'Phí Hải Quan', 'Phí Bốc Xếp']
+                preview_cols = ['Mã Chuyến', 'Ngày Chạy', 'Khách Hàng', 'Biển Số Xe', 'Loại Xe', 'Tài Xế', 'Lộ Trình', 'Số Container','Doanh Thu Cước', 'Phụ cấp tài xế', 'Phí Hải Quan', 'Phí Bốc Xếp']
                 df_app_display = df_result[preview_cols].copy()
                 
                 gb = GridOptionsBuilder.from_dataframe(df_app_display)
                 gb.configure_default_column(resizable=True, filter=True, sortable=True, minWidth=130)
                 gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=12)
                 
-                money_columns = ['Phụ cấp tài xế', 'Phí Hải Quan', 'Phí Bốc Xếp']
+                money_columns = ['Doanh Thu Cước','Phụ cấp tài xế', 'Phí Hải Quan', 'Phí Bốc Xếp']
                 for col in money_columns:
                     gb.configure_column(col, type=["numericColumn", "numberColumnFilter"], valueFormatter="Math.floor(value).toString().replace(/(\\d)(?=(\\d{3})+(?!\\d))/g, '$1,') + ' đ'")
                 
