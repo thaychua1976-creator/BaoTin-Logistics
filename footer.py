@@ -56,8 +56,8 @@ def render_footer():
 <div class="footer-container">
 <div class="footer-left">
 <div class="footer-img-box">
-{f'<img src="data:image/jpeg;base64,{vpdd_b64}" class="footer-img">' if vpdd_b64 else '<div style="width:50px;height:50px;background:#ddd;border-radius:8px;text-align:center;line-height:50px;color:#333;font-size:10px;">VPDD</div>'}
 {f'<img src="data:image/jpeg;base64,{logo_b64}" class="footer-img">' if logo_b64 else '<div style="width:50px;height:50px;background:#ddd;border-radius:8px;text-align:center;line-height:50px;color:#333;font-size:10px;">LOGO</div>'}
+{f'<img src="data:image/jpeg;base64,{vpdd_b64}" class="footer-img">' if vpdd_b64 else '<div style="width:50px;height:50px;background:#ddd;border-radius:8px;text-align:center;line-height:50px;color:#333;font-size:10px;">VPDD</div>'}
 </div>
 <div class="footer-company-info">
 <div style="font-size: 16px; font-weight: 900; letter-spacing: 0.5px; color: #ffffff;">BẢO TÍN LOGISTICS</div>
