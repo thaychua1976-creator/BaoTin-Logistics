@@ -698,11 +698,16 @@ with tab_bc1:
                 df_result['Ngày Chạy'] = df_result['Ngày hiển thị'] 
                 df_result['Số Container'] = df_result['Số Container'].fillna('')
 
-                # --- BỌC LỖI NAN, FLOAT CAST VÀ TÍNH TỔNG DOANH THU ---
-                # Đảm bảo các cột tính toán là số nguyên, thay NaN/Null bằng 0 để tránh lỗi 'cannot convert float NaN to integer'
-                money_columns_calc = ['Doanh Thu Cước', 'Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác']
+                # --- BỌC LỖI NAN & FLOAT CAST CHO TOÀN BỘ CỘT TIỀN TỆ ---
+                # Đảm bảo tất cả các loại phí (xe tải và container) đều được fillna(0) an toàn
+                money_columns_calc = [
+                    'Doanh Thu Cước', 'Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Phụ cấp tài xế',
+                    'Phí Nâng ON', 'Phí Hạ OFF', 'Phí CSHT', 'Phí Lưu Bãi', 'Phí Kiểm Dịch', 'Phí BOT'
+                ]
+                
                 for col in money_columns_calc:
                     if col in df_result.columns:
+                        # Ép kiểu dữ liệu về số nguyên/thực an toàn, nếu là NaN/Null/Chuỗi rác thì biến thành 0
                         df_result[col] = pd.to_numeric(df_result[col], errors='coerce').fillna(0)
                 
                 # Tạo cột Tổng Doanh Thu (Doanh thu chuyến + Phí BX + Phí HQ + Phí Khác)
@@ -765,33 +770,58 @@ with tab_bc1:
                     df_tai_all = df_result[~df_result['Is_Cont']].drop_duplicates(subset=['Mã Chuyến'])[cols_tai]
                     df_cont_all = df_result[df_result['Is_Cont']][cols_cont]
                     
-                    def auto_fit_columns_and_total(worksheet, df, money_format, bold_format):
-                        # 1. Căn chỉnh độ rộng cột và ép định dạng tiền tệ (chống số thập phân .0)
+                    def auto_fit_columns_and_total(worksheet, df, money_col_fmt, money_total_fmt, bold_format):
+                        # Danh sách các cột cần format tiền tệ và tính tổng ở dòng cuối
+                        target_money_cols = [
+                            'Doanh Thu Cước', 'Phụ cấp tài xế', 'Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Tổng Doanh Thu',
+                            'Phí Nâng ON', 'Phí Hạ OFF', 'Phí CSHT', 'Phí Lưu Bãi', 'Phí Kiểm Dịch', 'Phí BOT'
+                        ]
+
+                        # 1. Căn chỉnh độ rộng cột và ép định dạng tiền tệ (KHÔNG BORDER để tránh kẻ ô vô tận)
                         for idx, col in enumerate(df.columns):
                             series_str = df[col].fillna("").astype(str)
                             max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
                             
-                            # Nhận diện cột tiền tệ để gán format #,##0
-                            if col in ['Doanh Thu Cước', 'Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Tổng Doanh Thu', 'Phụ cấp tài xế', 'Phí Nâng ON', 'Phí Hạ OFF', 'Phí CSHT', 'Phí Lưu Bãi', 'Phí Kiểm Dịch', 'Phí BOT']:
-                                worksheet.set_column(idx, idx, min(max_len, 50), money_format)
+                            if col in target_money_cols:
+                                worksheet.set_column(idx, idx, min(max_len, 50), money_col_fmt)
                             else:
                                 worksheet.set_column(idx, idx, min(max_len, 50))
 
-                        # 2. Tính và ghi dòng Tổng Cộng ở dưới cùng của File Excel
+                        # 2. Tính và ghi dòng TỔNG CỘNG ở dưới cùng cho TẤT CẢ các cột tiền
+                        if not df.empty:
+                            last_row = len(df) + 1 # Dòng ngay dưới cùng của bảng dữ liệu
+                            
+                            # Ghi nhãn "TỔNG CỘNG" ở cột đầu tiên (Cột Mã Chuyến)
+                            worksheet.write(last_row, 0, "TỔNG CỘNG:", bold_format)
+                            
+                            for idx, col in enumerate(df.columns):
+                                if col in target_money_cols:
+                                    # Sử dụng hàm sum() của Pandas trên cột đã được làm sạch (fillna(0)) ở Bước 1
+                                    sum_val = df[col].sum()
+                                    # Áp dụng format CÓ viền và in đậm riêng cho các ô chứa kết quả tổng
+                                    worksheet.write(last_row, idx, sum_val, money_total_fmt)
+
+                        # 2. Tính và ghi dòng Tổng Cộng ở dưới cùng của File Excel CÓ BORDER
                         if 'Tổng Doanh Thu' in df.columns and not df.empty:
                             last_row = len(df) + 1 # Tính cả dòng Header (row 0)
                             col_idx = df.columns.get_loc('Tổng Doanh Thu')
                             tong_doanh_thu_sum = df['Tổng Doanh Thu'].sum()
                             
                             worksheet.write(last_row, col_idx - 1, "Tổng Doanh thu có được:", bold_format)
-                            worksheet.write(last_row, col_idx, tong_doanh_thu_sum, money_format)
+                            # Áp dụng format CÓ viền và in đậm riêng cho ô kết quả này
+                            worksheet.write(last_row, col_idx, tong_doanh_thu_sum, money_total_fmt)
 
                     existing_sheets_tab1 = []
                     header_format_tai = writer.book.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#0b5394', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
                     header_format_cont = writer.book.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#0f9d58', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
                     
-                    # Bổ sung format tiền tệ chuẩn (cắt đuôi thập phân) và in đậm
-                    money_fmt = writer.book.add_format({'num_format': '#,##0', 'valign': 'vcenter', 'border': 1})
+                    # 1. Format cho cả cột: CHỈ căn giữa và định dạng tiền tệ (KHÔNG BORDER)
+                    money_col_fmt = writer.book.add_format({'num_format': '#,##0', 'valign': 'vcenter'})
+                    
+                    # 2. Format riêng cho ô Tổng Doanh Thu ở dòng cuối: Có tiền tệ, in đậm và CÓ BORDER
+                    money_total_fmt = writer.book.add_format({'num_format': '#,##0', 'valign': 'vcenter', 'border': 1, 'bold': True})
+                    
+                    # 3. Format cho chữ "Tổng Doanh thu có được:"
                     bold_fmt = writer.book.add_format({'bold': True, 'valign': 'vcenter', 'align': 'right'})
 
                     # --- SHEET TỔNG HỢP XE TẢI ---
@@ -801,7 +831,7 @@ with tab_bc1:
                         ws_th_tai = writer.sheets[sheet_th_tai]
                         for col_num, col_name in enumerate(df_tai_all.columns):
                             ws_th_tai.write(0, col_num, col_name, header_format_tai)
-                        auto_fit_columns_and_total(ws_th_tai, df_tai_all, money_fmt, bold_fmt)
+                        auto_fit_columns_and_total(ws_th_tai, df_tai_all, money_col_fmt, money_total_fmt, bold_fmt)
                     
                     # --- SHEET TỔNG HỢP XE CONT ---
                     if not df_cont_all.empty:
@@ -810,7 +840,7 @@ with tab_bc1:
                         ws_th_cont = writer.sheets[sheet_th_cont]
                         for col_num, col_name in enumerate(df_cont_all.columns):
                             ws_th_cont.write(0, col_num, col_name, header_format_cont)
-                        auto_fit_columns_and_total(ws_th_cont, df_cont_all,money_fmt, bold_fmt)
+                        auto_fit_columns_and_total(ws_th_cont, df_cont_all, money_col_fmt, money_total_fmt, bold_fmt)
 
                     # --- SHEET CHI TIẾT TỪNG TÀI XẾ ---
                     for tx_name, df_group in df_result.groupby('Tài Xế'):
@@ -823,7 +853,7 @@ with tab_bc1:
                             ws_tx_tai = writer.sheets[sheet_tai_tx]
                             for col_num, col_name in enumerate(df_tx_tai.columns):
                                 ws_tx_tai.write(0, col_num, col_name, header_format_tai)
-                            auto_fit_columns_and_total(ws_tx_tai, df_tx_tai,money_fmt, bold_fmt)
+                            auto_fit_columns_and_total(ws_tx_tai, df_tx_tai, money_col_fmt, money_total_fmt, bold_fmt)
                         
                         df_tx_cont = df_group[df_group['Is_Cont']][cols_cont]
                         if not df_tx_cont.empty:
@@ -832,7 +862,7 @@ with tab_bc1:
                             ws_tx_cont = writer.sheets[sheet_cont_tx]
                             for col_num, col_name in enumerate(df_tx_cont.columns):
                                 ws_tx_cont.write(0, col_num, col_name, header_format_cont)
-                            auto_fit_columns_and_total(ws_tx_cont, df_tx_cont,money_fmt, bold_fmt)
+                            auto_fit_columns_and_total(ws_tx_cont, df_tx_cont, money_col_fmt, money_total_fmt, bold_fmt)
                             
                 st.download_button(
                     label="📥 TẢI FILE EXCEL BÁO CÁO",
