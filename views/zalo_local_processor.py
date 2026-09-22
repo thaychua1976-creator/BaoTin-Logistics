@@ -12,7 +12,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# Ưu tiên đọc từ Streamlit Secrets (khi chạy trên Cloud), nếu không có mới tìm trong .env (chạy Local)
+if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
+    GEMINI_API_KEY = st.secrets["api_keys"]["gemini"]
+else:
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+    st.error("❌ Hệ thống chưa được cấu hình Gemini API Key!")
+else:
+    pass
+#GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel('gemini-3.6-flash') 
