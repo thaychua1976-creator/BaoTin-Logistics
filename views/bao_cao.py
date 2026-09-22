@@ -771,13 +771,13 @@ with tab_bc1:
                     df_cont_all = df_result[df_result['Is_Cont']][cols_cont]
                     
                     def auto_fit_columns_and_total(worksheet, df, money_col_fmt, money_total_fmt, bold_format):
-                        # Danh sách các cột cần format tiền tệ và tính tổng ở dòng cuối
+                        # 1. Khai báo danh sách các cột tiền tệ cần tính tổng
                         target_money_cols = [
                             'Doanh Thu Cước', 'Phụ cấp tài xế', 'Phí Hải Quan', 'Phí Bốc Xếp', 'Phí Khác', 'Tổng Doanh Thu',
                             'Phí Nâng ON', 'Phí Hạ OFF', 'Phí CSHT', 'Phí Lưu Bãi', 'Phí Kiểm Dịch', 'Phí BOT'
                         ]
 
-                        # 1. Căn chỉnh độ rộng cột và ép định dạng tiền tệ (KHÔNG BORDER)
+                        # 2. Căn chỉnh độ rộng cột và ép định dạng tiền tệ (Không viền)
                         for idx, col in enumerate(df.columns):
                             series_str = df[col].fillna("").astype(str)
                             max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
@@ -787,18 +787,17 @@ with tab_bc1:
                             else:
                                 worksheet.set_column(idx, idx, min(max_len, 50))
 
-                        # 2. Tính và ghi dòng TỔNG CỘNG ở dưới cùng cho TẤT CẢ các cột tiền
+                        # 3. Tính và ghi dòng TỔNG CỘNG ở dưới cùng cho TẤT CẢ các cột tiền
                         if not df.empty:
-                            last_row = len(df) + 1 # Dòng ngay dưới cùng của bảng dữ liệu
+                            last_row = len(df) + 1 # Vị trí dòng dưới cùng của bảng
                             
-                            # Ghi duy nhất nhãn "TỔNG CỘNG:" ở cột A (index 0) để không đè lên bất kỳ cột tiền nào
+                            # Chỉ ghi duy nhất nhãn "TỔNG CỘNG:" ở cột A (index = 0)
                             worksheet.write(last_row, 0, "TỔNG CỘNG:", bold_format)
                             
+                            # Quét ngang qua tất cả các cột, nếu là cột tiền tệ thì tính sum() và ghi số vào
                             for idx, col in enumerate(df.columns):
                                 if col in target_money_cols:
-                                    # Trích xuất tổng của từng cột tiền tệ tương ứng
                                     sum_val = df[col].sum()
-                                    # Điền kết quả vào đúng tọa độ cột của nó với format in đậm và có khung viền
                                     worksheet.write(last_row, idx, sum_val, money_total_fmt)
 
                         # 2. Tính và ghi dòng Tổng Cộng ở dưới cùng của File Excel CÓ BORDER
