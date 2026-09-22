@@ -28,17 +28,20 @@ def clear_master_cache():
 
 hide_enter_submit_css = """
 <style>
-    /* Ẩn dòng hướng dẫn "Press Enter to submit" mặc định của Streamlit */
+    /* Ẩn dòng hướng dẫn "Press Enter to submit" */
     div[data-testid="InputInstructions"] { 
         display: none !important; 
         visibility: hidden !important; 
     }
     
-    /* Ép định dạng in đậm và màu xanh dương đậm cho giá trị tiền tệ bên trong ô nhập liệu */
-    div[data-baseweb="input"] input {
+    /* Ép định dạng in đậm và màu xanh dương cho chữ ĐƯỢC NHẬP BÊN TRONG ô text */
+    .stTextInput input, 
+    div[data-baseweb="input"] input, 
+    input[type="text"] {
         color: #0b5394 !important;
-        font-weight: bold !important;
-        font-size: 15px !important;
+        -webkit-text-fill-color: #0b5394 !important; /* Bắt buộc đổi màu trên mọi trình duyệt */
+        font-weight: 900 !important;
+        font-size: 16px !important;
     }
 </style>
 """
