@@ -73,7 +73,7 @@ else:
     with col_left:
         st.markdown("""
         <div style="background-color: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-left: 5px solid #FF6B00; margin-bottom: 15px;">
-            <div style="color: #0B2E9E; font-size: 50px; font-weight: 900; margin-bottom: 10px; line-height: 1.3;">Chuyên Tuyến Nhà Máy → Sân Bay, Cảng, ICD</div>
+            <div style="color: #0B2E9E; font-size: 55px; font-weight: 900; margin-bottom: 10px; line-height: 1.3;"><b> Chuyên Tuyến Nhà Máy → Sân Bay, Cảng, ICD</b> </div>
             <div style="color: #FF6B00; font-size: 18px; font-weight: bold; margin-bottom: 15px;">Lợi Thế Vận Tải Quốc Tế Việt Nam - Cambodia</div>
             <div style="color: #475569; font-size: 18px; line-height: 1.6; margin-bottom: 20px;">
                 Chủ lực vận chuyển từ nhà máy đi <b>Sân bay Tân Sơn Nhất / Long Thành </b>,<b>Cảng Cát Lái / Cái Mép </b>,<b> các ICD </b>. 
