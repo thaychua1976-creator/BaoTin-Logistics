@@ -827,6 +827,11 @@ with tab1:
                         if (is_hang_ve_ui and st.session_state.get(f"note_ve_{cd_id}")) 
                         else "<span style='color: #0b5394; font-weight: bold;'>Doanh thu cước khách (VNĐ):</span>"
                     )
+                    if is_hang_ve_ui and st.session_state.get(f"note_ve_{cd_id}"):
+                        st.markdown("<p style='color: #0b5394; font-weight: bold; margin-bottom: 2px;'>Doanh thu cước khách (VNĐ) - TỔNG 2 CHIỀU:</p>", unsafe_allow_html=True)
+                    else:
+                        st.markdown("<p style='color: #0b5394; font-weight: bold; margin-bottom: 2px;'>Doanh thu cước khách (VNĐ):</p>", unsafe_allow_html=True)
+
                     # Mở rộng Key động: Bắt sự thay đổi của cả Hàng về, Bao chuyến, Loại xe, Loại hàng hóa và Loại cont
                     dynamic_key = f"dt_input_{cd_id}_{is_hang_ve_ui}_{is_bao_chuyen_ui}_{loai_xe_bao_ui}_{loai_hang_ui}_{loai_cont_ui}"
 
