@@ -822,15 +822,20 @@ with tab1:
                     else:
                         st.warning("⚠️ Tuyến đường này chưa có trong Bảng giá. Vui lòng tự nhập cước vào ô bên dưới:")
 
-                    label_dt = "Doanh thu cước khách (VNĐ) - TỔNG 2 CHIỀU" if (is_hang_ve_ui and st.session_state.get(f"note_ve_{cd_id}")) else "Doanh thu cước khách (VNĐ)"
+                    label_dt = (
+                        "<span style='color: #0b5394; font-weight: bold;'>Doanh thu cước khách (VNĐ) - TỔNG 2 CHIỀU:</span>" 
+                        if (is_hang_ve_ui and st.session_state.get(f"note_ve_{cd_id}")) 
+                        else "<span style='color: #0b5394; font-weight: bold;'>Doanh thu cước khách (VNĐ):</span>"
+                    )
                     # Mở rộng Key động: Bắt sự thay đổi của cả Hàng về, Bao chuyến, Loại xe, Loại hàng hóa và Loại cont
                     dynamic_key = f"dt_input_{cd_id}_{is_hang_ve_ui}_{is_bao_chuyen_ui}_{loai_xe_bao_ui}_{loai_hang_ui}_{loai_cont_ui}"
 
                     doanh_thu_input = st.text_input(
-                        label_dt, 
+                        label="",  # Để trống label mặc định vì đã dùng st.markdown bên trên tạo màu
                         value=f"{doanh_thu_hien_tai:,.0f}" if doanh_thu_hien_tai > 0 else "",
                         placeholder="0",
-                        key=dynamic_key
+                        key=dynamic_key,
+                        label_visibility="collapsed"
                     )
 
                     is_save_to_rc = False
