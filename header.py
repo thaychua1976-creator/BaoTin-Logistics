@@ -107,8 +107,8 @@ header {{ visibility: hidden; }}
 <div class="brand-group">
 {f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover; border: 1px solid rgba(255,255,255,0.2);">' if logo_b64 else '<div style="width:50px;height:50px;background:#ddd;border-radius:8px;"></div>'}
 <div style="line-height: 1.2;">
-<span style="color: #ffffff; font-size: 20px; font-weight: 900; display: block; letter-spacing: 1px;">BẢO TÍN LOGISTICS</span>
-<span style="color: #FF6B00; font-size: 14px; font-weight: bold;">TRUCKINGBAOTIN.COM</span>
+<span style="color: #ffffff; font-size: 17px; font-weight: 900; display: block; letter-spacing: 1px;">BẢO TÍN LOGISTICS</span>
+<span style="color: #FF6B00; font-size: 13px; font-weight: bold;">TRUCKINGBAOTIN.COM</span>
 </div>
 </div>
 <div class="nav-links-group">
