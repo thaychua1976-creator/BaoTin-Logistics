@@ -88,7 +88,7 @@ def show_page():
 Tây Ninh → Mộc Bài → Phnom Penh
 </div>
 <div style="color: #334155; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
-<span style="color: #d95700; font-size: 18px; font-weight: 900;">Thông quan trong ngày:</span> Văn phòng đại diện tại Trảng Bàng – sát cửa khẩu. Quan hệ hải quan 2 đầu, xử lý hồ sơ trước khi xe tới cửa khẩu. Đội xe đầu kéo và xe tải nhỏ linh hoạt đổi xe tại biên giới nếu cần.
+<span style="color: #d95700; font-size: 20px; font-weight: 900;"><b>Thông quan trong ngày:</b></span> Văn phòng đại diện tại Trảng Bàng – sát cửa khẩu. Quan hệ hải quan 2 đầu, xử lý hồ sơ trước khi xe tới cửa khẩu. Đội xe đầu kéo và xe tải nhỏ linh hoạt đổi xe tại biên giới nếu cần.
 </div>
 
 <h3 style="color: #0B2E9E; font-size: 17px; font-weight: 900; margin-bottom: 15px;">
