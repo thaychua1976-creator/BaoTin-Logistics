@@ -84,7 +84,7 @@ def show_page():
 <h2 style="color: #0B2E9E; margin-top: 0; font-size: 22px; font-weight: 900; border-bottom: 2px solid #FF6B00; padding-bottom: 10px;">
 🚀 LỢI THẾ TUYẾN CAMBODIA
 </h2>
-<div style="color: #1e293b; font-size: 27px; font-weight: 800; margin-bottom: 10px; color: #FF6B00;">
+<div style="color: #0B2E9E; font-size: 27px; font-weight: 800; margin-bottom: 10px; color: #FF6B00;">
 Tây Ninh → Mộc Bài → Phnom Penh
 </div>
 <div style="color: #334155; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
