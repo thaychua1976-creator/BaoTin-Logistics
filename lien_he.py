@@ -132,7 +132,7 @@ div.stButton > button:hover {
     <div style="color: #0B2E9E; font-size: 48px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 5px; text-shadow: 1px 1px 0px #e2e8f0, 2px 2px 0px #cbd5e1, 3px 3px 0px #94a3b8, 4px 4px 0px #64748b, 6px 6px 10px rgba(0,0,0,0.25);">
         Liên Hệ Báo Giá
     </div>
-    <div style="color: #475569; font-size: 20px; font-weight: 700; margin-bottom: 35px;">
+    <div style="color: #475569; font-size: 30px; font-weight: 700; margin-bottom: 35px;">
         Gửi yêu cầu vận chuyển, phản hồi nhanh chóng trong vòng 15 phút
     </div>
 </div>
