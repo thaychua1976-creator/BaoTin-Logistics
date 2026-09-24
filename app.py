@@ -4,6 +4,7 @@ import pandas as pd
 import bcrypt
 
 def show_page():
+    st.set_page_config(layout="wide", initial_sidebar_state="expanded")
     # 1. Hàm tùy chỉnh CSS giao diện
     def apply_custom_appearance():
         custom_css = """
@@ -19,9 +20,9 @@ def show_page():
 # 2. CSS Tùy chỉnh giao diện ERP & Sidebar
     st.markdown("""
         <style>
-            /* 1. Thiết lập lại lề cho khung nội dung chính (Đã xóa margin-top âm) */
+            /* 1. Thiết lập lại lề cho khung nội dung chính */
             .block-container {
-                padding-top: 1rem !important; /* Đặt lại padding trên để nội dung Đăng nhập vừa vặn */
+                padding-top: 1rem !important; 
                 padding-bottom: 1rem !important;
                 padding-left: 1rem !important;
                 padding-right: 1rem !important;
@@ -32,17 +33,22 @@ def show_page():
                 padding-top: 1rem !important;
             }
             
-            /* 2. Ẩn hoàn toàn header trống ở trên cùng ứng dụng */
+            /* 2. Ẩn hoàn toàn header trống ở trên cùng ứng dụng và thanh menu mặc định */
             header[data-testid="stHeader"] { 
                 display: none !important; 
             }
 
-            /* 3. Triệt tiêu 100% khoảng trắng đệm phía trên của Thanh Sidebar */
+            /* 3. Khóa nút đóng mở Sidebar (Giữ Sidebar cố định) */
+            [data-testid="collapsedControl"] {
+                display: none !important;
+            }
+
+            /* 4. Triệt tiêu 100% khoảng trắng đệm phía trên của Thanh Sidebar */
             [data-testid="stSidebar"] > div:first-child {
                 padding-top: 0rem !important; 
             }
             [data-testid="stSidebar"] .block-container {
-                padding-top: 0rem !important; /* Đảm bảo cả các vùng chứa bên trong sidebar cũng không có lề thừa */
+                padding-top: 0rem !important; 
             }
 
             div[data-testid="InputInstructions"] {
@@ -50,6 +56,7 @@ def show_page():
                 visibility: hidden !important;
             }
 
+            /* 5. Cấu hình màu nền và chiều rộng Sidebar */
             [data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
                 border-right: 2px solid #e2e8f0;
@@ -57,7 +64,7 @@ def show_page():
                 max-width: 330px !important;
             }
 
-            /* 4. Định dạng và kéo sát tiêu đề danh mục (ví dụ: "NGHIỆP VỤ HẰNG NGÀY") */
+            /* 6. Định dạng và kéo sát tiêu đề danh mục (ví dụ: "NGHIỆP VỤ HẰNG NGÀY") */
             [data-testid="stSidebarNav"] span[data-testid="stSidebarNavSeparator"] + span,
             [data-testid="stSidebarNav"] ul li div {
                 font-size: 16px !important;
@@ -66,18 +73,20 @@ def show_page():
                 text-transform: uppercase !important;
                 letter-spacing: 0.5px !important;
                 padding-bottom: 5px;
-                margin-top: 0px !important; /* Đẩy mục phân hệ sát lên trên */
+                margin-top: 0px !important; /* Đẩy mục phân hệ sát lên trên cùng */
                 border-bottom: 2px solid #cbd5e1;
             }
             
+            /* 7. Định dạng danh mục cấp 2 (ví dụ "NGHIỆP VỤ KẾ TOÁN") */
             [data-testid="stSidebarNav"] > ul > li:nth-child(2) > div {
                 color: #d32f2f !important; 
                 font-size: 17px !important;
                 border-bottom: 2px solid #d32f2f !important;
                 padding-bottom: 8px !important;
-                margin-top: 15px !important; /* Tạo khoảng cách vừa đủ giữa các nhóm phân hệ */
+                margin-top: 15px !important; /* Tạo khoảng cách với nhóm trên */
             }
 
+            /* 8. Định dạng các trang con */
             [data-testid="stSidebarNav"] ul li ul li {
                 margin-left: 25px !important; 
                 border-left: 2px solid #e2e8f0;
