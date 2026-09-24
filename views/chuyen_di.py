@@ -44,38 +44,44 @@ hide_enter_submit_css = """
     /* Ẩn hướng dẫn Enter của Streamlit */
     div[data-testid='InputInstructions'] { display: none !important; visibility: hidden !important; }
     
-    /* 1. Kéo tịnh tiến đều tất cả các Tiêu đề (h4, h5) trên toàn bộ App */
+    /* 1. Ẩn hoàn toàn thanh Header mặc định chứa khoảng trắng đỉnh của Streamlit */
+    header[data-testid="stHeader"] { 
+        display: none !important; 
+    }
+
+    /* 2. Kéo tịnh tiến đều tất cả các Tiêu đề (h4, h5) trên toàn bộ App */
     h4, h5 { 
-        padding-top: 0.8rem !important; 
+        padding-top: 0.5rem !important; 
         padding-bottom: 0.2rem !important; 
         margin-top: 0px !important; 
-        margin-bottom: 5px !important; /* Trả lại 5px để không bị đè vào ô input bên dưới */
+        margin-bottom: 5px !important; 
         line-height: 1.2 !important;
     }
     
-    /* 2. Ép khoảng cách các khối div chứa markdown sát lại nhau */
+    /* 3. Ép khoảng cách các khối div chứa markdown sát lại nhau */
     [data-testid="stMarkdownContainer"] {
         margin-bottom: -5px !important;
     }
     
-    /* 3. Tối ưu khoảng cách các đường kẻ ngang (Divider) */
+    /* 4. Tối ưu khoảng cách các đường kẻ ngang (Divider) */
     hr { 
         margin-top: 5px !important; 
         margin-bottom: 12px !important; 
     }
     
-    /* 4. Ép các dòng bên trong khối Form xích lại gần nhau hơn */
+    /* 5. Ép các dòng bên trong khối Form xích lại gần nhau hơn */
     div[data-testid="stForm"] > div { 
         gap: 0.5rem !important; 
     }
     
-    /* 5. Giảm khoảng cách mặc định của các khối block-container và ép lề trên sát đỉnh */
+    /* 6. Triệt tiêu khoảng đệm và đẩy ngược toàn bộ khối giao diện lên trên */
     .block-container {
         gap: 0.5rem !important;
-        padding-top: 1rem !important; /* Đẩy nội dung lên sát đỉnh */
+        padding-top: 0rem !important; 
+        margin-top: -2.5rem !important; /* Lực đẩy âm kéo sát lề trên */
     }
     
-    /* 6. Xóa bỏ khoảng padding thừa mặc định của thành phần hiển thị ứng dụng */
+    /* 7. Xóa bỏ khoảng padding thừa mặc định của thành phần hiển thị ứng dụng */
     [data-testid="stAppViewBlockContainer"] {
         padding-top: 0rem !important;
     }
