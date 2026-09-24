@@ -9,9 +9,12 @@ from dotenv import load_dotenv
 # Vẫn load file .env cho môi trường Local (nếu có file thì load, không có thì bỏ qua)
 load_dotenv(override=False) 
 
+#[api_keys]
+#gemini = "value"  : cấu trúc trên cloud toml
+
 # Ưu tiên lấy từ st.secrets (Cloud) trước, nếu không có mới tìm trong os.getenv (Local)
 try:
-    api_key = st.secrets["GEMINI_API_KEY"]
+    api_key = st.secrets["api_keys"]["gemini"]
 except (FileNotFoundError, KeyError):
     api_key = os.getenv("GEMINI_API_KEY")
 
@@ -74,7 +77,7 @@ hide_enter_submit_css = """
     
     /* 6. Xóa bỏ khoảng padding thừa mặc định của thành phần hiển thị ứng dụng */
     [data-testid="stAppViewBlockContainer"] {
-        padding-top: 1rem !important;
+        padding-top: 0rem !important;
     }
 </style>
 """
