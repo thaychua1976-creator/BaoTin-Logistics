@@ -54,13 +54,14 @@ with tab1:
                 for _, tc in df_tc.iterrows():
                     val = df_mt[(df_mt['tai_trong_id'] == tt['id']) & (df_mt['tieu_chi_id'] == tc['id'])] if isinstance(df_mt, pd.DataFrame) and not df_mt.empty else pd.DataFrame()
                     
-                    # 1. ÉP KIỂU AN TOÀN, KIỂM TRA NAN/NULL VÀ BỎ ĐUÔI .0
+                    # 1. ÉP KIỂU VÀ KHỬ LỖI NAN, NULL THEO CHUẨN DỰ ÁN
                     try:
                         raw_val = val.iloc[0]['so_tien'] if not val.empty else 0
                         if pd.isna(raw_val) or str(raw_val).strip() == "" or str(raw_val).strip().lower() == "nan":
                             so_tien = 0
                         else:
-                            so_tien = int(float(raw_val)) # Ép qua float trước rồi mới lấy int để cắt triệt để số thập phân
+                            # Chuyển đổi thành số nguyên an toàn
+                            so_tien = int(float(raw_val))
                     except (ValueError, TypeError):
                         so_tien = 0
                         
@@ -86,21 +87,22 @@ with tab1:
             if an_dong_trong:
                 df_matrix = df_matrix.loc[(df_matrix > 0).any(axis=1)]
 
-           # 2. CẤU HÌNH CỘT DỮ LIỆU SỐ TIỀN CÓ DẤU PHẨY
+            # 2. CẤU HÌNH CỘT SỐ TIỀN VỚI ĐỊNH DẠNG HÀNG NGÀN
+            # Streamlit NumberColumn hỗ trợ truyền trực tiếp một số format printf-style hoặc None để dùng số hệ thống
             column_config = {
                 col: st.column_config.NumberColumn(
                     col, 
-                    format="%d ₫", # Streamlit sẽ tự động định dạng số nguyên có dấu phẩy ngầm định nếu số liệu đúng chuẩn
+                    format="%,d ₫", # SỬ DỤNG FORMAT STRING CÓ DẤU PHẨY
                     min_value=0,
-                    step=1000 # Hỗ trợ phím mũi tên tăng giảm chẵn 1000
+                    step=1000 
                 )
                 for col in df_matrix.columns
             }
 
-            # ÉP KIỂU LẠI TOÀN BỘ DATAFRAME VỀ KIỂU SỐ NGUYÊN (INT) ĐỂ STREAMLIT ĐỊNH DẠNG ĐƯỢC
-            # Nếu để kiểu Float hoặc String, format '%d' của Streamlit sẽ bị lỗi hiển thị
+            # 3. ĐẢM BẢO CHẮC CHẮN DATAFRAME CHỨA SỐ NGUYÊN
             for col in df_matrix.columns:
-                df_matrix[col] = df_matrix[col].fillna(0).astype(int)
+                 # Ép kiểu Int64 của Pandas để tương thích tuyệt đối với cấu hình NumberColumn
+                 df_matrix[col] = df_matrix[col].astype('Int64')
 
             df_edited = st.data_editor(
                 df_matrix,
