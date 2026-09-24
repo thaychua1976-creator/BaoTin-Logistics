@@ -53,9 +53,15 @@ hide_enter_submit_css = """
         gap: 0.5rem !important; 
     }
     
-    /* 5. Giảm khoảng cách mặc định của các khối block-container */
+    /* 5. Giảm khoảng cách mặc định của các khối block-container và ép lề trên sát đỉnh */
     .block-container {
         gap: 0.5rem !important;
+        padding-top: 1rem !important; /* Đẩy nội dung lên sát đỉnh */
+    }
+    
+    /* 6. Xóa bỏ khoảng padding thừa mặc định của thành phần hiển thị ứng dụng */
+    [data-testid="stAppViewBlockContainer"] {
+        padding-top: 1rem !important;
     }
 </style>
 """

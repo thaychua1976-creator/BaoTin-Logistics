@@ -65,6 +65,7 @@ class Database:
             conn.ping(reconnect=True, attempts=1, delay=0)
             return conn
         except mysql.connector.Error as err:
+            print(f"\n[CRITICAL ERROR] CHI TIẾT LỖI TỪ AIVEN: {err}\n") # Thêm dòng này để xem ở Terminal
             st.error(f"❌ Mất kết nối hoàn toàn đến Aiven MySQL: {err}")
             return None
 

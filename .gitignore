@@ -1,1 +1,9 @@
+# Bỏ qua cấu hình môi trường và secret
 .env
+.streamlit/secrets.toml
+.streamlit/
+
+# Bỏ qua các file rác sinh ra trong quá trình chạy Python
+__pycache__/
+*.pyc
+*.pyo

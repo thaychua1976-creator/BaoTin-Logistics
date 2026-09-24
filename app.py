@@ -173,33 +173,43 @@ def show_page():
                 with st.spinner("Đang xác minh thông tin..."):
                     time.sleep(0.5)
                 
-                sql = "SELECT id, role, password, nhan_vien_id, ho_ten FROM users WHERE username = %s"
-                result = db.execute_query(sql, (username,))
+                # SỬA LỖI 1: Loại bỏ khoảng trắng thừa để tránh lỗi không tìm thấy user
+                username_clean = username.strip()
                 
-                if isinstance(result, pd.DataFrame) and not result.empty:
-                    hashed_password_db = result.iloc[0]['password']
-                    try:
-                        is_correct = bcrypt.checkpw(
-                            password.encode('utf-8'), 
-                            hashed_password_db.encode('utf-8')
-                        )
-                    except ValueError:
-                        is_correct = False
-                        
-                    if is_correct:
-                        st.session_state['logged_in'] = True
-                        st.session_state['username'] = username
-                        st.session_state['role'] = result.iloc[0]['role']
-                        st.session_state['nhan_vien_id'] = result.iloc[0]['nhan_vien_id'] 
-                        st.session_state['ho_ten'] = result.iloc[0]['ho_ten']
-                        
-                        st.success("Đăng nhập thành công!") 
-                        time.sleep(0.5)
-                        st.rerun() 
+                sql = "SELECT id, role, password, nhan_vien_id, ho_ten FROM users WHERE username = %s"
+                result = db.execute_query(sql, (username_clean,))
+                
+                # SỬA LỖI 2: Phân tách rõ ràng giữa Lỗi Database và Không tìm thấy tài khoản
+                if isinstance(result, str):
+                    st.error(f"❌ Lỗi truy vấn Database: {result}")
+                elif isinstance(result, pd.DataFrame):
+                    if not result.empty:
+                        hashed_password_db = result.iloc[0]['password']
+                        try:
+                            # SỬA LỖI 3: Đảm bảo kiểm tra đúng mật khẩu đã được strip khoảng trắng nếu có
+                            is_correct = bcrypt.checkpw(
+                                password.encode('utf-8'), 
+                                hashed_password_db.encode('utf-8')
+                            )
+                        except ValueError:
+                            is_correct = False
+                            
+                        if is_correct:
+                            st.session_state['logged_in'] = True
+                            st.session_state['username'] = username_clean
+                            st.session_state['role'] = result.iloc[0]['role']
+                            st.session_state['nhan_vien_id'] = result.iloc[0]['nhan_vien_id'] 
+                            st.session_state['ho_ten'] = result.iloc[0]['ho_ten']
+                            
+                            st.success("Đăng nhập thành công!") 
+                            time.sleep(0.5)
+                            st.rerun() 
+                        else:
+                            st.error("❌ Sai mật khẩu!")
                     else:
-                        st.error("❌ Sai mật khẩu!")
+                        st.error("❌ Tài khoản không tồn tại!")
                 else:
-                    st.error("❌ Tài khoản không tồn tại!")
+                    st.error("❌ Kết quả truy vấn không hợp lệ!")
     else:
         # 5. Hiển thị Navigation & Menu ERP khi đã đăng nhập
         ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
