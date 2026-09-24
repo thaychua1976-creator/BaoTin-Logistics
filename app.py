@@ -20,7 +20,7 @@ def show_page():
 # 2. CSS Tùy chỉnh giao diện ERP & Sidebar
     st.markdown("""
         <style>
-            /* 1. Ép toàn bộ khung ứng dụng (Main Content) sát lề trên */
+            /* 1. Thiết lập lề cho khung nội dung chính */
             .block-container {
                 padding-top: 1rem !important;
                 padding-bottom: 1rem !important;
@@ -33,27 +33,26 @@ def show_page():
                 padding-top: 1rem !important;
             }
             
-            /* 2. Triệt tiêu Header trống mặc định của Streamlit (Chứa nút Deploy) */
+            /* 2. Ẩn Header trống (nơi chứa menu Deploy mặc định của Streamlit) */
             header[data-testid="stHeader"] { 
                 display: none !important; 
             }
 
-            /* 3. Ẩn nút mũi tên đóng/mở Sidebar để khóa cứng Sidebar */
+            /* 3. KHÔI PHỤC NÚT MỞ SIDEBAR (Bắt buộc phải có để bạn bấm mở lại menu) */
             [data-testid="collapsedControl"] {
-                display: none !important;
+                display: flex !important; 
             }
 
-            /* 4. Khôi phục hiển thị và định dạng cấu trúc Sidebar */
+            /* 4. Định dạng nền và chiều rộng Sidebar */
             [data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
                 border-right: 2px solid #e2e8f0;
                 min-width: 330px !important; 
                 max-width: 330px !important;
-                display: flex !important; /* Đảm bảo nội dung Sidebar không bị sụp */
             }
 
-            /* 5. Ép nội dung bên trong Sidebar (như khối Xin Chào) lên sát lề trên */
-            [data-testid="stSidebar"] .block-container,
+            /* 5. Ép sát nội dung Sidebar lên đỉnh (Triệt tiêu khoảng trống) */
+            [data-testid="stSidebar"] > div:first-child,
             [data-testid="stSidebarUserContent"] {
                 padding-top: 0rem !important;
             }
@@ -63,7 +62,7 @@ def show_page():
                 visibility: hidden !important;
             }
 
-            /* 6. Định dạng chữ hiển thị trên Menu (ví dụ: "NGHIỆP VỤ HẰNG NGÀY") */
+            /* 6. Định dạng chữ hiển thị trên Menu */
             [data-testid="stSidebarNav"] span[data-testid="stSidebarNavSeparator"] + span,
             [data-testid="stSidebarNav"] ul li div {
                 font-size: 16px !important;
@@ -72,17 +71,17 @@ def show_page():
                 text-transform: uppercase !important;
                 letter-spacing: 0.5px !important;
                 padding-bottom: 5px;
-                margin-top: 5px !important; /* Trả lại một chút khoảng cách để menu không dính chặt vào khối Xin chào */
+                margin-top: 5px !important; 
                 border-bottom: 2px solid #cbd5e1;
             }
             
-            /* 7. Định dạng danh mục cấp 2 (ví dụ "NGHIỆP VỤ KẾ TOÁN") */
+            /* 7. Định dạng danh mục cấp 2 */
             [data-testid="stSidebarNav"] > ul > li:nth-child(2) > div {
                 color: #d32f2f !important; 
                 font-size: 17px !important;
                 border-bottom: 2px solid #d32f2f !important;
                 padding-bottom: 8px !important;
-                margin-top: 15px !important; /* Khoảng cách với nhóm bên trên */
+                margin-top: 15px !important; 
             }
 
             /* 8. Định dạng các trang con */
