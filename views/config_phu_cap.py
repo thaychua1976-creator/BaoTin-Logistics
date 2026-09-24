@@ -86,16 +86,21 @@ with tab1:
             if an_dong_trong:
                 df_matrix = df_matrix.loc[(df_matrix > 0).any(axis=1)]
 
-            # 2. CẤU HÌNH CỘT DỮ LIỆU SỐ TIỀN 
+           # 2. CẤU HÌNH CỘT DỮ LIỆU SỐ TIỀN CÓ DẤU PHẨY
             column_config = {
                 col: st.column_config.NumberColumn(
                     col, 
-                    format="%d ₫", 
+                    format="%d ₫", # Streamlit sẽ tự động định dạng số nguyên có dấu phẩy ngầm định nếu số liệu đúng chuẩn
                     min_value=0,
-                    step=1000 # Hỗ trợ nhảy số ngàn khi dùng phím lên xuống trong khung edit
+                    step=1000 # Hỗ trợ phím mũi tên tăng giảm chẵn 1000
                 )
                 for col in df_matrix.columns
             }
+
+            # ÉP KIỂU LẠI TOÀN BỘ DATAFRAME VỀ KIỂU SỐ NGUYÊN (INT) ĐỂ STREAMLIT ĐỊNH DẠNG ĐƯỢC
+            # Nếu để kiểu Float hoặc String, format '%d' của Streamlit sẽ bị lỗi hiển thị
+            for col in df_matrix.columns:
+                df_matrix[col] = df_matrix[col].fillna(0).astype(int)
 
             df_edited = st.data_editor(
                 df_matrix,
