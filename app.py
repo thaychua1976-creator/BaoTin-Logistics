@@ -20,9 +20,9 @@ def show_page():
 # 2. CSS Tùy chỉnh giao diện ERP & Sidebar
     st.markdown("""
         <style>
-            /* 1. Thiết lập lại lề cho khung nội dung chính */
+            /* 1. Ép toàn bộ khung ứng dụng (Main Content) sát lề trên */
             .block-container {
-                padding-top: 1rem !important; 
+                padding-top: 1rem !important;
                 padding-bottom: 1rem !important;
                 padding-left: 1rem !important;
                 padding-right: 1rem !important;
@@ -33,22 +33,29 @@ def show_page():
                 padding-top: 1rem !important;
             }
             
-            /* 2. Ẩn hoàn toàn header trống ở trên cùng ứng dụng và thanh menu mặc định */
+            /* 2. Triệt tiêu Header trống mặc định của Streamlit (Chứa nút Deploy) */
             header[data-testid="stHeader"] { 
                 display: none !important; 
             }
 
-            /* 3. Khóa nút đóng mở Sidebar (Giữ Sidebar cố định) */
+            /* 3. Ẩn nút mũi tên đóng/mở Sidebar để khóa cứng Sidebar */
             [data-testid="collapsedControl"] {
                 display: none !important;
             }
 
-            /* 4. Triệt tiêu 100% khoảng trắng đệm phía trên của Thanh Sidebar */
-            [data-testid="stSidebar"] > div:first-child {
-                padding-top: 0rem !important; 
+            /* 4. Khôi phục hiển thị và định dạng cấu trúc Sidebar */
+            [data-testid="stSidebar"] {
+                background-color: #f8fafc !important; 
+                border-right: 2px solid #e2e8f0;
+                min-width: 330px !important; 
+                max-width: 330px !important;
+                display: flex !important; /* Đảm bảo nội dung Sidebar không bị sụp */
             }
-            [data-testid="stSidebar"] .block-container {
-                padding-top: 0rem !important; 
+
+            /* 5. Ép nội dung bên trong Sidebar (như khối Xin Chào) lên sát lề trên */
+            [data-testid="stSidebar"] .block-container,
+            [data-testid="stSidebarUserContent"] {
+                padding-top: 0rem !important;
             }
 
             div[data-testid="InputInstructions"] {
@@ -56,15 +63,7 @@ def show_page():
                 visibility: hidden !important;
             }
 
-            /* 5. Cấu hình màu nền và chiều rộng Sidebar */
-            [data-testid="stSidebar"] {
-                background-color: #f8fafc !important; 
-                border-right: 2px solid #e2e8f0;
-                min-width: 330px !important; 
-                max-width: 330px !important;
-            }
-
-            /* 6. Định dạng và kéo sát tiêu đề danh mục (ví dụ: "NGHIỆP VỤ HẰNG NGÀY") */
+            /* 6. Định dạng chữ hiển thị trên Menu (ví dụ: "NGHIỆP VỤ HẰNG NGÀY") */
             [data-testid="stSidebarNav"] span[data-testid="stSidebarNavSeparator"] + span,
             [data-testid="stSidebarNav"] ul li div {
                 font-size: 16px !important;
@@ -73,7 +72,7 @@ def show_page():
                 text-transform: uppercase !important;
                 letter-spacing: 0.5px !important;
                 padding-bottom: 5px;
-                margin-top: 0px !important; /* Đẩy mục phân hệ sát lên trên cùng */
+                margin-top: 5px !important; /* Trả lại một chút khoảng cách để menu không dính chặt vào khối Xin chào */
                 border-bottom: 2px solid #cbd5e1;
             }
             
@@ -83,7 +82,7 @@ def show_page():
                 font-size: 17px !important;
                 border-bottom: 2px solid #d32f2f !important;
                 padding-bottom: 8px !important;
-                margin-top: 15px !important; /* Tạo khoảng cách với nhóm trên */
+                margin-top: 15px !important; /* Khoảng cách với nhóm bên trên */
             }
 
             /* 8. Định dạng các trang con */
