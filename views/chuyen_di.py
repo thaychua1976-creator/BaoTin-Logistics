@@ -1,12 +1,25 @@
 import streamlit as st
 import pandas as pd
 import datetime
-import io, time, re
+import io, time, re,os
 from map_service import MapService
 from trip_manager import save_trip_full_process, tao_khach_hang_nhanh, group_trips_transaction, update_trip_full_process, delete_trip_safe
 from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 from dotenv import load_dotenv
-load_dotenv()
+# Vẫn load file .env cho môi trường Local (nếu có file thì load, không có thì bỏ qua)
+load_dotenv(override=False) 
+
+# Ưu tiên lấy từ st.secrets (Cloud) trước, nếu không có mới tìm trong os.getenv (Local)
+try:
+    api_key = st.secrets["GEMINI_API_KEY"]
+except (FileNotFoundError, KeyError):
+    api_key = os.getenv("GEMINI_API_KEY")
+
+if not api_key:
+    st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống!")
+else:
+    # Khởi tạo Gemini API của bạn tại đây với biến api_key
+    pass
 
 @st.cache_resource
 def get_map_service(): return MapService()
