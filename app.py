@@ -33,27 +33,38 @@ def show_page():
                 padding-top: 1rem !important;
             }
             
-            /* 2. Ẩn Header trống (nơi chứa menu Deploy mặc định của Streamlit) */
+            /* 2. Ẩn thanh Header mặc định của Streamlit (thanh chứa nút Deploy) */
             header[data-testid="stHeader"] { 
                 display: none !important; 
             }
 
-            /* 3. KHÔI PHỤC NÚT MỞ SIDEBAR (Bắt buộc phải có để bạn bấm mở lại menu) */
+            /* 3. ẨN HOÀN TOÀN NÚT MỞ/ĐÓNG SIDEBAR */
+            /* Ẩn dấu X (Close) và dấu > (Open) để người dùng không thể tương tác */
             [data-testid="collapsedControl"] {
-                display: flex !important; 
+                display: none !important;
+            }
+            button[kind="header"] {
+                display: none !important;
             }
 
-            /* 4. Định dạng nền và chiều rộng Sidebar */
-            [data-testid="stSidebar"] {
+            /* 4. Định dạng nền, chiều rộng an toàn cho Sidebar và KHÓA HIỂN THỊ (luôn mở) */
+            section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
-                border-right: 2px solid #e2e8f0;
+                border-right: 2px solid #e2e8f0 !important;
                 min-width: 330px !important; 
                 max-width: 330px !important;
+                display: flex !important; /* Đảm bảo Sidebar hiển thị kể cả khi trạng thái cache đang là đóng */
+                transform: none !important; /* Hủy bỏ mọi hiệu ứng trượt ẩn của Streamlit */
+                visibility: visible !important;
             }
 
-            /* 5. Ép sát nội dung Sidebar lên đỉnh (Triệt tiêu khoảng trống) */
-            [data-testid="stSidebar"] > div:first-child,
-            [data-testid="stSidebarUserContent"] {
+            /* 5. Ép nội dung Sidebar sát lên trên đỉnh một cách an toàn */
+            section[data-testid="stSidebar"] > div {
+                padding-top: 0rem !important;
+            }
+            
+            /* Đẩy riêng khối Navigation sát lên */
+            [data-testid="stSidebarNav"] {
                 padding-top: 0rem !important;
             }
 
@@ -62,16 +73,14 @@ def show_page():
                 visibility: hidden !important;
             }
 
-            /* 6. Định dạng chữ hiển thị trên Menu */
-            [data-testid="stSidebarNav"] span[data-testid="stSidebarNavSeparator"] + span,
+            /* 6. Định dạng chữ hiển thị trên Menu (Nhóm cấp 1) */
             [data-testid="stSidebarNav"] ul li div {
                 font-size: 16px !important;
                 font-weight: 800 !important;
                 color: #0b5394 !important;
                 text-transform: uppercase !important;
-                letter-spacing: 0.5px !important;
                 padding-bottom: 5px;
-                margin-top: 5px !important; 
+                margin-top: 5px !important; /* Tạo khoảng hở siêu nhỏ để không dính sát vào tên User */
                 border-bottom: 2px solid #cbd5e1;
             }
             
@@ -113,7 +122,7 @@ def show_page():
                 font-weight: 800 !important;
             }
 
-            [data-testid="stSidebar"] .stButton button {
+            section[data-testid="stSidebar"] .stButton button {
                 width: 100%;
                 font-size: 15px !important;
                 font-weight: bold !important;
