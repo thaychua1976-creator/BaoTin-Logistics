@@ -102,7 +102,7 @@ def show_page():
     <div style="width: 100%; text-align: center; margin-top: 10px;">
         <div style="
             color: #0B2E9E; 
-            font-size: 35px; 
+            font-size: 42px; 
             font-weight: 900; 
             letter-spacing: 2px; 
             text-transform: uppercase; 
