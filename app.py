@@ -38,27 +38,20 @@ def show_page():
                 display: none !important; 
             }
 
-            /* 3. ẨN HOÀN TOÀN NÚT MỞ/ĐÓNG SIDEBAR */
-            /* Ẩn dấu X (Close) và dấu > (Open) để người dùng không thể tương tác */
+            /* 3. Khóa nút đóng mở Sidebar (Giữ Sidebar cố định) */
             [data-testid="collapsedControl"] {
                 display: none !important;
             }
-            button[kind="header"] {
-                display: none !important;
-            }
 
-            /* 4. Định dạng nền, chiều rộng an toàn cho Sidebar và KHÓA HIỂN THỊ (luôn mở) */
+            /* 4. Định dạng nền và chiều rộng an toàn cho Sidebar */
             section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
                 border-right: 2px solid #e2e8f0 !important;
                 min-width: 330px !important; 
                 max-width: 330px !important;
-                display: flex !important; /* Đảm bảo Sidebar hiển thị kể cả khi trạng thái cache đang là đóng */
-                transform: none !important; /* Hủy bỏ mọi hiệu ứng trượt ẩn của Streamlit */
-                visibility: visible !important;
             }
 
-            /* 5. Ép nội dung Sidebar sát lên trên đỉnh một cách an toàn */
+            /* 5. Ép nội dung Sidebar sát lên trên đỉnh một cách an toàn (không làm vỡ Flexbox) */
             section[data-testid="stSidebar"] > div {
                 padding-top: 0rem !important;
             }
