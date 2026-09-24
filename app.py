@@ -19,28 +19,30 @@ def show_page():
 # 2. CSS Tùy chỉnh giao diện ERP & Sidebar
     st.markdown("""
         <style>
-            /* Ép toàn bộ khung ứng dụng (Main Content) sát lề trên */
+            /* 1. Thiết lập lại lề cho khung nội dung chính (Đã xóa margin-top âm) */
             .block-container {
-                padding-top: 0rem !important;
+                padding-top: 1rem !important; /* Đặt lại padding trên để nội dung Đăng nhập vừa vặn */
                 padding-bottom: 1rem !important;
                 padding-left: 1rem !important;
                 padding-right: 1rem !important;
                 max-width: 98% !important;
-                margin-top: -2.5rem !important; /* Lực đẩy âm để kéo nội dung lên sát đỉnh */
             }
             
             [data-testid="stAppViewBlockContainer"] {
-                padding-top: 0rem !important;
+                padding-top: 1rem !important;
             }
             
-            /* Triệt tiêu Header trống mặc định của Streamlit */
+            /* 2. Ẩn hoàn toàn header trống ở trên cùng ứng dụng */
             header[data-testid="stHeader"] { 
                 display: none !important; 
             }
 
-            /* Ẩn hoàn toàn khoảng đệm thừa ở đỉnh của Sidebar / Thanh điều hướng */
+            /* 3. Triệt tiêu 100% khoảng trắng đệm phía trên của Thanh Sidebar */
             [data-testid="stSidebar"] > div:first-child {
-                padding-top: 0rem !important;
+                padding-top: 0rem !important; 
+            }
+            [data-testid="stSidebar"] .block-container {
+                padding-top: 0rem !important; /* Đảm bảo cả các vùng chứa bên trong sidebar cũng không có lề thừa */
             }
 
             div[data-testid="InputInstructions"] {
@@ -55,7 +57,7 @@ def show_page():
                 max-width: 330px !important;
             }
 
-            /* Định dạng chữ hiển thị trên Menu - Ví dụ: "NGHIỆP VỤ HẰNG NGÀY" */
+            /* 4. Định dạng và kéo sát tiêu đề danh mục (ví dụ: "NGHIỆP VỤ HẰNG NGÀY") */
             [data-testid="stSidebarNav"] span[data-testid="stSidebarNavSeparator"] + span,
             [data-testid="stSidebarNav"] ul li div {
                 font-size: 16px !important;
@@ -64,7 +66,7 @@ def show_page():
                 text-transform: uppercase !important;
                 letter-spacing: 0.5px !important;
                 padding-bottom: 5px;
-                margin-top: 0px !important; /* Đẩy mục phân hệ (như Nghiệp vụ hằng ngày) sát lên trên */
+                margin-top: 0px !important; /* Đẩy mục phân hệ sát lên trên */
                 border-bottom: 2px solid #cbd5e1;
             }
             
@@ -73,7 +75,7 @@ def show_page():
                 font-size: 17px !important;
                 border-bottom: 2px solid #d32f2f !important;
                 padding-bottom: 8px !important;
-                margin-top: 15px !important;
+                margin-top: 15px !important; /* Tạo khoảng cách vừa đủ giữa các nhóm phân hệ */
             }
 
             [data-testid="stSidebarNav"] ul li ul li {
