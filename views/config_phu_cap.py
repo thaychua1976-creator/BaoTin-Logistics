@@ -53,7 +53,17 @@ with tab1:
                 row_dict = {"Tải Trọng Xe": tt['ten_hien_thi']}
                 for _, tc in df_tc.iterrows():
                     val = df_mt[(df_mt['tai_trong_id'] == tt['id']) & (df_mt['tieu_chi_id'] == tc['id'])] if isinstance(df_mt, pd.DataFrame) and not df_mt.empty else pd.DataFrame()
-                    so_tien = float(val.iloc[0]['so_tien']) if not val.empty else 0.0
+                    
+                    # 1. ÉP KIỂU AN TOÀN, KIỂM TRA NAN/NULL VÀ BỎ ĐUÔI .0
+                    try:
+                        raw_val = val.iloc[0]['so_tien'] if not val.empty else 0
+                        if pd.isna(raw_val) or str(raw_val).strip() == "" or str(raw_val).strip().lower() == "nan":
+                            so_tien = 0
+                        else:
+                            so_tien = int(float(raw_val)) # Ép qua float trước rồi mới lấy int để cắt triệt để số thập phân
+                    except (ValueError, TypeError):
+                        so_tien = 0
+                        
                     row_dict[tc['ten_tieu_chi']] = so_tien
                 matrix_data.append(row_dict)
 
@@ -76,8 +86,14 @@ with tab1:
             if an_dong_trong:
                 df_matrix = df_matrix.loc[(df_matrix > 0).any(axis=1)]
 
+            # 2. CẤU HÌNH CỘT DỮ LIỆU SỐ TIỀN 
             column_config = {
-                col: st.column_config.NumberColumn(col, format="%d ₫", min_value=0)
+                col: st.column_config.NumberColumn(
+                    col, 
+                    format="%d ₫", 
+                    min_value=0,
+                    step=1000 # Hỗ trợ nhảy số ngàn khi dùng phím lên xuống trong khung edit
+                )
                 for col in df_matrix.columns
             }
 
