@@ -16,22 +16,31 @@ def show_page():
         </style>
         """
         st.markdown(custom_css, unsafe_allow_html=True)
-
-    apply_custom_appearance()
-
-    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar
+# 2. CSS Tùy chỉnh giao diện ERP & Sidebar
     st.markdown("""
         <style>
+            /* Ép toàn bộ khung ứng dụng (Main Content) sát lề trên */
             .block-container {
-                padding-top: 1rem !important;
+                padding-top: 0rem !important;
                 padding-bottom: 1rem !important;
                 padding-left: 1rem !important;
                 padding-right: 1rem !important;
                 max-width: 98% !important;
+                margin-top: -2.5rem !important; /* Lực đẩy âm để kéo nội dung lên sát đỉnh */
             }
             
             [data-testid="stAppViewBlockContainer"] {
-                padding-top: 1rem !important;
+                padding-top: 0rem !important;
+            }
+            
+            /* Triệt tiêu Header trống mặc định của Streamlit */
+            header[data-testid="stHeader"] { 
+                display: none !important; 
+            }
+
+            /* Ẩn hoàn toàn khoảng đệm thừa ở đỉnh của Sidebar / Thanh điều hướng */
+            [data-testid="stSidebar"] > div:first-child {
+                padding-top: 0rem !important;
             }
 
             div[data-testid="InputInstructions"] {
@@ -46,6 +55,7 @@ def show_page():
                 max-width: 330px !important;
             }
 
+            /* Định dạng chữ hiển thị trên Menu - Ví dụ: "NGHIỆP VỤ HẰNG NGÀY" */
             [data-testid="stSidebarNav"] span[data-testid="stSidebarNavSeparator"] + span,
             [data-testid="stSidebarNav"] ul li div {
                 font-size: 16px !important;
@@ -54,7 +64,7 @@ def show_page():
                 text-transform: uppercase !important;
                 letter-spacing: 0.5px !important;
                 padding-bottom: 5px;
-                margin-top: 15px;
+                margin-top: 0px !important; /* Đẩy mục phân hệ (như Nghiệp vụ hằng ngày) sát lên trên */
                 border-bottom: 2px solid #cbd5e1;
             }
             
@@ -63,7 +73,7 @@ def show_page():
                 font-size: 17px !important;
                 border-bottom: 2px solid #d32f2f !important;
                 padding-bottom: 8px !important;
-                margin-top: 25px !important;
+                margin-top: 15px !important;
             }
 
             [data-testid="stSidebarNav"] ul li ul li {
