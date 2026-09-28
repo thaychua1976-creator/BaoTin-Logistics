@@ -10,21 +10,40 @@ from datetime import datetime, date, timedelta
 import streamlit as st
 from dotenv import load_dotenv
 
-load_dotenv()
+# Vẫn load file .env cho môi trường Local
+load_dotenv(override=False) 
 
-# Ưu tiên đọc từ Streamlit Secrets (khi chạy trên Cloud), nếu không có mới tìm trong .env (chạy Local)
-if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
-    GEMINI_API_KEY = st.secrets["api_keys"]["gemini"]
-else:
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# =====================================================================
+# THUẬT TOÁN QUÉT TÌM GEMINI_API_KEY CHỐNG LỖI (LOCAL & CLOUD)
+# =====================================================================
+api_key1 = None
 
-if not GEMINI_API_KEY:
-    st.error("❌ Hệ thống chưa được cấu hình Gemini API Key!")
+# Bước 1: Thử lấy từ biến môi trường của hệ điều hành (Nếu chạy Local có file .env)
+api_key1 = os.getenv("GEMINI_API_KEY")
+
+# Bước 2: Nếu chưa có, tiến hành quét trong kho Secrets của Streamlit Cloud
+if not api_key1:
+    try:
+        # Trường hợp 2A: Quét theo cấu trúc phân nhóm TOML [api_keys] -> gemini
+        if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
+            api_key1 = st.secrets["api_keys"]["gemini"]
+            
+        # Trường hợp 2B: Quét theo cấu trúc phẳng (đề phòng trường hợp dán thẳng file .env vào Cloud)
+        elif "GEMINI_API_KEY" in st.secrets:
+            api_key1 = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        pass
+
+# Kiểm tra chốt chặn cuối cùng
+if not api_key1:
+    st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống! Vui lòng kiểm tra lại cấu trúc Secrets trên Cloud.")
 else:
+    # Khởi tạo Gemini API của bạn tại đây với biến api_key
     pass
+# =====================================================================
 #GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+if api_key1:
+    genai.configure(api_key=api_key1)
     model = genai.GenerativeModel('gemini-3.6-flash') 
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     DOWNLOAD_DIR = os.path.join(BASE_DIR, "zalo_downloads")
