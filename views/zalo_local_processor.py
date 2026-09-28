@@ -2,13 +2,14 @@ import os
 import time
 import json
 import easyocr
-import re, shutil
+import re
 import pandas as pd
 from PIL import Image
 import google.generativeai as genai
 from datetime import datetime, date, timedelta
 import streamlit as st
 from dotenv import load_dotenv
+import shutil # Import thêm module shutil
 
 # Vẫn load file .env cho môi trường Local
 load_dotenv(override=False) 
@@ -73,9 +74,19 @@ def get_grouped_files():
             grouped_files[group_name] = [os.path.join(root, f) for f in valid_files]
     return grouped_files
 
+
 # [CẬP NHẬT]: Hàm dọn dẹp CHỈ XÓA FILE (Tự động chạy để dọn rác từ phiên trước)
 def clear_files_only():
     deleted_count = 0
+    # Xóa file Excel tổng hợp
+    if os.path.exists(EXCEL_FILE):
+        try:
+            os.remove(EXCEL_FILE)
+            deleted_count += 1
+        except Exception:
+            pass
+            
+    # Xóa tất cả các file trong DOWNLOAD_DIR và các thư mục con
     for root, dirs, files in os.walk(DOWNLOAD_DIR):
         for file in files:
             file_path = os.path.join(root, file)
@@ -327,10 +338,6 @@ def process_offline_zalo_files():
         df_new['ngay_chuyen_di'] = df_new.get('ngay_chuyen_di', 'Khong_Xac_Dinh').apply(format_date_to_dmy)
         
         # 1. Bổ sung các cột bị thiếu (bao gồm cả cột loai_xe_yeu_cau mới)
-        df_new['ngay_chuyen_di'] = df_new.get('ngay_chuyen_di', 'Khong_Xac_Dinh').fillna('Khong_Xac_Dinh').astype(str)
-        
-        # 1. Bổ sung các cột bị thiếu (nếu AI không trích xuất được để tránh lỗi code)
-        # 1. Bổ sung các cột bị thiếu (bao gồm cả cột loai_xe_yeu_cau mới)
         for col in ['ma_so_thue', 'ten_khach_hang', 'dia_chi_kho_di', 'dia_chi_kho_den', 'khoi_luong_kg', 'the_tich_cbm', 'loai_xe_yeu_cau', 'ghi_chu']:
             if col not in df_new.columns: df_new[col] = ""
 
@@ -364,8 +371,11 @@ def process_offline_zalo_files():
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
             grouped = df_export.groupby('NGAY_CHAY')
             for date_str, group_df in grouped:
-                sheet_name = str(date_str).split('T')[0][:31]
-                group_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                # Xử lý an toàn cho tên sheet (không chứa ký tự không hợp lệ)
+                safe_sheet_name = str(date_str).replace('/', '-').replace('\\', '-')[:31] 
+                if safe_sheet_name == "Khong_Xac_Dinh":
+                    safe_sheet_name = "Khong_Xac_Dinh_Ngay"
+                group_df.to_excel(writer, sheet_name=safe_sheet_name, index=False)
                 
         return {"status": "success", "message": f"✅ Đã lưu {len(valid_records)} chuyến xe vào Excel. File sẽ tự động xóa sau khi bạn tải về.", "unprocessed": unprocessed_files}
     
@@ -373,7 +383,7 @@ def process_offline_zalo_files():
 def main_app():
     # [CẬP NHẬT]: Tự động quét và xóa file của phiên làm việc trước khi mở App
     if "auto_cleaned_files" not in st.session_state:
-        clear_files_only()
+        clear_files_and_folders() # Dọn dẹp sạch sẽ 100% khi ứng dụng bắt đầu
         st.session_state["auto_cleaned_files"] = True
 
     # Khởi tạo bộ đếm form key để phục vụ việc reset widget file_uploader
@@ -389,7 +399,7 @@ def main_app():
     if st.button("🗑️ Dọn sạch toàn bộ File VÀ Thư mục Zalo cũ", type="secondary"):
         deleted = clear_files_and_folders()
         if deleted > 0:
-            st.success(f"✅ Đã xóa thành công {deleted} file rác và dọn sạch cấu trúc thư mục!")
+            st.success(f"✅ Đã xóa thành công {deleted} file/thư mục rác và dọn sạch cấu trúc!")
         else:
             st.info("✨ Thư mục hiện tại đang hoàn toàn trống.")
 
@@ -512,7 +522,7 @@ def main_app():
                         os.remove(EXCEL_FILE)
                 except Exception: pass
                 
-                clear_files_only() # Xóa luôn các ảnh Zalo đầu vào
+                clear_files_and_folders() # Gọi hàm mới để dọn dẹp triệt để thư mục
                 
                 st.session_state["zalo_form_reset_key"] += 1
                 st.toast("🎉 Hệ thống đã tự động dọn sạch file rác của phiên làm việc này.")
