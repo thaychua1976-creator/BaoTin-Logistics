@@ -2,7 +2,7 @@ import os
 import time
 import json
 import easyocr
-import re
+import re, shutil
 import pandas as pd
 from PIL import Image
 import google.generativeai as genai
@@ -86,33 +86,61 @@ def clear_files_only():
                 pass
     return deleted_count
 
-# [CẬP NHẬT]: Hàm dọn dẹp TOÀN BỘ FILE & THƯ MỤC (Chỉ chạy khi người dùng bấm nút)
+# [CẬP NHẬT]: Hàm dọn dẹp TOÀN BỘ FILE & THƯ MỤC (Xóa sạch sẽ 100%)
 def clear_files_and_folders():
-    deleted_count = clear_files_only() # Tái sử dụng hàm xóa file
-    
-    # Xóa luôn các thư mục rỗng
-    for root, dirs, files in os.walk(DOWNLOAD_DIR, topdown=False):
-        for name in dirs:
-            dir_path = os.path.join(root, name)
-            if not os.listdir(dir_path):
-                try:
-                    os.rmdir(dir_path)
-                except:
-                    pass
+    deleted_count = 0
+    # 1. Xóa file Excel tổng hợp cũ nếu có
+    if os.path.exists(EXCEL_FILE):
+        try:
+            os.remove(EXCEL_FILE)
+            deleted_count += 1
+        except: pass
+
+    # 2. Xóa TOÀN BỘ thư mục con và file bên trong (Dùng shutil.rmtree cho triệt để)
+    for item in os.listdir(DOWNLOAD_DIR):
+        item_path = os.path.join(DOWNLOAD_DIR, item)
+        try:
+            if os.path.isfile(item_path):
+                os.remove(item_path)
+            elif os.path.isdir(item_path):
+                shutil.rmtree(item_path) # Xóa mạnh tay cả cây thư mục
+            deleted_count += 1
+        except Exception:
+            pass
+            
+    # Reset biến preview trong session state
+    if "zalo_form_reset_key" in st.session_state:
+        st.session_state["zalo_form_reset_key"] += 1
+        
     return deleted_count
 
 def process_offline_zalo_files():
     # [THÊM MỚI] Hàm tra cứu MST từ Database
     def get_ma_so_thue(ten_kh):
-        if not ten_kh or "db" not in st.session_state:
+        if not ten_kh:
             return ""
         try:
-            sql = "SELECT ma_khach_hang FROM khach_hang WHERE ten_khach_hang = %s LIMIT 1"
-            df_kh = st.session_state['db'].execute_query(sql, (ten_kh,))
+            # Lấy DB từ session (phải đảm bảo file này chạy sau khi login ERP)
+            db = st.session_state.get('db')
+            if not db:
+                return ""
+                
+            # Loại bỏ các từ khóa công ty để tìm kiếm LIKE chính xác hơn
+            tu_khoa = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*|cty\s*', '', str(ten_kh)).strip()
+            
+            # Nếu tên quá ngắn, bỏ qua việc tìm kiếm tự động để tránh gán nhầm
+            if len(tu_khoa) < 3:
+                return ""
+
+            # Tìm kiếm tương đối bằng LIKE
+            sql = "SELECT ma_so_thue FROM khach_hang WHERE ten_khach_hang LIKE %s LIMIT 1"
+            df_kh = db.execute_query(sql, (f"%{tu_khoa}%",))
+            
             if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
-                val = df_kh.iloc[0]['ma_khach_hang']
-                return str(val) if pd.notna(val) else ""
-        except: pass
+                val = df_kh.iloc[0]['ma_so_thue']
+                return str(val).strip() if pd.notna(val) and str(val).strip() != "" else ""
+        except Exception as e: 
+            print(f"Lỗi tìm MST: {e}") # Log lỗi nội bộ nếu có
         return ""
     
     today_str = datetime.today().strftime('%Y-%m-%d')
