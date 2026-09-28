@@ -312,6 +312,21 @@ def process_offline_zalo_files():
                     
     if valid_records:
         df_new = pd.DataFrame(valid_records)
+        
+        # CHUYỂN FORMAT NGÀY SANG DẠNG CHUỖI dd/mm/yyyy
+        def format_date_to_dmy(date_val):
+            try:
+                if pd.isna(date_val) or str(date_val).strip() == "" or "Khong_Xac_Dinh" in str(date_val):
+                    return "Khong_Xac_Dinh"
+                # Phân tích chuỗi ISO (YYYY-MM-DD) do AI trả về
+                parsed_date = datetime.strptime(str(date_val)[:10], '%Y-%m-%d')
+                return parsed_date.strftime('%d/%m/%Y')
+            except Exception:
+                return str(date_val)
+
+        df_new['ngay_chuyen_di'] = df_new.get('ngay_chuyen_di', 'Khong_Xac_Dinh').apply(format_date_to_dmy)
+        
+        # 1. Bổ sung các cột bị thiếu (bao gồm cả cột loai_xe_yeu_cau mới)
         df_new['ngay_chuyen_di'] = df_new.get('ngay_chuyen_di', 'Khong_Xac_Dinh').fillna('Khong_Xac_Dinh').astype(str)
         
         # 1. Bổ sung các cột bị thiếu (nếu AI không trích xuất được để tránh lỗi code)
