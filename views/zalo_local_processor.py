@@ -10,6 +10,8 @@ from datetime import datetime, date, timedelta
 import streamlit as st
 from dotenv import load_dotenv
 import shutil # Import thêm module shutil
+# Thêm vào danh sách import ở đầu tệp
+from openpyxl.styles import PatternFill, Border, Side, Font
 
 # Vẫn load file .env cho môi trường Local
 load_dotenv(override=False) 
@@ -370,12 +372,39 @@ def process_offline_zalo_files():
         # 5. Ghi đè file Excel mới tinh (Chỉ chứa data của lần quét hiện tại)
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
             grouped = df_export.groupby('NGAY_CHAY')
+            
+            # Định nghĩa các style (Màu đỏ, viền mỏng)
+            header_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid") # Nền đỏ
+            header_font = Font(color="FFFFFF", bold=True) # Chữ trắng in đậm
+            thin_border = Border(left=Side(style='thin'), 
+                                 right=Side(style='thin'), 
+                                 top=Side(style='thin'), 
+                                 bottom=Side(style='thin'))
+            
             for date_str, group_df in grouped:
                 # Xử lý an toàn cho tên sheet (không chứa ký tự không hợp lệ)
                 safe_sheet_name = str(date_str).replace('/', '-').replace('\\', '-')[:31] 
                 if safe_sheet_name == "Khong_Xac_Dinh":
                     safe_sheet_name = "Khong_Xac_Dinh_Ngay"
+                
+                # Bỏ qua index khi xuất ra Excel
                 group_df.to_excel(writer, sheet_name=safe_sheet_name, index=False)
+                
+                # Áp dụng định dạng cho sheet vừa tạo
+                worksheet = writer.sheets[safe_sheet_name]
+                
+                # Format Tiêu đề (Hàng 1)
+                for col_num, value in enumerate(group_df.columns.values):
+                    cell = worksheet.cell(row=1, column=col_num + 1)
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.border = thin_border
+                
+                # Format các ô dữ liệu (Từ hàng 2 trở đi)
+                for row_num in range(2, len(group_df) + 2):
+                    for col_num in range(1, len(group_df.columns) + 1):
+                        cell = worksheet.cell(row=row_num, column=col_num)
+                        cell.border = thin_border
                 
         return {"status": "success", "message": f"✅ Đã lưu {len(valid_records)} chuyến xe vào Excel. File sẽ tự động xóa sau khi bạn tải về.", "unprocessed": unprocessed_files}
     
