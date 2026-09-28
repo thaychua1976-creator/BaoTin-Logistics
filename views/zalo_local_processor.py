@@ -11,7 +11,8 @@ import streamlit as st
 from dotenv import load_dotenv
 import shutil # Import thêm module shutil
 # Thêm vào danh sách import ở đầu tệp
-from openpyxl.styles import PatternFill, Border, Side, Font
+# Sửa lại dòng import ở đầu tệp
+from openpyxl.styles import PatternFill, Border, Side, Font, Alignment
 
 # Vẫn load file .env cho môi trường Local
 load_dotenv(override=False) 
@@ -381,6 +382,9 @@ def process_offline_zalo_files():
                                  top=Side(style='thin'), 
                                  bottom=Side(style='thin'))
             
+            # Định nghĩa style Wrap Text cho cột Ghi Chú
+            wrap_alignment = Alignment(wrap_text=True, vertical='top', horizontal='left')
+
             for date_str, group_df in grouped:
                 # Xử lý an toàn cho tên sheet (không chứa ký tự không hợp lệ)
                 safe_sheet_name = str(date_str).replace('/', '-').replace('\\', '-')[:31] 
@@ -393,18 +397,39 @@ def process_offline_zalo_files():
                 # Áp dụng định dạng cho sheet vừa tạo
                 worksheet = writer.sheets[safe_sheet_name]
                 
+                # Điều chỉnh độ rộng các cột cơ bản để dễ đọc
+                worksheet.column_dimensions['A'].width = 15 # Ngày
+                worksheet.column_dimensions['B'].width = 15 # MST
+                worksheet.column_dimensions['C'].width = 30 # Tên Khách
+                worksheet.column_dimensions['D'].width = 35 # Điểm đi
+                worksheet.column_dimensions['E'].width = 35 # Điểm đến
+                worksheet.column_dimensions['H'].width = 15 # Loại xe
+                
+                # 📌 Điều chỉnh độ rộng cột Ghi Chú (Cột thứ 9 - I)
+                worksheet.column_dimensions['I'].width = 50 
+
                 # Format Tiêu đề (Hàng 1)
                 for col_num, value in enumerate(group_df.columns.values):
                     cell = worksheet.cell(row=1, column=col_num + 1)
                     cell.fill = header_fill
                     cell.font = header_font
                     cell.border = thin_border
+                    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
                 
                 # Format các ô dữ liệu (Từ hàng 2 trở đi)
                 for row_num in range(2, len(group_df) + 2):
+                    # Tăng chiều cao của tất cả các dòng dữ liệu để chứa nội dung Wrap Text
+                    worksheet.row_dimensions[row_num].height = 45 
+                    
                     for col_num in range(1, len(group_df.columns) + 1):
                         cell = worksheet.cell(row=row_num, column=col_num)
                         cell.border = thin_border
+                        
+                        # Cột thứ 9 (I) là cột Ghi Chú, áp dụng Wrap Text
+                        if col_num == 9: 
+                            cell.alignment = wrap_alignment
+                        else:
+                            cell.alignment = Alignment(vertical='top') # Căn trên cho tất cả các cột khác
                 
         return {"status": "success", "message": f"✅ Đã lưu {len(valid_records)} chuyến xe vào Excel. File sẽ tự động xóa sau khi bạn tải về.", "unprocessed": unprocessed_files}
     
@@ -418,6 +443,44 @@ def main_app():
     # Khởi tạo bộ đếm form key để phục vụ việc reset widget file_uploader
     if "zalo_form_reset_key" not in st.session_state:
         st.session_state["zalo_form_reset_key"] = 0
+    # THÊM ĐOẠN CSS NÀY ĐỂ THU GỌN KHOẢNG CÁCH
+    st.markdown("""
+        <style>
+            /* Thu hẹp khoảng cách trên/dưới của tiêu đề chính */
+            h1, h2, h3 {
+                padding-top: 0.5rem !important;
+                padding-bottom: 0rem !important;
+                margin-top: 0rem !important;
+                margin-bottom: 0.5rem !important;
+            }
+            
+            /* Thu hẹp khoảng cách của các tiêu đề phụ (subheader) */
+            h4, h5, h6 {
+                padding-top: 0.2rem !important;
+                padding-bottom: 0rem !important;
+                margin-top: 0rem !important;
+                margin-bottom: 0.5rem !important;
+            }
+            
+            /* Thu hẹp khoảng cách của đường kẻ ngang (st.markdown("---")) */
+            hr {
+                margin-top: 0.5rem !important;
+                margin-bottom: 0.5rem !important;
+            }
+            
+            /* Giảm khoảng trắng bên trong form tải file */
+            div[data-testid="stForm"] {
+                padding-top: 0.5rem !important;
+                padding-bottom: 0.5rem !important;
+                margin-bottom: 0.5rem !important;
+            }
+            
+            /* Ép các div markdown sát lại nhau */
+            [data-testid="stMarkdownContainer"] {
+                margin-bottom: -5px !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)    
 
     st.title("🤖 RPA - Lấy thông tin điều xe từ file Zalo")
     
