@@ -1129,13 +1129,26 @@ with tab3:
                     df_tpl_order.to_excel(writer, index=False, sheet_name="Mau_Book_Xe")
                     df_kh_export.to_excel(writer, index=False, sheet_name="Thong_Tin_Khach_Hang")
                     
-                    # Format độ rộng cột cho sheet Khách hàng để dễ đọc
+                    workbook = writer.book
+                    # Tạo format wrap text cho toàn bộ file
+                    wrap_format = workbook.add_format({'text_wrap': True, 'valign': 'top'})
+                    
+                    # --- Format cho sheet Mẫu Book Xe ---
+                    worksheet_mau = writer.sheets["Mau_Book_Xe"]
+                    # Áp dụng độ rộng phù hợp và wrap text cho cột Ghi Chú (Cột H)
+                    worksheet_mau.set_column('A:E', 20) 
+                    worksheet_mau.set_column('F:G', 15) 
+                    worksheet_mau.set_column('H:H', 50, wrap_format) # Wrap text cho Ghi chú
+                    worksheet_mau.set_default_row(30) # Tăng nhẹ chiều cao dòng mặc định
+
+                    # --- Format cho sheet Thông Tin Khách Hàng ---
                     worksheet_kh = writer.sheets["Thong_Tin_Khach_Hang"]
                     worksheet_kh.set_column('A:A', 20)  # Mã Khách Hàng
                     worksheet_kh.set_column('B:B', 45)  # Tên Khách Hàng
                     worksheet_kh.set_column('C:C', 20)  # Mã Số Thuế
                     worksheet_kh.set_column('D:D', 15)  # Số Điện Thoại
-                    worksheet_kh.set_column('E:E', 60)  # Địa Chỉ
+                    worksheet_kh.set_column('E:E', 60, wrap_format)  # Địa Chỉ (Wrap text)
+                    worksheet_kh.set_default_row(25)
                     
                 st.download_button(
                     label="⬇️ Tải mẫu Excel Điều phối tự động", 
