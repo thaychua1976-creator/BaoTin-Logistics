@@ -6,6 +6,7 @@ from map_service import MapService
 from trip_manager import save_trip_full_process, tao_khach_hang_nhanh, group_trips_transaction, update_trip_full_process, delete_trip_safe
 from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 from dotenv import load_dotenv
+from openpyxl.styles import PatternFill, Border, Side, Font, Alignment
 
 #[api_keys]
 #gemini = "value"  : cấu trúc trên cloud toml
@@ -1395,13 +1396,44 @@ with tab3:
                 df_zalo_export = pd.DataFrame(danh_sach_zalo)
                 buffer_export = io.BytesIO()
                 
-                with pd.ExcelWriter(buffer_export, engine='xlsxwriter') as writer:
+                with pd.ExcelWriter(buffer_export, engine='openpyxl') as writer:
                     df_zalo_export.to_excel(writer, index=False, sheet_name="Lenh_Dieu_Xe_ZaloThuCong")
-                    workbook = writer.book
                     worksheet = writer.sheets["Lenh_Dieu_Xe_ZaloThuCong"]
-                    wrap_format = workbook.add_format({'text_wrap': True, 'valign': 'top'})
-                    worksheet.set_column('B:C', 60, wrap_format)
-                    worksheet.set_column('A:A', 20)
+                    
+                    # 1. Định nghĩa các định dạng style (Đỏ, Trắng, Viền mỏng)
+                    header_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+                    header_font = Font(color="FFFFFF", bold=True)
+                    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+                    wrap_alignment = Alignment(wrap_text=True, vertical='top', horizontal='left')
+                    center_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                    
+                    # 2. Định dạng dòng Tiêu đề (Header)
+                    for col_num, value in enumerate(df_zalo_export.columns.values):
+                        cell = worksheet.cell(row=1, column=col_num + 1)
+                        cell.fill = header_fill
+                        cell.font = header_font
+                        cell.border = thin_border
+                        cell.alignment = center_alignment
+                        
+                    # 3. Định dạng ô dữ liệu (Kẻ viền và wrap text)
+                    for row_num in range(2, len(df_zalo_export) + 2):
+                        # Tăng chiều cao của tất cả các dòng dữ liệu để chứa nội dung nhắn tin Zalo dài
+                        worksheet.row_dimensions[row_num].height = 100 
+                        
+                        for col_num in range(1, len(df_zalo_export.columns) + 1):
+                            cell = worksheet.cell(row=row_num, column=col_num)
+                            cell.border = thin_border
+                            
+                            # Cột thứ 2 (GUI_THONG_TIN_TAI_XE) và Cột 3 (GUI_THONG_TIN_KHACH_HANG) áp dụng xuống dòng
+                            if col_num in [2, 3]:
+                                cell.alignment = wrap_alignment
+                            else:
+                                cell.alignment = Alignment(vertical='top') # Căn trên cho tất cả các cột khác
+                                
+                    # 4. Điều chỉnh độ rộng cột
+                    worksheet.column_dimensions['A'].width = 15  # TEN_GROUP
+                    worksheet.column_dimensions['B'].width = 50  # GUI_THONG_TIN_TAI_XE
+                    worksheet.column_dimensions['C'].width = 50  # GUI_THONG_TIN_KHACH_HANG
                     
                 st.divider()
                 
