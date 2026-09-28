@@ -13,44 +13,47 @@ from dotenv import load_dotenv
 # Vẫn load file .env cho môi trường Local
 load_dotenv(override=False) 
 
-# =====================================================================
-# THUẬT TOÁN QUÉT TÌM GEMINI_API_KEY CHỐNG LỖI (LOCAL & CLOUD)
-# =====================================================================
-api_key1 = None
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DOWNLOAD_DIR = os.path.join(BASE_DIR, "zalo_downloads")
+TEMP_FILE = os.path.join(BASE_DIR, "temp_parsing.txt")
+EXCEL_FILE = os.path.join(BASE_DIR, "Danh_Sach_Book_Xe_Tong_Hop.xlsx")
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# Bước 1: Thử lấy từ biến môi trường của hệ điều hành (Nếu chạy Local có file .env)
-api_key1 = os.getenv("GEMINI_API_KEY")
+@st.cache_resource
+def load_ocr_model():
+    return easyocr.Reader(['vi', 'en'], gpu=False)
 
-# Bước 2: Nếu chưa có, tiến hành quét trong kho Secrets của Streamlit Cloud
-if not api_key1:
+# Hàm khởi tạo và cấu hình model Gemini ngay tại thời điểm cần thiết để tránh lỗi scope
+def get_gemini_model():
+    # Kiểm tra xem model đã được khởi tạo trong session chưa
+    if "gemini_model" in st.session_state:
+        return st.session_state["gemini_model"]
+
+    api_key = None
+
+    # Bước 1: Quét trong kho Secrets của Streamlit Cloud trước
     try:
-        # Trường hợp 2A: Quét theo cấu trúc phân nhóm TOML [api_keys] -> gemini
         if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
-            api_key1 = st.secrets["api_keys"]["gemini"]
-            
-        # Trường hợp 2B: Quét theo cấu trúc phẳng (đề phòng trường hợp dán thẳng file .env vào Cloud)
+            api_key = st.secrets["api_keys"]["gemini"]
         elif "GEMINI_API_KEY" in st.secrets:
-            api_key1 = st.secrets["GEMINI_API_KEY"]
+            api_key = st.secrets["GEMINI_API_KEY"]
     except Exception:
         pass
 
-# Kiểm tra chốt chặn cuối cùng
-if not api_key1:
-    st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống! Vui lòng kiểm tra lại cấu trúc Secrets trên Cloud.")
-else:
-    # Khởi tạo Gemini API của bạn tại đây với biến api_key
-    pass
-# =====================================================================
-#GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if api_key1:
-    genai.configure(api_key=api_key1)
-    model = genai.GenerativeModel('gemini-3.6-flash') 
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    DOWNLOAD_DIR = os.path.join(BASE_DIR, "zalo_downloads")
-    TEMP_FILE = os.path.join(BASE_DIR, "temp_parsing.txt")
-    EXCEL_FILE = os.path.join(BASE_DIR, "Danh_Sach_Book_Xe_Tong_Hop.xlsx")
-else:
-    st.error("⚠️ Không tìm thấy GEMINI_API_KEY trong file .env")
+    # Bước 2: Thử lấy từ biến môi trường của hệ điều hành (Local)
+    if not api_key:
+        api_key = os.getenv("GEMINI_API_KEY")
+
+    # Khởi tạo model nếu tìm thấy key
+    if api_key:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-3.6-flash')
+        st.session_state["gemini_model"] = model # Lưu vào session để dùng lại
+        return model
+    else:
+        st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống! Vui lòng kiểm tra lại cấu trúc Secrets trên Cloud.")
+        return None
+    
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
@@ -200,7 +203,13 @@ def process_offline_zalo_files():
                         with open(filepath, 'r', encoding='utf-8') as f:
                             raw_text = f.read()
                     
-                    response = model.generate_content(prompt + f'\nNội dung cần phân tích: "{raw_text}"')
+                    # Gọi hàm khởi tạo model (an toàn và lấy key mới nhất)
+                    active_model = get_gemini_model()
+                    if not active_model:
+                        ui_file_status.error("❌ Dừng xử lý: Hệ thống không kết nối được với AI (Thiếu API Key).")
+                        return {"status": "error", "message": "Thiếu API Key.", "unprocessed": unprocessed_files}
+                    
+                    response = active_model.generate_content(prompt + f'\nNội dung cần phân tích: "{raw_text}"')
                     
                     clean_text = re.sub(r"^```json\s*", "", response.text.strip(), flags=re.IGNORECASE)
                     clean_text = re.sub(r"\s*```$", "", re.sub(r"^```\s*", "", clean_text, flags=re.IGNORECASE))
