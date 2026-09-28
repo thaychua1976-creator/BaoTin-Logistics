@@ -274,6 +274,7 @@ def show_page():
         page_doi_xe    = st.Page("views/doi_xe.py", title="Quản lý Đội xe", icon="🚛")
         page_phap_ly_xe    = st.Page("views/phap_ly_xe.py", title="Quản lý pháp lý xe", icon="🚛")
         page_tai_khoan = st.Page("views/tai_khoan.py", title="Quản lý tài khoản user", icon="👤")
+        page_doi_mat_khau = st.Page("views/doi_mat_khau.py", title="Đổi mật khẩu", icon="🔑") # Thêm trang mới
         page_kinh_doanh_result= st.Page("views/kinh_doanh_result.py", title="Kết quả Kinh doanh", icon="📈")
         page_app_tai_xe = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", default=True)
         page_tool_zalo= st.Page("views/zalo_local_processor.py", title=" Lấy thông tin book từ Zalo", icon="🚛")
@@ -290,20 +291,24 @@ def show_page():
                 "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di,page_to_khai_hq,page_quan_ly_co,page_tool_fuel_manager, page_phap_ly_xe],
                 "📦 NGHIỆP VỤ KẾ TOÁN": [page_quyet_toan, page_bao_cao],
                 "📦 TOOL TIỆN ÍCH": [page_tool_import_pricing,page_tool_import_phu_cap,page_tool_import_pricing_haiquan,page_tool_backup_database, page_tool_zalo],
-                "⚙️ DANH MỤC QUẢN TRỊ": [page_nhan_vien, page_doi_xe,page_khach_hang, page_tai_khoan, page_kinh_doanh_result]
+                "⚙️ DANH MỤC QUẢN TRỊ": [page_nhan_vien, page_doi_xe,page_khach_hang, page_tai_khoan, page_kinh_doanh_result],
+                "👤 CÁ NHÂN": [page_doi_mat_khau] # Thêm cho Admin
             }
         elif role == 'Tai_Xe':
             pages_structure = {
-                "📱 ỨNG DỤNG TÀI XẾ": [page_app_tai_xe]
+                "📱 ỨNG DỤNG TÀI XẾ": [page_app_tai_xe],
+                "👤 CÁ NHÂN": [page_doi_mat_khau] # Thêm cho Tài xế
             }
         elif role == 'Ke_Toan':
             pages_structure = {
-                "📱 NGHIỆP VỤ KẾ TOÁN": [page_quyet_toan, page_bao_cao]
+                "📱 NGHIỆP VỤ KẾ TOÁN": [page_quyet_toan, page_bao_cao],
+                "👤 CÁ NHÂN": [page_doi_mat_khau] # Thêm cho Kế toán
             }
         else:
             pages_structure = {
                 "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di,page_to_khai_hq,page_quan_ly_co,page_tool_fuel_manager,page_phap_ly_xe],
-                "📦 TOOL TIỆN ÍCH": [page_tool_import_pricing,page_tool_import_phu_cap,page_tool_import_pricing_haiquan,page_tool_backup_database, page_tool_zalo]
+                "📦 TOOL TIỆN ÍCH": [page_tool_import_pricing,page_tool_import_phu_cap,page_tool_import_pricing_haiquan,page_tool_backup_database, page_tool_zalo],
+                "👤 CÁ NHÂN": [page_doi_mat_khau] # Thêm cho role mặc định
             }
             
         pg = st.navigation(pages_structure, position="sidebar")
