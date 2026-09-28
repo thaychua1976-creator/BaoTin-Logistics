@@ -6,24 +6,42 @@ from map_service import MapService
 from trip_manager import save_trip_full_process, tao_khach_hang_nhanh, group_trips_transaction, update_trip_full_process, delete_trip_safe
 from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 from dotenv import load_dotenv
-# Vẫn load file .env cho môi trường Local (nếu có file thì load, không có thì bỏ qua)
-load_dotenv(override=False) 
-api_key =None
+
 #[api_keys]
 #gemini = "value"  : cấu trúc trên cloud toml
 
-# Bước 1: Ưu tiên lấy từ st.secrets (Cloud)
-if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
-    api_key = st.secrets["api_keys"]["gemini"]
-# Bước 2: Fallback lấy từ os.environ (Local hoặc các hệ thống Cloud khác)
-elif os.getenv("GEMINI_API_KEY"):
-    api_key = os.getenv("GEMINI_API_KEY")
 
+# Vẫn load file .env cho môi trường Local
+load_dotenv(override=False) 
+
+# =====================================================================
+# THUẬT TOÁN QUÉT TÌM GEMINI_API_KEY CHỐNG LỖI (LOCAL & CLOUD)
+# =====================================================================
+api_key = None
+
+# Bước 1: Thử lấy từ biến môi trường của hệ điều hành (Nếu chạy Local có file .env)
+api_key = os.getenv("GEMINI_API_KEY")
+
+# Bước 2: Nếu chưa có, tiến hành quét trong kho Secrets của Streamlit Cloud
 if not api_key:
-    st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống! Vui lòng kiểm tra lại cấu trúc Secrets.")
+    try:
+        # Trường hợp 2A: Quét theo cấu trúc phân nhóm TOML [api_keys] -> gemini
+        if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
+            api_key = st.secrets["api_keys"]["gemini"]
+            
+        # Trường hợp 2B: Quét theo cấu trúc phẳng (đề phòng trường hợp dán thẳng file .env vào Cloud)
+        elif "GEMINI_API_KEY" in st.secrets:
+            api_key = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        pass
+
+# Kiểm tra chốt chặn cuối cùng
+if not api_key:
+    st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống! Vui lòng kiểm tra lại cấu trúc Secrets trên Cloud.")
 else:
     # Khởi tạo Gemini API của bạn tại đây với biến api_key
     pass
+# =====================================================================
 
 @st.cache_resource
 def get_map_service(): return MapService()
