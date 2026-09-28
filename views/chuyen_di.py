@@ -8,18 +8,19 @@ from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 from dotenv import load_dotenv
 # Vẫn load file .env cho môi trường Local (nếu có file thì load, không có thì bỏ qua)
 load_dotenv(override=False) 
-
+api_key =None
 #[api_keys]
 #gemini = "value"  : cấu trúc trên cloud toml
 
-# Ưu tiên lấy từ st.secrets (Cloud) trước, nếu không có mới tìm trong os.getenv (Local)
-try:
+# Bước 1: Ưu tiên lấy từ st.secrets (Cloud)
+if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
     api_key = st.secrets["api_keys"]["gemini"]
-except (FileNotFoundError, KeyError):
+# Bước 2: Fallback lấy từ os.environ (Local hoặc các hệ thống Cloud khác)
+elif os.getenv("GEMINI_API_KEY"):
     api_key = os.getenv("GEMINI_API_KEY")
 
 if not api_key:
-    st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống!")
+    st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống! Vui lòng kiểm tra lại cấu trúc Secrets.")
 else:
     # Khởi tạo Gemini API của bạn tại đây với biến api_key
     pass
