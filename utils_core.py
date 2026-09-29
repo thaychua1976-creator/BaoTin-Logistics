@@ -60,7 +60,13 @@ def parse_money_input(val_str):
 def doc_anh_cay_xang(image_file):
     try:
         img = Image.open(image_file)
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        # Gọi hàm lấy model an toàn thay vì khởi tạo trực tiếp
+        model = get_gemini_model('gemini-3.6-flash')
+        if not model:
+            st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống!")
+            return None
+            
         prompt = """
         Đây là ảnh chụp màn hình LED của trụ bơm xăng dầu.
         Hãy đọc chính xác các con số và trả về ĐÚNG định dạng JSON sau, không kèm bất kỳ văn bản nào khác:

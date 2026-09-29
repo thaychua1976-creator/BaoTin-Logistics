@@ -403,6 +403,7 @@ def get_tokens(text):
     t = re.sub(r'[^\w\s]', ' ', t)
     stopwords = {'CONG', 'TY', 'TNHH', 'CO', 'LTD', 'CP', 'VIET', 'NAM', 'VIETNAM', 'KCN', 'CTY', 'JSC', 'IP', 'CUM', 'KHU'}
     return set(t.split()) - stopwords
+################################################
 
 def keyword_match_score(app_str, db_str):
     app_tokens = get_tokens(app_str)
@@ -414,13 +415,25 @@ def keyword_match_score(app_str, db_str):
     max_len = max(len(app_tokens), len(db_tokens))
     if min_len == 0: return 0.0
     
-    # Base score (Giữ nguyên logic cũ để dễ dàng vượt qua màng lọc 0.75)
     base_score = len(intersection) / min_len 
-    
-    # Exactness score (Phạt nếu dư từ, dùng làm trọng số phụ để phân định thắng thua)
     exactness = len(intersection) / max_len
-    
     return base_score + (exactness * 0.1)
+
+# === THÊM HÀM MỚI VÀO ĐÂY ===
+def normalize_location_alias(text):
+    """Gom nhóm các cụm điểm đến đặc thù để AI dễ dàng matching 100%"""
+    if not text: return ""
+    text_upper = str(text).upper()
+    
+    # 1. Gom nhóm cụm Sân bay (SCSC, TCS, Tân Sơn Nhất) về 1 chuẩn chung duy nhất
+    if any(kw in text_upper for kw in ['SCSC', 'TCS', 'TÂN SƠN NHẤT', 'TAN SON NHAT']):
+        return 'CUM_SAN_BAY_TSN_SCSC_TCS'
+        
+    # 2. Xóa hậu tố số của các kho TBS (VD: TBS03, TBS 06, TBS-05 -> TBS)
+    text_upper = re.sub(r'TBS[\s\-]*\d+', 'TBS', text_upper)
+    
+    return text_upper
+# ============================
 
 # ==========================================
 # TAB 1: QUYẾT TOÁN ĐƠN CHUYẾN (ĐÃ TỐI ƯU CACHE)
@@ -584,6 +597,10 @@ with tab1:
 
                 if kh_id_qt and parts and len(parts) >= 2:
                     try:
+                        # [Áp dụng chuẩn hóa trước khi so sánh]
+                        ddi_norm = normalize_location_alias(ddi_save)
+                        dden_norm = normalize_location_alias(dden_save)
+                        
                         sql_rc = """
                             SELECT id, diem_di, diem_den, don_gia_cuoc, gia_chuyen_tiep_noi, phan_loai_phuong_tien, loai_xe_quy_cach, 
                             is_hang_tra_ve, khoang_cach 
@@ -591,23 +608,23 @@ with tab1:
                             WHERE khach_hang_id = %s
                             ORDER BY id DESC
                         """
-                        # [TỐI ƯU TỐC ĐỘ]: Gọi hàm Cache đã định nghĩa thay vì query trực tiếp
                         df_rc = get_cached_master_data(sql_rc, (kh_id_qt,))
                         db_raw_prices = []
                         
                         if isinstance(df_rc, pd.DataFrame) and not df_rc.empty:
                             matched_rc_rows = []
                             for _, rc_row in df_rc.iterrows():
-                                di_db = str(rc_row.get('diem_di', ''))
-                                den_db = str(rc_row.get('diem_den', ''))
+                                # [Áp dụng chuẩn hóa DB trước khi so sánh]
+                                di_db_norm = normalize_location_alias(str(rc_row.get('diem_di', '')))
+                                den_db_norm = normalize_location_alias(str(rc_row.get('diem_den', '')))
                                 
                                 # 1. So khớp tuyến đường thuận (A -> B)
-                                di_score = keyword_match_score(ddi_save, di_db)
-                                den_score = keyword_match_score(dden_save, den_db)
+                                di_score = keyword_match_score(ddi_norm, di_db_norm)
+                                den_score = keyword_match_score(dden_norm, den_db_norm)
                                 
                                 # 2. So khớp tuyến đường ngược (B -> A) 
-                                di_score_rev = keyword_match_score(ddi_save, den_db)
-                                den_score_rev = keyword_match_score(dden_save, di_db)
+                                di_score_rev = keyword_match_score(ddi_norm, den_db_norm)
+                                den_score_rev = keyword_match_score(dden_norm, di_db_norm)
                                 
                                 is_direct = (di_score >= 0.75 and den_score >= 0.75)
                                 is_reverse = (di_score_rev >= 0.75 and den_score_rev >= 0.75)
@@ -1574,8 +1591,9 @@ with tab3:
                                     
                                     if parts and kh_id and len(parts) >= 2:
                                         try:
-                                            ddi = parts[0].strip()
-                                            dden = parts[-1].strip()
+                                            # [Áp dụng chuẩn hóa trước khi so sánh]
+                                            ddi_norm = normalize_location_alias(parts[0].strip())
+                                            dden_norm = normalize_location_alias(parts[-1].strip())
                                             
                                             sql_rc = """
                                                 SELECT id, diem_di, diem_den, don_gia_cuoc, gia_chuyen_tiep_noi, phan_loai_phuong_tien, loai_xe_quy_cach, khoang_cach, is_hang_tra_ve 
@@ -1589,16 +1607,17 @@ with tab3:
                                             if isinstance(df_rc, pd.DataFrame) and not df_rc.empty:
                                                 matched_rc_rows = []
                                                 for _, rc_row in df_rc.iterrows():
-                                                    di_db = str(rc_row.get('diem_di', ''))
-                                                    den_db = str(rc_row.get('diem_den', ''))
+                                                    # [Áp dụng chuẩn hóa DB trước khi so sánh]
+                                                    di_db_norm = normalize_location_alias(str(rc_row.get('diem_di', '')))
+                                                    den_db_norm = normalize_location_alias(str(rc_row.get('diem_den', '')))
                                                     
                                                     # 1. So khớp tuyến đường thuận (A -> B)
-                                                    di_score = keyword_match_score(ddi, di_db)
-                                                    den_score = keyword_match_score(dden, den_db)
+                                                    di_score = keyword_match_score(ddi_norm, di_db_norm)
+                                                    den_score = keyword_match_score(dden_norm, den_db_norm)
                                                     
                                                     # 2. So khớp tuyến đường ngược (B -> A) 
-                                                    di_score_rev = keyword_match_score(ddi, den_db)
-                                                    den_score_rev = keyword_match_score(dden, di_db)
+                                                    di_score_rev = keyword_match_score(ddi_norm, den_db_norm)
+                                                    den_score_rev = keyword_match_score(dden_norm, di_db_norm)
                                                     
                                                     is_direct = (di_score >= 0.75 and den_score >= 0.75)
                                                     is_reverse = (di_score_rev >= 0.75 and den_score_rev >= 0.75)
