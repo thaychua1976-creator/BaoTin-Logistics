@@ -432,6 +432,9 @@ def normalize_location_alias(text):
     # 2. Xóa hậu tố số của các kho TBS (VD: TBS03, TBS 06, TBS-05 -> TBS)
     text_upper = re.sub(r'TBS[\s\-]*\d+', 'TBS', text_upper)
     
+    # 3. Chuẩn hóa tên viết tắt FIRST TEAM (Chỉ thay thế khi FT/FTVN đứng độc lập)
+    text_upper = re.sub(r'\b(F.T|FT|FTVN)\b', 'FIRST TEAM', text_upper)
+    
     return text_upper
 # ============================
 
