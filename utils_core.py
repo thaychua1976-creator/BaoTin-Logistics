@@ -6,19 +6,38 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 import os, re
 import logging
+
 # ==========================================================
-# LOAD BIẾN MÔI TRƯỜNG & CẤU HÌNH API[cite: 1]
+# LOAD BIẾN MÔI TRƯỜNG & CẤU HÌNH API
 # ==========================================================
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-else:
-    st.error("⚠️ Không tìm thấy GEMINI_API_KEY trong file .env")
+# HÀM KHỞI TẠO AI AN TOÀN (Không văng lỗi ở Global Scope)
+def get_gemini_model(model_name='gemini-3.6-flash'):
+    if "gemini_model_utils" in st.session_state:
+        return st.session_state["gemini_model_utils"]
+
+    api_key = None
+    try:
+        if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
+            api_key = st.secrets["api_keys"]["gemini"]
+        elif "GEMINI_API_KEY" in st.secrets:
+            api_key = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        pass
+
+    if not api_key:
+        api_key = os.getenv("GEMINI_API_KEY")
+
+    if api_key:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(model_name)
+        st.session_state["gemini_model_utils"] = model
+        return model
+    return None
 
 # ==========================================================
-# CÁC HÀM TIỆN ÍCH DÙNG CHUNG[cite: 2]
+# CÁC HÀM TIỆN ÍCH DÙNG CHUNG
 # ==========================================================
 def parse_money_input(val_str):
     """Xóa dấu phẩy, chuyển chuỗi tiền tệ thành số float/int an toàn"""
