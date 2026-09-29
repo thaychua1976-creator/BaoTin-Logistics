@@ -433,7 +433,11 @@ def normalize_location_alias(text):
     text_upper = re.sub(r'TBS[\s\-]*\d+', 'TBS', text_upper)
     
     # 3. Chuẩn hóa tên viết tắt FIRST TEAM (Chỉ thay thế khi FT/FTVN đứng độc lập)
-    text_upper = re.sub(r'\b(F.T|FT|FTVN)\b', 'FIRST TEAM', text_upper)
+    text_upper = re.sub(r'\b(F.T|FT|FTVN|FTVM)\b', 'FIRST TEAM', text_upper)
+
+    # 4. Chuẩn hóa Cát Lái: Chấp nhận mọi biến thể, chỉ cần có chữ Cát Lái
+    if 'CÁT LÁI' in text_upper or 'CAT LAI' in text_upper:
+        text_upper = 'CÁT LÁI'
     
     return text_upper
 # ============================
