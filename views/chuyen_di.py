@@ -353,7 +353,8 @@ with tab1:
                         kh_diachi_map[k_id] = str(r['dia_chi']) if pd.notna(r.get('dia_chi')) else ""
 
                 st.markdown("#### 1. Thông tin Khách hàng dịch vụ")
-                
+                diachi_input_key = f"tab1_dia_chi_kh_input_{trip_suffix}"
+
                 if is_chuyen_phu and thong_tin_chuyen_goc:
                     st.info(f"🔒 Khách hàng kế thừa từ chuyến gốc: **{thong_tin_chuyen_goc.get('ten_khach_hang')}**")
                     c_kh_sel = thong_tin_chuyen_goc.get('khach_hang_id')
@@ -362,7 +363,7 @@ with tab1:
                 else:
                     kh_opts_keys = list(kh_opts.keys())
                     default_kh_idx = get_idx(kh_opts_keys, trip_data.get('khach_hang_id'), 0) if mode_action == "✏️ Sửa chuyến hiện tại" else 0
-                    diachi_input_key = f"tab1_dia_chi_kh_input_{trip_suffix}"
+                    
                     
                     def on_khach_hang_change():
                         selected_kh = st.session_state.get(f"tab1_c_kh_sel_{trip_suffix}")
@@ -866,7 +867,12 @@ with tab1:
 
                         st.session_state["tab1_mode_action"] = "➕ Tạo chuyến mới"
                         st.session_state["api_km"] = 0.0
-                        if diachi_input_key in st.session_state: del st.session_state[diachi_input_key]
+
+                        # [SỬA TẠI ĐÂY] Lấy khóa an toàn, nếu biến chưa từng được khai báo sẽ trả về None
+                        safe_key = locals().get('diachi_input_key')
+                        if safe_key and safe_key in st.session_state: 
+                            del st.session_state[safe_key]
+                            
                         st.session_state["form_reset_counter"] += 1
                         time.sleep(1.2)
                         st.rerun()
