@@ -1457,9 +1457,15 @@ with tab3:
                                                     is_cont = loai_cont_excel not in ["thường", "thuong", "khác", "khac"]
                                                     loai_cont_clean = loai_cont_excel.replace(" (lạnh)", "").replace(" (lanh)", "").strip()
 
+                                                    # [SỬA LỖI 2] Vẫn lấy loai_hinh_xe từ DB nhưng kiểm tra chéo với file Excel để tránh lỗi DEFAULT
                                                     loai_hinh_xe_db = str(row_db.get('loai_hinh_xe', '')).strip().lower()
                                                     is_thuc_te_cont = ('container' in loai_hinh_xe_db) or ('cont' in loai_hinh_xe_db)
                                                     is_thuc_te_xe_may = ('xe_may' in loai_hinh_xe_db) or ('xe may' in loai_hinh_xe_db)
+                                                    
+                                                    # Nếu DB dán nhầm Container nhưng file Excel (cột LOAI_CONT) là "Thường", bẻ lái ưu tiên Xe Tải
+                                                    if is_thuc_te_cont and not is_cont:
+                                                        is_thuc_te_cont = False
+
                                                     is_thuc_te_xe_tai = not is_thuc_te_cont and not is_thuc_te_xe_may
                                                     
                                                     valid_candidates_di, valid_candidates_ve = [], []
