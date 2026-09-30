@@ -141,8 +141,8 @@ with tab2:
                 st.error("Vui lòng nhập Biển số xe!")
             else:
                 new_xe_data = {
-                    'bien_so_xe': bien_so.strip(),
-                    'nhan_hieu_xe': nhan_hieu.strip(),
+                    'bien_so_xe': bien_so.strip().upper(),
+                    'nhan_hieu_xe': nhan_hieu.strip().upper(),
                     'tai_trong_thiet_ke': tai_trong,
                     'dung_tich_cbm': dung_tich,
                     'dinh_muc_bao_duong':num_dinh_muc_bd,
@@ -219,8 +219,8 @@ with tab3:
                         st.error("Biển số xe không được để trống!")
                     else:
                         update_xe_data = {
-                            'bien_so_xe': upd_bs.strip(),
-                            'nhan_hieu_xe': upd_nh.strip(),
+                            'bien_so_xe': upd_bs.strip().upper(),
+                            'nhan_hieu_xe': upd_nh.strip().upper(),
                             'tai_trong_thiet_ke': upd_tt,
                             'dung_tich_cbm': upd_dt,
                             'dinh_muc_bao_duong': upd_dinhmuc_bd,

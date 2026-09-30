@@ -128,7 +128,7 @@ with tab2:
         st.subheader("Thông tin cơ bản")
         c1, c2, c3 = st.columns(3)
         ma_nv = c1.text_input("Mã nhân viên*", placeholder="VD: NV001")
-        ten_nv = c2.text_input("Họ và tên*", placeholder="VD: Nguyễn Văn A").upper
+        ten_nv = c2.text_input("Họ và tên*", placeholder="VD: Nguyễn Văn A")
         sdt_nv = c3.text_input("Số điện thoại*", placeholder="VD: 0912345678")
         
         st.subheader("Thông tin Pháp lý & Bằng lái")
@@ -159,6 +159,9 @@ with tab2:
             if not ma_nv or not ten_nv or not sdt_nv:
                 st.error("⚠️ Vui lòng điền đầy đủ Mã, Họ tên và Số điện thoại!")
             else:
+                # [CẬP NHẬT] Thêm .upper() cho mã nhân viên và họ tên trước khi lưu
+                ma_nv_clean = ma_nv.strip().upper()
+                ten_nv_clean = ten_nv.strip().upper()
                 # Format lại thành %Y-%m-%d để lưu vào database
                 han_gplx_db = han_gplx.strftime('%Y-%m-%d')
                 han_tth_db = han_tth.strftime('%Y-%m-%d')
@@ -231,6 +234,9 @@ with tab3:
                 
                 col_btn1, col_btn2 = st.columns(2)
                 if col_btn1.form_submit_button("🔄 Lưu thay đổi", type="primary"):
+                    # [CẬP NHẬT] Thêm .upper() cho mã nhân viên và họ tên khi cập nhật
+                    edit_ma_clean = edit_ma.strip().upper()
+                    edit_ten_clean = edit_ten.strip().upper()
                     # Format lại thành %Y-%m-%d để lưu vào database
                     edit_han_gplx_db = edit_han_gplx.strftime('%Y-%m-%d')
                     edit_han_tth_db = edit_han_tth.strftime('%Y-%m-%d')
