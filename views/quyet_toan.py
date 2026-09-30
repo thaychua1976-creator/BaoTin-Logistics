@@ -1454,34 +1454,23 @@ with tab3:
 
                                                     has_nguy_hiem = 'nguy hiểm' in loai_hang_excel or 'nguy hiem' in loai_hang_excel
                                                     has_lanh = any(kw in loai_cont_excel for kw in ['lạnh', 'lanh', 'rf'])
+                                                    
+                                                    # Lấy chuẩn giống hệt Tab 1 (Dựa hoàn toàn vào khai báo Excel, bỏ qua DB)
                                                     is_cont = loai_cont_excel not in ["thường", "thuong", "khác", "khac"]
                                                     loai_cont_clean = loai_cont_excel.replace(" (lạnh)", "").replace(" (lanh)", "").strip()
 
-                                                    # [SỬA LỖI 2] Vẫn lấy loai_hinh_xe từ DB nhưng kiểm tra chéo với file Excel để tránh lỗi DEFAULT
-                                                    loai_hinh_xe_db = str(row_db.get('loai_hinh_xe', '')).strip().lower()
-                                                    is_thuc_te_cont = ('container' in loai_hinh_xe_db) or ('cont' in loai_hinh_xe_db)
-                                                    is_thuc_te_xe_may = ('xe_may' in loai_hinh_xe_db) or ('xe may' in loai_hinh_xe_db)
-                                                    
-                                                    # Nếu DB dán nhầm Container nhưng file Excel (cột LOAI_CONT) là "Thường", bẻ lái ưu tiên Xe Tải
-                                                    if is_thuc_te_cont and not is_cont:
-                                                        is_thuc_te_cont = False
-
-                                                    is_thuc_te_xe_tai = not is_thuc_te_cont and not is_thuc_te_xe_may
-                                                    
                                                     valid_candidates_di, valid_candidates_ve = [], []
                                                     booked_cbm = float(row_db.get('the_tich_cbm', 0.0) or 0.0)
+                                                    is_thue_ngoai_auto = pd.isna(row_db.get('xe_id'))
 
                                                     for _, rc in df_matched.iterrows():
                                                         pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip().lower() 
                                                         qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ").replace(",", ".")
                                                         
-                                                        is_gia_cont = ('container' in pl_pt_gia) or ('cont' in pl_pt_gia)
-                                                        is_gia_xemay = ('xe_may' in pl_pt_gia) or ('xemay' in pl_pt_gia) or ('xe máy' in qc_gia) or ('xe may' in qc_gia)
-                                                        is_gia_xetai = not is_gia_cont and not is_gia_xemay
-
-                                                        if is_thuc_te_cont and not is_gia_cont: continue
-                                                        if is_thuc_te_xe_tai and not is_gia_xetai: continue
-                                                        if is_thuc_te_xe_may and not is_gia_xemay: continue
+                                                        # Bộ lọc chéo Container/Xe Tải chuẩn như Tab 1
+                                                        is_container_db_check = ('container' in pl_pt_gia) or ('cont' in pl_pt_gia)
+                                                        if not is_cont and is_container_db_check: continue
+                                                        if is_cont and not is_container_db_check: continue
                                                         
                                                         raw_ve = rc.get('is_hang_tra_ve', 0)
                                                         rc_hang_ve_check = 0
@@ -1518,24 +1507,19 @@ with tab3:
                                                         if req_thuong and (has_nguy_hiem or has_lanh): is_prop_match = False
                                                         if not is_prop_match: continue
 
-                                                        is_thue_ngoai_auto = pd.isna(row_db.get('xe_id'))
                                                         is_xe_may = ('xe_may' in pl_pt_gia) or ('xemay' in pl_pt_gia) or ('xe máy' in qc_gia) or ('xe may' in qc_gia)
-                                                        
                                                         if is_xe_may and is_thue_ngoai_auto:
                                                             m_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
                                                             m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
                                                             penalty = (0 if rc['match_type'] == 'direct' else 1000.0) - (rc.get('route_score', 0) * 10.0)
-                                                            
                                                             if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
                                                             else: valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
                                                             continue 
 
-                                                        is_container_db = ('container' in pl_pt_gia) or ('cont' in pl_pt_gia)
-                                                        if is_container_db:
+                                                        if is_container_db_check:
                                                             m_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
                                                             m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
                                                             penalty = (0 if rc['match_type'] == 'direct' else 1000.0) - (rc.get('route_score', 0) * 10.0)
-                                                            
                                                             if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
                                                             else: valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
 
@@ -1582,6 +1566,7 @@ with tab3:
                                                                 if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': score})
                                                                 else: valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': score})
 
+                                                    # --- ĐÃ SỬA LỖI INDENTATION: VÒNG LẶP FOR KẾT THÚC Ở ĐÂY ---
                                                     if valid_candidates_di or valid_candidates_ve:
                                                         if valid_candidates_di:
                                                             best_di = min(valid_candidates_di, key=lambda x: (x['cap'], x['price']))
