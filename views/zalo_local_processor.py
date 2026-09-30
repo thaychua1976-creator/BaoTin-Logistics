@@ -10,8 +10,6 @@ from datetime import datetime, date, timedelta
 import streamlit as st
 from dotenv import load_dotenv
 import shutil # Import thêm module shutil
-# Thêm vào danh sách import ở đầu tệp
-# Sửa lại dòng import ở đầu tệp
 from openpyxl.styles import PatternFill, Border, Side, Font, Alignment
 
 # Vẫn load file .env cho môi trường Local
@@ -116,8 +114,8 @@ def clear_files_and_folders():
         try:
             if os.path.isfile(item_path):
                 os.remove(item_path)
-            elif os.path.isdir(item_path):
-                shutil.rmtree(item_path) # Xóa mạnh tay cả cây thư mục
+            #elif os.path.isdir(item_path):   # không xoá folder
+            #    shutil.rmtree(item_path) # Xóa mạnh tay cả cây thư mục
             deleted_count += 1
         except Exception:
             pass
