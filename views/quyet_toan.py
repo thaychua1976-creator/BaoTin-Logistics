@@ -1365,9 +1365,18 @@ with tab3:
                                     
                                     row_db = df_check.iloc[0]
                                     trang_thai = row_db['trang_thai_chuyen']
-                                    kh_id = int(row_db.get('khach_hang_id')) if pd.notna(row_db.get('khach_hang_id')) else None
                                     ten_khach_hang_db = str(row_db.get('ten_khach_hang', ''))
                                     
+                                    # [CẬP NHẬT 1] Đồng bộ logic dò khach_hang_id bị thiếu giống hệt Tab 1
+                                    kh_id_raw = row_db.get('khach_hang_id')
+                                    kh_id = int(float(kh_id_raw)) if pd.notna(kh_id_raw) and str(kh_id_raw).strip() != "" else None
+                                    if not kh_id and pd.notna(ten_khach_hang_db) and ten_khach_hang_db.strip():
+                                        try:
+                                            df_find_kh = get_cached_master_data("SELECT id FROM khach_hang WHERE ten_khach_hang LIKE %s LIMIT 1", (f"%{ten_khach_hang_db.strip()}%",))
+                                            if isinstance(df_find_kh, pd.DataFrame) and not df_find_kh.empty: 
+                                                kh_id = int(df_find_kh.iloc[0]['id'])
+                                        except: pass
+                                        
                                     # [BỔ SUNG] Cờ đánh dấu chuyến phụ từ DB
                                     chuyen_goc_id_val = row_db.get('chuyen_goc_id')
                                     is_chuyen_phu = pd.notna(chuyen_goc_id_val)
