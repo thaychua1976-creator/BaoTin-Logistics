@@ -128,7 +128,7 @@ with tab2:
         st.subheader("Thông tin cơ bản")
         c1, c2, c3 = st.columns(3)
         ma_nv = c1.text_input("Mã nhân viên*", placeholder="VD: NV001")
-        ten_nv = c2.text_input("Họ và tên*", placeholder="VD: Nguyễn Văn A")
+        ten_nv = c2.text_input("Họ và tên*", placeholder="VD: Nguyễn Văn A").upper
         sdt_nv = c3.text_input("Số điện thoại*", placeholder="VD: 0912345678")
         
         st.subheader("Thông tin Pháp lý & Bằng lái")
