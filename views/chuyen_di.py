@@ -134,7 +134,7 @@ if isinstance(df_kh_full, pd.DataFrame) and not df_kh_full.empty:
 
 ####################################
 # ==========================================
-# TAB 2: ĐĂNG KÝ, SỬA & XÓA CHUYẾN ĐI THỦ CÔNG
+# TAB 1: ĐĂNG KÝ, SỬA & XÓA CHUYẾN ĐI THỦ CÔNG
 # ==========================================
 with tab1:
     try:
@@ -160,37 +160,37 @@ with tab1:
                 st.markdown("</div>", unsafe_allow_html=True)
                 st.divider()
 
-            
-            # Hàm trích xuất float an toàn đã có
-            def safe_float_val(key):
-                val = trip_data.get(key)
+            # Hàm trích xuất float an toàn
+            def safe_float_val(key, data_dict, default=0.0):
+                val = data_dict.get(key)
                 if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
-                    return 0.0
+                    return default
                 try: return float(val)
-                except: return 0.0
+                except: return default
                                             
-             # [CẬP NHẬT]: Bổ sung hàm trích xuất số nguyên (ID) an toàn chống crash NaN
-            def safe_int_val(key, default=None):
-                val = trip_data.get(key)
+            # Hàm trích xuất số nguyên (ID) an toàn chống crash NaN
+            def safe_int_val(key, data_dict, default=None):
+                val = data_dict.get(key)
                 if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
                      return default
                 try: return int(float(val))
                 except: return default    
 
-            # 1. KHỞI TẠO BIẾN STATE (ĐẢM BẢO RESET TRẮNG FORM)
             if "api_km" not in st.session_state: st.session_state["api_km"] = 0.0
             if "form_reset_counter" not in st.session_state: st.session_state["form_reset_counter"] = 0
 
-            # --- CHỌN CHẾ ĐỘ THAO TÁC & LOẠI HÌNH NGHIỆP VỤ ---
-            
-            # ================= CHUẨN BỊ DỮ LIỆU SỬA CHUYẾN (NẾU CÓ) =================
+            # ================= CHUẨN BỊ DỮ LIỆU =================
             edit_trip_id = None
             trip_data = {}
             so_cont_val, so_seal_val, loai_cont_val, chieu_cont_val = "", "", "40HC", "Nhập"
             ghi_chu_thucong_val = ""
             default_nghiep_vu_idx = 0 
             
-            # [TỐI ƯU UI] Bố trí Chọn Hành Động và Phân Loại Nghiệp Vụ lên cùng 1 hàng
+            # Khởi tạo biến quản lý Chuyến Chính - Phụ
+            is_chuyen_phu = False
+            chuyen_goc_id_val = None
+            thong_tin_chuyen_goc = {}
+            
             col_mode1, col_mode2 = st.columns(2)
             
             with col_mode1:
@@ -202,11 +202,17 @@ with tab1:
                 )
 
                 if mode_action == "✏️ Sửa chuyến hiện tại":
-                    sql_edit_list = "SELECT id, ngay_chuyen_di, COALESCE(ten_khach_hang, 'Khách Lẻ') as ten_khach_hang FROM chuyen_di WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') ORDER BY id DESC"
+                    # Cập nhật query lấy thêm chuyen_goc_id
+                    sql_edit_list = "SELECT id, ngay_chuyen_di, COALESCE(ten_khach_hang, 'Khách Lẻ') as ten_khach_hang, chuyen_goc_id FROM chuyen_di WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') ORDER BY id DESC"
                     df_trips = db.execute_query(sql_edit_list)
                     
                     if isinstance(df_trips, pd.DataFrame) and not df_trips.empty:
-                        trip_options = {r['id']: f"Mã chuyến {r['id']} | Ngày: {r['ngay_chuyen_di']} | Khách: {r['ten_khach_hang']}" for _, r in df_trips.iterrows()}
+                        trip_options = {}
+                        for _, r in df_trips.iterrows():
+                            cg = safe_int_val('chuyen_goc_id', r)
+                            tag = f"[CHUYẾN PHỤ của #{cg}] " if cg else "[CHUYẾN ĐỘC LẬP/CHÍNH] "
+                            trip_options[r['id']] = f"{tag}Mã {r['id']} | Ngày: {r['ngay_chuyen_di']} | Khách: {r['ten_khach_hang']}"
+                            
                         edit_trip_id = st.selectbox("🔍 Chọn chuyến đi cần sửa", options=list(trip_options.keys()), format_func=lambda x: trip_options[x], key=f"selectbox_edit_trip_{st.session_state['form_reset_counter']}")
                         
                         if edit_trip_id:
@@ -214,20 +220,26 @@ with tab1:
                             if isinstance(df_detail, pd.DataFrame) and not df_detail.empty:
                                 trip_data = df_detail.iloc[0].to_dict()
                                 
+                                # Đọc dữ liệu tài xế
                                 df_tx_assigned = db.execute_query("SELECT tai_xe_id FROM chuyen_di_tai_xe WHERE chuyen_di_id=%s AND loai_tai_xe='Tai_Chinh'", (edit_trip_id,))
                                 if isinstance(df_tx_assigned, pd.DataFrame) and not df_tx_assigned.empty:
-                                    # Sử dụng an toàn ở đây
                                     tx_val = df_tx_assigned.iloc[0]['tai_xe_id']
                                     if pd.notna(tx_val):
                                         trip_data['tai_xe_id_assigned'] = int(float(tx_val))
+                                        
                                 db_ghi_chu = trip_data.get('ghi_chu', '') or ''
                                 ghi_chu_thucong_val = db_ghi_chu
-                                
                                 match = re.search(r'\[CONT:\s*(.*?)\s*\|\s*SEAL:\s*(.*?)\s*\|\s*LOAI:\s*(.*?)\s*\|\s*CHIEU:\s*(.*?)\s*\]', db_ghi_chu)
                                 if match:
                                     so_cont_val, so_seal_val, loai_cont_val, chieu_cont_val = match.group(1).strip(), match.group(2).strip(), match.group(3).strip(), match.group(4).strip()
                                     ghi_chu_thucong_val = db_ghi_chu.replace(match.group(0), "").strip()
                                     default_nghiep_vu_idx = 1 
+                                
+                                # Khôi phục trạng thái chuyến phụ
+                                current_cg_id = safe_int_val('chuyen_goc_id', trip_data)
+                                if current_cg_id:
+                                    is_chuyen_phu = True
+                                    chuyen_goc_id_val = current_cg_id
 
             trip_suffix = f"edit_{edit_trip_id}_{st.session_state['form_reset_counter']}" if edit_trip_id else f"new_{st.session_state['form_reset_counter']}"
 
@@ -244,25 +256,31 @@ with tab1:
             if mode_action == "🗑️ Xóa chuyến đi":
                 st.markdown("#### 🗑️ Xóa chuyến đi an toàn")
                 sql_delete_list = """
-                    SELECT id, ngay_chuyen_di, COALESCE(ten_khach_hang, 'Khách Lẻ') as ten_khach_hang, trang_thai_chuyen
+                    SELECT id, ngay_chuyen_di, COALESCE(ten_khach_hang, 'Khách Lẻ') as ten_khach_hang, trang_thai_chuyen, chuyen_goc_id
                     FROM chuyen_di 
                     WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') 
                     ORDER BY id DESC
                 """
-                # Dữ liệu động, KHÔNG dùng cache
                 df_trips_del = db.execute_query(sql_delete_list)
                 if isinstance(df_trips_del, pd.DataFrame) and not df_trips_del.empty:
-                    trip_del_options = {r['id']: f"Mã chuyến {r['id']} | Ngày: {r['ngay_chuyen_di']} | Khách: {r['ten_khach_hang']} | Trạng thái: {r['trang_thai_chuyen']}" for _, r in df_trips_del.iterrows()}
+                    trip_del_opts = {}
+                    for _, r in df_trips_del.iterrows():
+                        cg = safe_int_val('chuyen_goc_id', r)
+                        tag = f"[PHỤ của #{cg}] " if cg else "[CHÍNH] "
+                        trip_del_opts[r['id']] = f"{tag}Mã {r['id']} | Ngày: {r['ngay_chuyen_di']} | Khách: {r['ten_khach_hang']}"
                     
                     delete_trip_id = st.selectbox(
                         "🔍 Chọn chuyến đi cần xóa", 
-                        options=list(trip_del_options.keys()), 
-                        format_func=lambda x: trip_del_options[x], 
+                        options=list(trip_del_opts.keys()), 
+                        format_func=lambda x: trip_del_opts[x], 
                         key=f"selectbox_delete_trip_{st.session_state['form_reset_counter']}"
                     )
                     
                     if delete_trip_id:
-                        st.warning(f"⚠️ Bạn có chắc chắn muốn xóa vĩnh viễn chuyến đi mã **{delete_trip_id}**?")
+                        del_row = df_trips_del[df_trips_del['id'] == delete_trip_id].iloc[0]
+                        if not safe_int_val('chuyen_goc_id', del_row):
+                            st.warning(f"⚠️ CẢNH BÁO: Bạn đang xóa một CHUYẾN CHÍNH. Các chuyến phụ liên quan (nếu có) sẽ bị mất liên kết doanh thu!")
+                            
                         if st.button("🗑️ Xác Nhận Xóa Chuyến Đi", type="primary"):
                             with st.spinner("Đang xóa chuyến đi..."):
                                 res_del = delete_trip_safe(db.pool, delete_trip_id)
@@ -271,10 +289,7 @@ with tab1:
                                     
                             if success:
                                 st.toast(f"✅ Đã xóa thành công chuyến đi mã {delete_trip_id}!")
-                                #st.success(f"✅ Đã xóa thành công chuyến đi mã {delete_trip_id}!")
-                                # Dọn rác cache 
-                                for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]:
-                                    st.session_state.pop(key, None)
+                                for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]: st.session_state.pop(key, None)
                                 st.session_state["form_reset_counter"] += 1
                                 time.sleep(1.2)
                                 st.rerun()
@@ -284,13 +299,48 @@ with tab1:
             # ================= CHẾ ĐỘ: TẠO MỚI HOẶC SỬA CHUYẾN ĐI =================
             else:
                 def get_idx(lst, val, default=0): return lst.index(val) if val in lst else default
+                st.divider()
+
+                # --- BỔ SUNG LOGIC CHUYẾN CHÍNH - PHỤ ---
+                st.markdown("#### 🔗 Liên kết đơn hàng (Phân bổ doanh thu nhiều xe)")
+                
+                check_phu_ui = st.checkbox("Đánh dấu đây là **[Chuyến Phụ]** (Dùng khi 1 đơn hàng lớn phải điều nhiều xe. Doanh thu sẽ tính bằng 0đ để tránh nhân đôi).", value=is_chuyen_phu, key=f"check_phu_{trip_suffix}")
+                
+                if check_phu_ui:
+                    is_chuyen_phu = True
+                    sql_chuyen_chinh = """
+                        SELECT id, ten_khach_hang, dia_diem_giao_nhan, khach_hang_id, dia_chi_khach_hang 
+                        FROM chuyen_di 
+                        WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') AND chuyen_goc_id IS NULL
+                        ORDER BY id DESC
+                    """
+                    df_chuyen_chinh = db.execute_query(sql_chuyen_chinh)
+                    
+                    if isinstance(df_chuyen_chinh, pd.DataFrame) and not df_chuyen_chinh.empty:
+                        master_opts = {r['id']: f"Mã Gốc #{r['id']} | Khách: {r['ten_khach_hang']} | Tuyến: {r['dia_diem_giao_nhan']}" for _, r in df_chuyen_chinh.iterrows()}
+                        
+                        # Khôi phục index nếu đang sửa
+                        def_master_idx = list(master_opts.keys()).index(chuyen_goc_id_val) if chuyen_goc_id_val in master_opts else 0
+                        
+                        chuyen_goc_id_val = st.selectbox("📌 Chọn Chuyến Chính để lấy thông tin:", options=list(master_opts.keys()), index=def_master_idx, format_func=lambda x: master_opts[x], key=f"sel_master_{trip_suffix}")
+                        
+                        if chuyen_goc_id_val:
+                            # Trích xuất thông tin chuyến gốc để khóa UI bên dưới
+                            row_goc = df_chuyen_chinh[df_chuyen_chinh['id'] == chuyen_goc_id_val].iloc[0]
+                            thong_tin_chuyen_goc = row_goc.to_dict()
+                            st.success(f"✅ Đã liên kết. Hệ thống sẽ khóa thông tin Khách Hàng và Lộ Trình theo chuyến gốc #{chuyen_goc_id_val}.")
+                    else:
+                        st.warning("Không tìm thấy Chuyến Chính nào đang chạy. Vui lòng tạo chuyến chính trước.")
+                        is_chuyen_phu = False
+                else:
+                    is_chuyen_phu = False
+                    chuyen_goc_id_val = None
 
                 st.divider()
 
                 # ====================================================================
-                # PHẦN 1: THÔNG TIN KHÁCH HÀNG
+                # PHẦN 1: THÔNG TIN KHÁCH HÀNG (CÓ KHÓA UI NẾU LÀ CHUYẾN PHỤ)
                 # ====================================================================
-                # Ứng dụng CACHE cho Danh mục Khách hàng
                 df_kh_full = get_cached_master_data("SELECT id, ma_khach_hang, ten_khach_hang, so_dien_thoai, dia_chi, ma_so_thue FROM khach_hang")
                 kh_opts = {None: "-- Vui lòng chọn Khách hàng --", "NEW": "➕ [Tạo mới] Đăng ký khách hàng ngay tại đây..."}
                 kh_diachi_map = {}
@@ -303,95 +353,94 @@ with tab1:
                         kh_diachi_map[k_id] = str(r['dia_chi']) if pd.notna(r.get('dia_chi')) else ""
 
                 st.markdown("#### 1. Thông tin Khách hàng dịch vụ")
-                kh_opts_keys = list(kh_opts.keys())
-                default_kh_idx = get_idx(kh_opts_keys, trip_data.get('khach_hang_id'), 0) if mode_action == "✏️ Sửa chuyến hiện tại" else 0
-                diachi_input_key = f"tab1_dia_chi_kh_input_{trip_suffix}"
                 
-                def on_khach_hang_change():
-                    selected_kh = st.session_state.get(f"tab1_c_kh_sel_{trip_suffix}")
-                    if selected_kh and selected_kh != "NEW" and selected_kh != 0:
-                        st.session_state[diachi_input_key] = kh_diachi_map.get(selected_kh, "")
-                    else:
-                        st.session_state[diachi_input_key] = ""
-
-                c_kh_sel = st.selectbox(
-                    "🏢 Chọn Khách hàng (Tìm theo MST hoặc Tên)*", 
-                    options=kh_opts_keys, 
-                    index=default_kh_idx, 
-                    format_func=lambda x: kh_opts[x], 
-                    key=f"tab1_c_kh_sel_{trip_suffix}",
-                    on_change=on_khach_hang_change
-                )
-                
-                if mode_action == "✏️ Sửa chuyến hiện tại" and diachi_input_key not in st.session_state:
-                    st.session_state[diachi_input_key] = trip_data.get('dia_chi_khach_hang', '')
-
-                new_ten_kh, new_sdt_kh, new_zalo_id, new_mst_kh, new_diachi_kh = "", "", "", "", ""
-                if c_kh_sel == "NEW":
-                    st.info("💡 Điền Mã số thuế để tự động tạo Mã khách hàng.")
-                    nc1, nc2, nc3 = st.columns(3)
-                    new_mst_kh = nc1.text_input("Mã số thuế (MST)*", key=f"new_mst_kh_{trip_suffix}")
-                    new_ten_kh = nc2.text_input("Tên Khách Hàng / Công ty*", key=f"new_ten_kh_{trip_suffix}")
-                    new_sdt_kh = nc3.text_input("Số điện thoại liên hệ", key=f"new_sdt_kh_{trip_suffix}")
-                    nc4, nc5 = st.columns(2)
-                    new_diachi_kh = nc4.text_input("Địa chỉ trụ sở khách hàng", key=f"new_diachi_kh_{trip_suffix}")
-                    new_zalo_id = nc5.text_input("Zalo User ID (Nếu có)", key=f"new_zalo_id_{trip_suffix}")
+                if is_chuyen_phu and thong_tin_chuyen_goc:
+                    st.info(f"🔒 Khách hàng kế thừa từ chuyến gốc: **{thong_tin_chuyen_goc.get('ten_khach_hang')}**")
+                    c_kh_sel = thong_tin_chuyen_goc.get('khach_hang_id')
+                    dia_chi_kh_input = thong_tin_chuyen_goc.get('dia_chi_khach_hang', '')
+                    new_ten_kh, new_mst_kh = "", ""
+                else:
+                    kh_opts_keys = list(kh_opts.keys())
+                    default_kh_idx = get_idx(kh_opts_keys, trip_data.get('khach_hang_id'), 0) if mode_action == "✏️ Sửa chuyến hiện tại" else 0
+                    diachi_input_key = f"tab1_dia_chi_kh_input_{trip_suffix}"
                     
-                dia_chi_kh_input = st.text_input("📍 Địa chỉ cụ thể giao dịch / Địa điểm kho*", placeholder="VD: 123 Nguyễn Văn Linh...", key=diachi_input_key)
+                    def on_khach_hang_change():
+                        selected_kh = st.session_state.get(f"tab1_c_kh_sel_{trip_suffix}")
+                        if selected_kh and selected_kh != "NEW" and selected_kh != 0:
+                            st.session_state[diachi_input_key] = kh_diachi_map.get(selected_kh, "")
+                        else:
+                            st.session_state[diachi_input_key] = ""
+
+                    c_kh_sel = st.selectbox(
+                        "🏢 Chọn Khách hàng (Tìm theo MST hoặc Tên)*", 
+                        options=kh_opts_keys, 
+                        index=default_kh_idx, 
+                        format_func=lambda x: kh_opts[x], 
+                        key=f"tab1_c_kh_sel_{trip_suffix}",
+                        on_change=on_khach_hang_change
+                    )
+                    
+                    if mode_action == "✏️ Sửa chuyến hiện tại" and diachi_input_key not in st.session_state:
+                        st.session_state[diachi_input_key] = trip_data.get('dia_chi_khach_hang', '')
+
+                    new_ten_kh, new_sdt_kh, new_zalo_id, new_mst_kh, new_diachi_kh = "", "", "", "", ""
+                    if c_kh_sel == "NEW":
+                        st.info("💡 Điền Mã số thuế để tự động tạo Mã khách hàng.")
+                        nc1, nc2, nc3 = st.columns(3)
+                        new_mst_kh = nc1.text_input("Mã số thuế (MST)*", key=f"new_mst_kh_{trip_suffix}")
+                        new_ten_kh = nc2.text_input("Tên Khách Hàng / Công ty*", key=f"new_ten_kh_{trip_suffix}")
+                        new_sdt_kh = nc3.text_input("Số điện thoại liên hệ", key=f"new_sdt_kh_{trip_suffix}")
+                        nc4, nc5 = st.columns(2)
+                        new_diachi_kh = nc4.text_input("Địa chỉ trụ sở khách hàng", key=f"new_diachi_kh_{trip_suffix}")
+                        new_zalo_id = nc5.text_input("Zalo User ID (Nếu có)", key=f"new_zalo_id_{trip_suffix}")
+                        
+                    dia_chi_kh_input = st.text_input("📍 Địa chỉ cụ thể giao dịch / Địa điểm kho*", placeholder="VD: 123 Nguyễn Văn Linh...", key=diachi_input_key)
 
                 # ====================================================================
-                # PHẦN 2: THÔNG SỐ HÀNG HÓA & ĐIỀU PHỐI PHƯƠNG TIỆN
+                # PHẦN 2: THÔNG SỐ HÀNG HÓA & ĐIỀU PHỐI (CHUYẾN PHỤ MẶC ĐỊNH LÀ 0)
                 # ====================================================================
                 st.markdown(f"#### 2. Thông số Hàng hóa & Phương án điều xe ({kieu_nghiep_vu})")
                 
                 kg_key = f"input_kg_{trip_suffix}"
                 cbm_key = f"input_cbm_{trip_suffix}"
                 
+                val_kl = safe_float_val('khoi_luong_kg', trip_data, 0.0)
+                val_cbm = safe_float_val('the_tich_cbm', trip_data, 0.0)
+                
+                # Nếu đang là Chuyến Phụ, ưu tiên đổ số 0.0 để tránh tính cước 
+                if is_chuyen_phu and mode_action == "➕ Tạo chuyến mới":
+                    val_kl, val_cbm = 0.0, 0.0
+                
                 if kieu_nghiep_vu == "Nghiệp vụ Xe Tải":
                     col_hl1, col_hl2 = st.columns(2)
-                    
-                    val_kl = safe_float_val('khoi_luong_kg')
-                    khoi_luong = col_hl1.number_input("📦 Khối lượng (KG)*", min_value=0.0, value=val_kl if val_kl > 0 else None, placeholder="0", format="%g", step=1.0, key=kg_key)
-                    
-                    val_cbm = float(trip_data.get('the_tich_cbm') or 0.0)
-                    so_cbm = col_hl2.number_input("🧊 Thể tích (CBM)", min_value=0.0, value=val_cbm if val_cbm > 0 else None, placeholder="0", format="%g", step=0.1, key=cbm_key)
+                    khoi_luong = col_hl1.number_input("📦 Khối lượng (KG)* (Nhập 0 nếu là xe phụ)", min_value=0.0, value=val_kl if val_kl > 0 else 0.0, format="%g", step=1.0, key=kg_key)
+                    so_cbm = col_hl2.number_input("🧊 Thể tích (CBM)", min_value=0.0, value=val_cbm if val_cbm > 0 else 0.0, format="%g", step=0.1, key=cbm_key)
                 else:
-                    
                     c_c1, c_c2 = st.columns(2)
                     so_cont_input = c_c1.text_input("🔢 Số Container", value=so_cont_val, key=f"so_cont_{trip_suffix}")
                     so_seal_input = c_c2.text_input("🔒 Số Seal", value=so_seal_val, key=f"so_seal_{trip_suffix}")
                     
                     c_c3, c_c4, c_c5 = st.columns(3)
                     loai_cont_opts = ["20DC","20HC", "40DC", "40HC", "45HC", "20RF", "40RF", "Khác"]
-                    
-                    # Xác định vị trí Index của loại cont đã lưu
                     def_loai_idx = loai_cont_opts.index(loai_cont_val) if loai_cont_val in loai_cont_opts else 0
                     loai_cont_input = c_c3.selectbox("🧊 Loại Cont", options=loai_cont_opts, key=f"loai_cont_{trip_suffix}", index=def_loai_idx)
                     
                     chieu_opts = ["Nhập", "Xuất", "Nội Địa", "Chạy Rỗng"]
-                    
-                    # Xác định vị trí Index của chiều hàng đã lưu
                     def_chieu_idx = chieu_opts.index(chieu_cont_val) if chieu_cont_val in chieu_opts else 0
                     chieu_cont_input = c_c4.selectbox("🔄 Chiều Hàng", options=chieu_opts, key=f"chieu_cont_{trip_suffix}", index=def_chieu_idx)
                     
-                    val_kl_cont = float(trip_data.get('khoi_luong_kg') or 0.0)
-                    khoi_luong = c_c5.number_input("⚖️ Trọng lượng hàng (KG)*", min_value=0.0, value=val_kl_cont if val_kl_cont > 0 else None, placeholder="0", format="%g", step=1.0, key=kg_key)
+                    khoi_luong = c_c5.number_input("⚖️ Trọng lượng hàng (KG)*", min_value=0.0, value=val_kl if val_kl > 0 else 0.0, format="%g", step=1.0, key=kg_key)
                     so_cbm = 0.0 
                 
-                # SỬA LỖI LOẠI HÌNH XE
+                # Logic xác định xe nội bộ / thuê ngoài (Giữ nguyên)
                 if mode_action == "➕ Tạo chuyến mới":
                     is_ngoai_val = 0
                 else:
-                    # Lấy trực tiếp cờ is_thue_ngoai từ DB nếu có
                     is_thue_ngoai_db = trip_data.get('is_thue_ngoai', 0)
                     db_xe_id = trip_data.get('xe_id')
-                    
-                    if pd.notna(is_thue_ngoai_db) and int(is_thue_ngoai_db) == 1:
-                        is_ngoai_val = 1
-                    elif pd.notna(db_xe_id) and db_xe_id is not None and int(db_xe_id) > 0:
-                        is_ngoai_val = 0
-                    else:
-                        is_ngoai_val = 1 # Fallback an toàn
+                    if pd.notna(is_thue_ngoai_db) and int(is_thue_ngoai_db) == 1: is_ngoai_val = 1
+                    elif pd.notna(db_xe_id) and db_xe_id is not None and int(db_xe_id) > 0: is_ngoai_val = 0
+                    else: is_ngoai_val = 1 
 
                 loai_hinh_xe = st.radio(
                     "Chọn hình thức điều xe:", 
@@ -402,8 +451,6 @@ with tab1:
                 )
 
                 c_xe_sel, tx_id_assign = None, None
-                
-                # --- NEW: BIẾN LƯU TRỮ TRẠNG THÁI CHỌN XE NGOÀI ĐANG CHẠY ---
                 chon_xe_ngoai_dang_chay = "NEW"
                 df_ngoai_ban = None
                 
@@ -413,97 +460,64 @@ with tab1:
                     
                     with col_xe_1:
                         selectbox_xe_key = f"c_xe_sel_out_{trip_suffix}"
-                        
                         if kieu_nghiep_vu == "Nghiệp vụ Xe Tải":
                             if st.button("🔍 Tìm xe tự động (Theo KG & CBM)", type="primary", use_container_width=True):
-                                # Ép kiểu an toàn (Fallback về 0.0) để triệt tiêu NoneType từ UI
                                 safe_khoi_luong = float(khoi_luong or 0.0)
                                 safe_so_cbm = float(so_cbm or 0.0)
-                                
-                                if safe_khoi_luong <= 0:
-                                    st.warning("⚠️ Vui lòng nhập Khối lượng (KG) lớn hơn 0 để phần mềm tìm xe.")
+                                if safe_khoi_luong <= 0 and not is_chuyen_phu:
+                                    st.warning("⚠️ Nhập Khối lượng > 0 hoặc đánh dấu là Chuyến Phụ để tìm xe.")
                                 else:
                                     sql_xe_ranh = """
                                         SELECT x.id, x.tai_xe_co_dinh_id, x.tai_trong_thiet_ke, x.dung_tich_cbm, x.loai_xe,
-                                            COALESCE(SUM(cd.khoi_luong_kg), 0) as da_cho_kg,
-                                            COALESCE(SUM(cd.the_tich_cbm), 0) as da_cho_cbm
+                                            COALESCE(SUM(cd.khoi_luong_kg), 0) as da_cho_kg, COALESCE(SUM(cd.the_tich_cbm), 0) as da_cho_cbm
                                         FROM xe x 
                                         LEFT JOIN chuyen_di cd ON x.id = cd.xe_id AND cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di')
-                                        WHERE x.trang_thai = 'Dang_Hoat_Dong' 
-                                        AND (LOWER(x.loai_xe) LIKE '%tai%' OR LOWER(x.loai_xe) LIKE '%tải%')
+                                        WHERE x.trang_thai = 'Dang_Hoat_Dong' AND (LOWER(x.loai_xe) LIKE '%tai%' OR LOWER(x.loai_xe) LIKE '%tải%')
                                         GROUP BY x.id, x.tai_xe_co_dinh_id, x.tai_trong_thiet_ke, x.dung_tich_cbm, x.loai_xe
                                         ORDER BY x.tai_trong_thiet_ke ASC, x.dung_tich_cbm ASC
                                     """
-                                    # Trạng thái xe thay đổi liên tục -> KHÔNG DÙNG CACHE
                                     df_xe_ranh = db.execute_query(sql_xe_ranh)
                                     found_xe = None
                                     if isinstance(df_xe_ranh, pd.DataFrame) and not df_xe_ranh.empty:
                                         for _, xe in df_xe_ranh.iterrows():
                                             if pd.isna(xe['tai_xe_co_dinh_id']): continue 
-                                            
-                                            # Ép kiểu an toàn từ SQL phòng ngừa Null/None
                                             da_cho_kg = float(xe['da_cho_kg'] or 0.0)
-                                            da_cho_cbm = float(xe['da_cho_cbm'] or 0.0)
-                                            
                                             cap_kg = float(xe['tai_trong_thiet_ke'] or 0.0) * 1000 - da_cho_kg
-                                            cap_cbm = float(xe['dung_tich_cbm'] or 0.0) - da_cho_cbm
-                                            
-                                            # Đưa các biến đã an toàn (safe_) vào so sánh toán học
-                                            if (cap_kg >= safe_khoi_luong) and (safe_so_cbm == 0 or cap_cbm >= safe_so_cbm):
+                                            # Tìm xe rảnh không cần xét tải trọng nếu là xe phụ (vì = 0)
+                                            if (cap_kg >= safe_khoi_luong):
                                                 found_xe = int(xe['id'])
                                                 break
-                                    
                                     if found_xe:
                                         st.session_state[selectbox_xe_key] = found_xe
-                                       # st.success("✅ Đã tìm thấy xe phù hợp (đủ tải trọng/thể tích) và tự động chọn!")
-                                        st.toast("✅ Đã tìm thấy xe phù hợp (đủ tải trọng/thể tích) và tự động chọn!")
+                                        st.toast("✅ Đã tìm thấy xe rảnh và tự động chọn!")
                                     else:
-                                        st.error("❌ Không có xe nào (kể cả ghép) đáp ứng đủ tải trọng / thể tích này!")
-                        else:
-                            st.info("💡 Hướng dẫn: Vui lòng chọn trực tiếp Đầu Kéo nội bộ từ danh sách bên dưới.")
-
+                                        st.error("❌ Không có xe nào đáp ứng đủ tải trọng / thể tích này!")
+                        
                         is_ghep_chuyen = st.checkbox("🔗 Hiển thị cả xe đang chạy (Dành cho nghiệp vụ Ghép chuyến)", key=f"check_ghep_{trip_suffix}")
                         
                         sql_busy = "SELECT DISTINCT xe_id FROM chuyen_di WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') AND xe_id IS NOT NULL"
-                        # Xe bận thay đổi liên tục -> KHÔNG DÙNG CACHE
                         df_busy = db.execute_query(sql_busy)
                         busy_xe_ids = df_busy['xe_id'].tolist() if isinstance(df_busy, pd.DataFrame) and not df_busy.empty else []
 
                         xe_dict_opts = {None: "-- Vui lòng chọn Xe Nội Bộ --"}
-                        
-                        # [BỔ SUNG] Lấy ID xe đã lưu an toàn để bypass các bộ lọc
-                        saved_xe_id = None
-                        if mode_action == "✏️ Sửa chuyến hiện tại" and pd.notna(trip_data.get('xe_id')):
-                            # [CẬP NHẬT] Lấy ID xe đã lưu an toàn để bypass các bộ lọc
-                            saved_xe_id = safe_int_val('xe_id')
+                        saved_xe_id = safe_int_val('xe_id', trip_data) if mode_action == "✏️ Sửa chuyến hiện tại" else None
 
                         for k, v in xe_map.items():
                             k_int = int(k)
                             is_busy = k_int in busy_xe_ids
                             is_assigned_to_this = (saved_xe_id == k_int)
 
-                            # Bỏ qua xe bận nếu không phải là ghép chuyến và không phải xe đang được gán
-                            if not is_ghep_chuyen and is_busy and not is_assigned_to_this:
-                                continue
+                            if not is_ghep_chuyen and is_busy and not is_assigned_to_this: continue
                             
-                            # [QUAN TRỌNG] Bypass bộ lọc text đối với xe ĐÃ ĐƯỢC GÁN cho chuyến này
                             if not is_assigned_to_this:
                                 loai_xe_db = str(v.get('loai_xe', '')).lower()
                                 if kieu_nghiep_vu == "Nghiệp vụ Xe Tải":
-                                    if 'tải' not in loai_xe_db and 'tai' not in loai_xe_db:
-                                        continue
+                                    if 'tải' not in loai_xe_db and 'tai' not in loai_xe_db: continue
                                 else:
-                                    # Nghiệp vụ Container: Bỏ qua xe tải nhỏ/du lịch (ngoại trừ đầu kéo)
-                                    if ('tải' in loai_xe_db or 'tai' in loai_xe_db or 
-                                        '4 chỗ' in loai_xe_db or '7 chỗ' in loai_xe_db or 
-                                        '4 cho' in loai_xe_db or '7 cho' in loai_xe_db or 
-                                        'du lịch' in loai_xe_db or 'du lich' in loai_xe_db) and 'đầu kéo' not in loai_xe_db and 'dau keo' not in loai_xe_db:
-                                        continue        
+                                    if ('tải' in loai_xe_db or 'tai' in loai_xe_db or 'du lịch' in loai_xe_db) and 'đầu kéo' not in loai_xe_db: continue        
                                     
                             tx_id_raw = v.get('tai_xe_co_dinh_id')
-                            ten_tx = "Chưa gán TX"
-                            if pd.notna(tx_id_raw) and int(float(tx_id_raw)) in tx_opts:
-                                ten_tx = tx_opts[int(float(tx_id_raw))]
+                            ten_tx = tx_opts[int(float(tx_id_raw))] if pd.notna(tx_id_raw) and int(float(tx_id_raw)) in tx_opts else "Chưa gán TX"
                             
                             if is_busy and not is_assigned_to_this:
                                 xe_dict_opts[k_int] = f"🔄 [ĐANG CHẠY] {v['bien_so_xe']} ({v.get('tai_trong_thiet_ke', 0)}T) | 🧑‍✈️ TX: {ten_tx}"
@@ -511,20 +525,11 @@ with tab1:
                                 xe_dict_opts[k_int] = f"🚛 [SẴN SÀNG] {v['bien_so_xe']} ({v.get('tai_trong_thiet_ke', 0)}T) | 🧑‍✈️ TX: {ten_tx}"
                             
                         xe_keys = list(xe_dict_opts.keys())
-                        
-                        default_xe_idx = 0
-                        # [SỬA LỖI] So sánh ID qua biến saved_xe_id nguyên thủy
-                        if mode_action == "✏️ Sửa chuyến hiện tại" and saved_xe_id in xe_keys:
-                            default_xe_idx = xe_keys.index(saved_xe_id)
-                        
-                        title_selectbox = "✅ Chọn Xe Nội Bộ (Điều phối/Ghép chuyến)*" if is_ghep_chuyen else "✅ Chọn Xe Nội Bộ (Đang trống)*"
+                        default_xe_idx = xe_keys.index(saved_xe_id) if mode_action == "✏️ Sửa chuyến hiện tại" and saved_xe_id in xe_keys else 0
                         
                         c_xe_sel = st.selectbox(
-                            title_selectbox, 
-                            options=xe_keys, 
-                            index=default_xe_idx, 
-                            format_func=lambda x: xe_dict_opts.get(x, ""),
-                            key=selectbox_xe_key
+                            "✅ Chọn Xe Nội Bộ*", 
+                            options=xe_keys, index=default_xe_idx, format_func=lambda x: xe_dict_opts.get(x, ""), key=selectbox_xe_key
                         )
                         
                         if c_xe_sel is not None:
@@ -532,11 +537,9 @@ with tab1:
                             tx_id_raw = selected_xe_info.get('tai_xe_co_dinh_id') 
                             
                             default_tx_id = None
-                            # [SỬA LỖI] Ép kiểu int(float()) cho tài xế để đọc từ DataFrame an toàn
                             if mode_action == "✏️ Sửa chuyến hiện tại" and edit_trip_id and 'tai_xe_id_assigned' in trip_data and c_xe_sel == saved_xe_id:
                                 assigned_tx = trip_data.get('tai_xe_id_assigned')
-                                if pd.notna(assigned_tx):
-                                    default_tx_id = int(float(assigned_tx))
+                                if pd.notna(assigned_tx): default_tx_id = int(float(assigned_tx))
                             elif pd.notna(tx_id_raw) and int(float(tx_id_raw)) in tx_opts:
                                 default_tx_id = int(float(tx_id_raw))
                             
@@ -546,42 +549,28 @@ with tab1:
                             
                             default_idx = tx_keys.index(default_tx_id) if default_tx_id in tx_keys else 0
                             
-                            st.markdown("##### 🧑‍✈️ Phân công Tài xế (Cho phép đổi nếu tài xế gốc nghỉ phép)")
+                            st.markdown("##### 🧑‍✈️️ Phân công Tài xế")
                             tx_id_assign = st.selectbox(
                                 "Chọn Tài xế phụ trách thực tế*", 
-                                options=tx_keys,
-                                index=default_idx,
-                                format_func=lambda x: tx_format[x],
-                                # THÊM c_xe_sel VÀO KEY ĐỂ RESET Ô CHỌN TÀI XẾ KHI ĐỔI XE
-                                key=f"chon_tai_xe_{trip_suffix}_{c_xe_sel}"
+                                options=tx_keys, index=default_idx, format_func=lambda x: tx_format[x], key=f"chon_tai_xe_{trip_suffix}_{c_xe_sel}"
                             )
-                            
-                            if pd.notna(tx_id_raw) and int(float(tx_id_raw)) in tx_opts:
-                                tx_goc_id = int(float(tx_id_raw))
-                                if tx_id_assign and tx_id_assign != tx_goc_id:
-                                    st.warning(f"⚠️ Lưu ý: Bạn đang điều Tài xế thay thế. Tài xế gốc của xe này là **{tx_opts[tx_goc_id]}**.")
-                            elif not tx_id_assign:
-                                st.warning("⚠️ Vui lòng chọn tài xế để phát lệnh!")
 
                     with col_xe_2:
                         st.markdown("**🔸 Các xe đang được điều động (Tham khảo)**")
                         sql_xe_ban = """
                             SELECT x.bien_so_xe as 'Biển Số',cd.khoi_luong_kg AS 'Trọng tải (kg)',ngay_chuyen_di as 'Ngày đi',
-                            COALESCE(nv.ho_ten, 'Chưa gán') as 'Tài Xế', cd.dia_diem_giao_nhan as 'Lộ Trình'
-                            , trang_thai_chuyen as 'Trạng thái chuyến' FROM chuyen_di cd
+                            COALESCE(nv.ho_ten, 'Chưa gán') as 'Tài Xế', cd.dia_diem_giao_nhan as 'Lộ Trình', cd.trang_thai_chuyen as 'Trạng thái' 
+                            FROM chuyen_di cd
                             JOIN xe x ON cd.xe_id = x.id
                             LEFT JOIN chuyen_di_tai_xe ctx ON cd.id = ctx.chuyen_di_id AND ctx.loai_tai_xe = 'Tai_Chinh'
                             LEFT JOIN nhan_vien nv ON ctx.tai_xe_id = nv.id
                             WHERE cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') AND cd.is_thue_ngoai = 0
                         """
-                        # Thông tin xe đang chạy thay đổi liên tục -> KHÔNG DÙNG CACHE
                         df_xe_ban = db.execute_query(sql_xe_ban)
                         if isinstance(df_xe_ban, pd.DataFrame) and not df_xe_ban.empty:
                             st.dataframe(df_xe_ban, use_container_width=True, hide_index=True, height=265)
                         else:
                             st.info("Hiện không có xe nội bộ nào đang chạy.")
-
-                # --- NEW: HIỂN THỊ XE NGOÀI ĐANG CHẠY ĐỂ HỖ TRỢ GHÉP CHUYẾN ---
                 else:
                     st.markdown("##### 🤝 Chọn Xe Ngoài Đang Chạy (Nghiệp vụ Ghép Chuyến)")
                     sql_ngoai_ban = """
@@ -598,9 +587,7 @@ with tab1:
                     
                     chon_xe_ngoai_dang_chay = st.selectbox(
                         "🔗 Chọn Xe Ngoài có sẵn để tự động điền thông tin:", 
-                        options=list(ngoai_opts.keys()), 
-                        format_func=lambda x: ngoai_opts[x], 
-                        key=f"chon_xe_ngoai_{trip_suffix}"
+                        options=list(ngoai_opts.keys()), format_func=lambda x: ngoai_opts[x], key=f"chon_xe_ngoai_{trip_suffix}"
                     )
 
                 st.divider()
@@ -610,86 +597,67 @@ with tab1:
                 # ====================================================================
                 st.markdown("#### 3. Chi tiết lộ trình vận chuyển")
                 
-                khach_id_filter = None
-                if c_kh_sel and c_kh_sel != "NEW": khach_id_filter = int(c_kh_sel)
-                elif mode_action == "✏️ Sửa chuyến hiện tại": khach_id_filter = trip_data.get('khach_hang_id')
-
-                # --- CẢI TIẾN: BỔ SUNG LỌC THEO CHIỀU HÀNG VÀ LOẠI PHƯƠNG TIỆN (XE MÁY) ---
-                is_hang_ve_db = bool(trip_data.get('is_hang_tra_ve', 0)) if mode_action == "✏️ Sửa chuyến hiện tại" else False
-                is_xe_may_db = (trip_data.get('loai_hinh_xe') == 'Xe_May') if mode_action == "✏️ Sửa chuyến hiện tại" else False
+                chon_lo_trinh = None
+                diem_dau_val, diem_cuoi_val = "", ""
                 
-                #col_cb_lt1, col_cb_lt2 = st.columns(2)
-                #is_hang_ve_ui = col_cb_lt1.checkbox("🔄 Lộ trình hướng về (Lọc lộ trình chiều về)", value=is_hang_ve_db, key=f"is_hang_ve_ui_{trip_suffix}")
-                #is_xe_may_ui = col_cb_lt2.checkbox("🏍️ Lộ trình dành cho Xe Máy", value=is_xe_may_db, key=f"is_xe_may_ui_{trip_suffix}")
-
-                col_cb_lt1, col_cb_lt2 = st.columns(2)
-                
-                # Chuyển đổi Checkbox thành Radio để hiển thị rõ 2 hướng đi và về cạnh nhau
-                chieu_hang_ui = col_cb_lt1.radio(
-                    "🔄 Chọn chiều tuyến đường:", 
-                    ["Lộ trình Hướng Đi", "Lộ trình Hướng Về"], 
-                    index=1 if is_hang_ve_db else 0, 
-                    horizontal=True, 
-                    key=f"chieu_hang_ui_{trip_suffix}"
-                )
-                # Chuyển đổi lại thành biến boolean để thuật toán SQL bên dưới vẫn chạy đúng 100%
-                is_hang_ve_ui = (chieu_hang_ui == "Lộ trình Hướng Về")
-                is_xe_may_ui = col_cb_lt2.checkbox("🏍️ Lộ trình dành cho Xe Máy", value=is_xe_may_db, key=f"is_xe_may_ui_{trip_suffix}")
-                lo_trinh_opts = {None: "-- Vui lòng chọn lộ trình (Tạo mới nếu chưa có) --"}
-                if khach_id_filter:
-                    flag_hang_ve = 1 if is_hang_ve_ui else 0
-                    
-                    # Tách logic SQL: Nếu check Xe Máy -> Chỉ lấy lộ trình Xe_May, ngược lại -> Lấy tất cả lộ trình trừ Xe_May
-                    if is_xe_may_ui:
-                        sql_rates = """
-                            SELECT DISTINCT diem_di, diem_den 
-                            FROM rate_cards 
-                            WHERE khach_hang_id = %s AND is_hang_tra_ve = %s AND phan_loai_phuong_tien = 'Xe_May' 
-                            ORDER BY diem_di
-                        """
-                    else:
-                        sql_rates = """
-                            SELECT DISTINCT diem_di, diem_den 
-                            FROM rate_cards 
-                            WHERE khach_hang_id = %s AND is_hang_tra_ve = %s AND (phan_loai_phuong_tien != 'Xe_May' OR phan_loai_phuong_tien IS NULL) 
-                            ORDER BY diem_di
-                        """
+                if is_chuyen_phu and thong_tin_chuyen_goc:
+                    st.info("🔒 Lộ trình vận chuyển đã được khóa đồng bộ với chuyến gốc.")
+                    lo_trinh_goc = str(thong_tin_chuyen_goc.get('dia_diem_giao_nhan', ''))
+                    if "➡️" in lo_trinh_goc:
+                        diem_dau_val = lo_trinh_goc.split("➡️")[0].strip()
+                        diem_cuoi_val = lo_trinh_goc.split("➡️")[-1].strip()
                         
-                    # Ứng dụng CACHE cho Lộ trình (Bảng giá) của Khách hàng
-                    df_rates = get_cached_master_data(sql_rates, (khach_id_filter, flag_hang_ve))
-                    if isinstance(df_rates, pd.DataFrame) and not df_rates.empty:
-                        for _, r in df_rates.iterrows():
-                            lt_key = f"{r['diem_di']} ➡️ {r['diem_den']}"
-                            lo_trinh_opts[lt_key] = lt_key
+                    c_lt1, c_lt2 = st.columns(2)
+                    diem_dau = c_lt1.text_input("🏠 Địa chỉ bốc hàng*", value=diem_dau_val, disabled=True)
+                    diem_cuoi = c_lt2.text_input("🎯 Địa chỉ giao hàng*", value=diem_cuoi_val, disabled=True)
+                    chon_lo_trinh = lo_trinh_goc
+                else:
+                    khach_id_filter = None
+                    if c_kh_sel and c_kh_sel != "NEW": khach_id_filter = int(c_kh_sel)
+                    elif mode_action == "✏️ Sửa chuyến hiện tại": khach_id_filter = trip_data.get('khach_hang_id')
 
-                lo_trinh_db = str(trip_data.get('dia_diem_giao_nhan', ''))
-                lo_trinh_keys = list(lo_trinh_opts.keys())
-                
-                default_lt_idx = 0
-                if lo_trinh_db in lo_trinh_keys:
-                    default_lt_idx = lo_trinh_keys.index(lo_trinh_db)
-
-                st.info("💡💡 Nếu xe máy thì hãy click checkbox lộ trình cho xe máy ở trên - Hệ thống chỉ cho phép chọn lộ trình đã được thiết lập sẵn. Nếu chưa có, vui lòng qua phân hệ Bảng Giá tạo mới.")
-
-                chon_lo_trinh = st.selectbox(
-                    "🗺️ Chọn lộ trình (Tham chiếu từ Bảng Giá)*",
-                    options=lo_trinh_keys,
-                    index=default_lt_idx,
-                    format_func=lambda x: lo_trinh_opts[x],
-                    key=f"chon_lo_trinh_out_{trip_suffix}"
-                )
-                
-                c_lt1, c_lt2 = st.columns(2)
-                lo_trinh_hien_thi = chon_lo_trinh if chon_lo_trinh is not None else lo_trinh_db
-                
-                diem_di_val, diem_den_val = "", ""
-                if lo_trinh_hien_thi and "➡️" in lo_trinh_hien_thi:
-                    parts = lo_trinh_hien_thi.split("➡️")
-                    diem_di_val = parts[0].strip()
-                    diem_den_val = parts[-1].strip()
+                    is_hang_ve_db = bool(trip_data.get('is_hang_tra_ve', 0)) if mode_action == "✏️ Sửa chuyến hiện tại" else False
+                    is_xe_may_db = (trip_data.get('loai_hinh_xe') == 'Xe_May') if mode_action == "✏️ Sửa chuyến hiện tại" else False
                     
-                diem_dau = c_lt1.text_input("🏠 Địa chỉ bốc hàng*", value=diem_di_val, disabled=True)
-                diem_cuoi = c_lt2.text_input("🎯 Địa chỉ giao hàng*", value=diem_den_val, disabled=True)
+                    col_cb_lt1, col_cb_lt2 = st.columns(2)
+                    chieu_hang_ui = col_cb_lt1.radio("🔄 Chọn chiều tuyến đường:", ["Lộ trình Hướng Đi", "Lộ trình Hướng Về"], index=1 if is_hang_ve_db else 0, horizontal=True, key=f"chieu_hang_ui_{trip_suffix}")
+                    is_hang_ve_ui = (chieu_hang_ui == "Lộ trình Hướng Về")
+                    is_xe_may_ui = col_cb_lt2.checkbox("🏍️ Lộ trình dành cho Xe Máy", value=is_xe_may_db, key=f"is_xe_may_ui_{trip_suffix}")
+                    
+                    lo_trinh_opts = {None: "-- Vui lòng chọn lộ trình (Tạo mới nếu chưa có) --"}
+                    if khach_id_filter:
+                        flag_hang_ve = 1 if is_hang_ve_ui else 0
+                        sql_rates = """
+                            SELECT DISTINCT diem_di, diem_den FROM rate_cards 
+                            WHERE khach_hang_id = %s AND is_hang_tra_ve = %s 
+                        """
+                        if is_xe_may_ui: sql_rates += " AND phan_loai_phuong_tien = 'Xe_May'"
+                        else: sql_rates += " AND (phan_loai_phuong_tien != 'Xe_May' OR phan_loai_phuong_tien IS NULL)"
+                        sql_rates += " ORDER BY diem_di"
+                            
+                        df_rates = get_cached_master_data(sql_rates, (khach_id_filter, flag_hang_ve))
+                        if isinstance(df_rates, pd.DataFrame) and not df_rates.empty:
+                            for _, r in df_rates.iterrows():
+                                lt_key = f"{r['diem_di']} ➡️ {r['diem_den']}"
+                                lo_trinh_opts[lt_key] = lt_key
+
+                    lo_trinh_db = str(trip_data.get('dia_diem_giao_nhan', ''))
+                    lo_trinh_keys = list(lo_trinh_opts.keys())
+                    default_lt_idx = lo_trinh_keys.index(lo_trinh_db) if lo_trinh_db in lo_trinh_keys else 0
+
+                    st.info("💡💡 Nếu xe máy thì hãy click checkbox lộ trình cho xe máy ở trên.")
+                    chon_lo_trinh = st.selectbox("🗺️ Chọn lộ trình (Tham chiếu từ Bảng Giá)*", options=lo_trinh_keys, index=default_lt_idx, format_func=lambda x: lo_trinh_opts[x], key=f"chon_lo_trinh_out_{trip_suffix}")
+                    
+                    c_lt1, c_lt2 = st.columns(2)
+                    lo_trinh_hien_thi = chon_lo_trinh if chon_lo_trinh is not None else lo_trinh_db
+                    
+                    if lo_trinh_hien_thi and "➡️" in lo_trinh_hien_thi:
+                        parts = lo_trinh_hien_thi.split("➡️")
+                        diem_dau_val = parts[0].strip()
+                        diem_cuoi_val = parts[-1].strip()
+                        
+                    diem_dau = c_lt1.text_input("🏠 Địa chỉ bốc hàng*", value=diem_dau_val, disabled=True)
+                    diem_cuoi = c_lt2.text_input("🎯 Địa chỉ giao hàng*", value=diem_cuoi_val, disabled=True)
                 
                 st.divider()
 
@@ -703,8 +671,6 @@ with tab1:
                     
                     if loai_hinh_xe == "🤝 Thuê Xe Ngoài": 
                         st.markdown("##### 🤝 Chi tiết phương tiện & Tài xế thuê ngoài")
-                        
-                        # --- CẬP NHẬT: TỰ ĐỘNG ĐIỀN THÔNG TIN NẾU CHỌN GHÉP XE NGOÀI Ở BƯỚC 2 ---
                         def_bs, def_dt, def_loai_dt, def_lh, def_tx, def_cccd, def_sdt = "", "", "Nha_Xe", "Xe_Tai", "", "", ""
                         
                         if mode_action == "✏️ Sửa chuyến hiện tại" and trip_data.get('is_thue_ngoai') == 1:
@@ -733,18 +699,9 @@ with tab1:
                         
                         nx_lh1, nx_ten = st.columns(2)
                         lh_opts = ["Container", "Xe_Tai", "Xe_May"]
+                        def_lh_idx = lh_opts.index("Container") if kieu_nghiep_vu == "Nghiệp vụ Container" else (lh_opts.index(def_lh) if def_lh in lh_opts else 1)
                         
-                        if kieu_nghiep_vu == "Nghiệp vụ Container":
-                            def_lh_idx = lh_opts.index("Container")
-                        else:
-                            def_lh_idx = lh_opts.index(def_lh) if def_lh in lh_opts else 1
-                        
-                        ngoai_loai_hinh_xe = nx_lh1.selectbox(
-                            "Phân loại phương tiện ngoài*", 
-                            options=lh_opts, 
-                            index=def_lh_idx,
-                            format_func=lambda x: "📦 Xe Container" if x == "Container" else ("🚛 Xe Tải" if x == "Xe_Tai" else "🏍️ Xe Máy")
-                        )
+                        ngoai_loai_hinh_xe = nx_lh1.selectbox("Phân loại phương tiện ngoài*", options=lh_opts, index=def_lh_idx, format_func=lambda x: "📦 Xe Container" if x == "Container" else ("🚛 Xe Tải" if x == "Xe_Tai" else "🏍️ Xe Máy"))
                         ngoai_ten_tx = nx_ten.text_input("Họ tên Tài xế ngoài*", value=def_tx)
                         
                         nx4, nx5 = st.columns(2)
@@ -753,7 +710,6 @@ with tab1:
                         st.divider()
 
                     st.markdown("#### 4. Ngày khởi hành & Chi tiết bổ sung")
-                    
                     c3_col, c_stt_col = st.columns(2)
                     db_date = trip_data.get('ngay_chuyen_di', datetime.date.today())
                     if isinstance(db_date, pd.Timestamp): db_date = db_date.date()
@@ -762,7 +718,6 @@ with tab1:
                     st_val = {v: k for k, v in STATUS_MAP.items()}.get(trip_data.get('trang_thai_chuyen', 'Tao_Moi'), "Tạo Mới")
                     trang_thai_ui_value = c_stt_col.selectbox("Trạng thái chuyến đi", options=list(STATUS_MAP.keys()), index=list(STATUS_MAP.keys()).index(st_val))
                     
-                    # Thêm trip_suffix vào key để ép Streamlit xóa trắng ô này khi chuyển chế độ hoặc sau khi Lưu
                     ghi_chu_thucong = st.text_input("Ghi chú bổ sung", value=ghi_chu_thucong_val, key=f"ghi_chu_thucong_key_{trip_suffix}")
                     
                     ngoai_chi_phi_str, ngoai_thanh_toan = "0", "Cong_No"
@@ -770,38 +725,24 @@ with tab1:
                         nx7, nx8 = st.columns(2)
                         tien_thue = trip_data.get('chi_phi_thue_ngoai', 0)
                         tien_thue_clean = str(int(float(tien_thue))) if pd.notna(tien_thue) and float(tien_thue) > 0 else ""
-                        
                         ngoai_chi_phi_str = nx7.text_input("Giá vốn thuê ngoài (VNĐ)*", value=tien_thue_clean, placeholder="0")
                         tt_opts = ["Cong_No", "Tien_Mat"]
                         ngoai_thanh_toan = nx8.selectbox("Hình thức thanh toán ngoài", options=tt_opts, index=get_idx(tt_opts, trip_data.get('hinh_thuc_thanh_toan_ngoai', 'Cong_No')), format_func=lambda x: "Công nợ tháng" if x=="Cong_No" else "Tiền mặt")
                     
-                    
-                    # [TỐI ƯU UI] Đã xóa thẻ <br> để đẩy nút bấm lên sát form nhập liệu
                     st.markdown("""
                         <style>
                             div[data-testid="stForm"] button[kind="primary"] {
-                                background-color: #d32f2f !important;
-                                color: white !important;
-                                border: none !important;
-                                font-weight: 800 !important;
-                                font-size: 16px !important;
-                                border-radius: 8px !important;
-                                padding: 6px 0px !important; /* Đã thu gọn padding trên/dưới từ 10px xuống 6px */
-                                margin-top: -10px !important; /* Kéo nút trồi lên trên 1 chút */
-                                box-shadow: 0 4px 6px rgba(211, 47, 47, 0.3) !important;
-                                transition: all 0.3s ease !important;
+                                background-color: #d32f2f !important; color: white !important;
+                                border: none !important; font-weight: 800 !important; font-size: 16px !important;
+                                border-radius: 8px !important; padding: 6px 0px !important; margin-top: -10px !important;
+                                box-shadow: 0 4px 6px rgba(211, 47, 47, 0.3) !important; transition: all 0.3s ease !important;
                             }
-                            div[data-testid="stForm"] button[kind="primary"]:hover {
-                                background-color: #b71c1c !important;
-                                transform: translateY(-2px);
-                                box-shadow: 0 6px 8px rgba(183, 28, 28, 0.4) !important;
-                            }
+                            div[data-testid="stForm"] button[kind="primary"]:hover { background-color: #b71c1c !important; transform: translateY(-2px); box-shadow: 0 6px 8px rgba(183, 28, 28, 0.4) !important;}
                         </style>
                     """, unsafe_allow_html=True)
                     
-                    col_btn_left, col_btn_center, col_btn_right = st.columns([1, 2, 1])
+                    col_btn_center = st.columns([1, 2, 1])[1]
                     btn_label = "🔄 LƯU THAY ĐỔI " if mode_action == "✏️ Sửa chuyến hiện tại" else "📲 LƯU VÀ GỬI THÔNG TIN TÀI XẾ"
-                    
                     with col_btn_center:
                         submit_send = st.form_submit_button(btn_label, type="primary", use_container_width=True)
                 
@@ -809,14 +750,14 @@ with tab1:
                 # XỬ LÝ SUBMIT CHÍNH THỨC
                 # ----------------------------------------------------
                 if submit_send:    
-                    if chon_lo_trinh is None and mode_action == "➕ Tạo chuyến mới":
-                        st.error("❌ HỆ THỐNG CHẶN: Vui lòng chọn lộ trình hợp lệ từ danh sách! Nếu chưa có, hãy tạo mới trong Bảng Giá trước.")
+                    if not is_chuyen_phu and chon_lo_trinh is None and mode_action == "➕ Tạo chuyến mới":
+                        st.error("❌ HỆ THỐNG CHẶN: Vui lòng chọn lộ trình hợp lệ từ danh sách!")
                         st.stop()
                     elif chon_lo_trinh is None and mode_action == "✏️ Sửa chuyến hiện tại" and (diem_dau == "" or diem_cuoi == ""):
-                        st.error("❌ HỆ THỐNG CHẶN: Không có dữ liệu lộ trình. Vui lòng chọn lại lộ trình từ danh sách!")
+                        st.error("❌ HỆ THỐNG CHẶN: Không có dữ liệu lộ trình. Vui lòng chọn lại lộ trình!")
                         st.stop()
                         
-                    if c_kh_sel is None or c_kh_sel == 0:
+                    if (c_kh_sel is None or c_kh_sel == 0) and not is_chuyen_phu:
                         st.error("❌ Vui lòng chọn Khách hàng hợp lệ trước khi lưu!")
                         st.stop()
 
@@ -827,98 +768,66 @@ with tab1:
                             st.stop()
                         tx_id_assign_final = int(tx_id_assign)
 
-                    try:
-                        gia_von_thue_ngoai = parse_money_input(ngoai_chi_phi_str) if loai_hinh_xe != "🚀 Chạy Xe Công Ty" else 0.0
-                    except Exception:
-                        st.error("❌ Dữ liệu tiền tệ nhập vào chứa ký tự không hợp lệ. Vui lòng kiểm tra lại!")
-                        st.stop()
+                    try: gia_von_thue_ngoai = parse_money_input(ngoai_chi_phi_str) if loai_hinh_xe != "🚀 Chạy Xe Công Ty" else 0.0
+                    except: st.error("❌ Dữ liệu tiền tệ không hợp lệ."); st.stop()
 
-                    if gia_von_thue_ngoai < 0  or (so_cbm or 0.0) < 0:
-                        st.error("❌ Thể tích, Giá vốn thuê ngoài không được phép là số âm.")
-                        st.stop()
-                    # ================= THÊM MỚI CHỐT CHẶN CONTAINER TẠI ĐÂY =================
+                    if gia_von_thue_ngoai < 0 or (so_cbm or 0.0) < 0:
+                        st.error("❌ Thể tích, Giá vốn thuê ngoài không được âm."); st.stop()
+                        
                     if kieu_nghiep_vu == "Nghiệp vụ Container":
-                        if not so_cont_input or str(so_cont_input).strip() == "":
-                            st.error("❌ HỆ THỐNG CHẶN: Vui lòng nhập chính xác Số Container!")
-                            st.stop()
-                        if not loai_cont_input:
-                            st.error("❌ HỆ THỐNG CHẶN: Vui lòng chọn Loại Container (20HC, 40HC...)!")
-                            st.stop()
-                        if not chieu_cont_input:
-                            st.error("❌ HỆ THỐNG CHẶN: Vui lòng chọn Chiều Hàng (Nhập / Xuất / Nội địa / Chạy rỗng)!")
-                            st.stop()
-                        if (khoi_luong or 0.0) <= 0:
-                            st.error("❌ HỆ THỐNG CHẶN: Vui lòng nhập Trọng lượng hàng hóa (KG) lớn hơn 0!")
-                            st.stop()
-                    # ========================================================================
-                    if (khoi_luong or 0.0) == 0.0:
-                        st.error("❌ Khối lượng hàng hóa phải được khai báo để phục vụ quyết toán! Vui lòng nhập số KG.")
-                        st.stop()
-                    if diem_dau == "" and diem_cuoi == "":
-                        st.error("❌ Địa chỉ lấy hàng và giao hàng không được để trống!")
-                        st.stop()        
-                    if mode_action == "✏️ Sửa chuyến hiện tại" and not edit_trip_id:
-                        st.error("❌ Vui lòng chọn một chuyến đi cụ thể để chỉnh sửa!")
-                        st.stop()
+                        if not so_cont_input or str(so_cont_input).strip() == "": st.error("❌ Vui lòng nhập Số Container!"); st.stop()
+                        if not loai_cont_input: st.error("❌ Vui lòng chọn Loại Container!"); st.stop()
+                        if not chieu_cont_input: st.error("❌ Vui lòng chọn Chiều Hàng!"); st.stop()
+                        if (khoi_luong or 0.0) <= 0 and not is_chuyen_phu: st.error("❌ Trọng lượng phải > 0!"); st.stop()
+                    
+                    if (khoi_luong or 0.0) == 0.0 and not is_chuyen_phu:
+                        st.error("❌ Khối lượng phải > 0 để quyết toán!"); st.stop()
+                    if diem_dau == "" and diem_cuoi == "": st.error("❌ Địa chỉ lấy/giao hàng trống!"); st.stop()        
+                    if mode_action == "✏️ Sửa chuyến hiện tại" and not edit_trip_id: st.error("❌ Vui lòng chọn chuyến đi!"); st.stop()
                         
                     khach_id_final, ten_kh_val = None, ""
-                    if c_kh_sel == "NEW":
-                        if not new_ten_kh or not new_mst_kh:
-                            st.error("❌ Vui lòng nhập đầy đủ Tên khách hàng và Mã số thuế!")
-                            st.stop()
+                    if is_chuyen_phu and thong_tin_chuyen_goc:
+                        khach_id_final = safe_int_val('khach_hang_id', thong_tin_chuyen_goc)
+                        ten_kh_val = thong_tin_chuyen_goc.get('ten_khach_hang', '')
+                    elif c_kh_sel == "NEW":
+                        if not new_ten_kh or not new_mst_kh: st.error("❌ Nhập đủ Tên KH và MST!"); st.stop()
                         else:
                             success_kh, k_res = tao_khach_hang_nhanh(db.pool, new_ten_kh, new_sdt_kh, new_zalo_id, new_mst_kh, new_diachi_kh)
-                            if success_kh: 
-                                khach_id_final, ten_kh_val = int(k_res) if k_res else None, new_ten_kh
-                                clear_master_cache() # Thêm dòng này để xóa bộ nhớ đệm khách hàng
-                            else: 
-                                st.error(f"❌ Lỗi tạo khách hàng: {k_res}")
-                                st.stop()
+                            if success_kh: khach_id_final, ten_kh_val = int(k_res) if k_res else None, new_ten_kh
+                            else: st.error(f"❌ Lỗi tạo khách hàng: {k_res}"); st.stop()
                     elif c_kh_sel:
                         khach_id_final = int(c_kh_sel)
                         ten_kh_val = kh_opts[c_kh_sel].split("—")[-1].strip()
 
-                    if kieu_nghiep_vu == "Nghiệp vụ Container":
-                        gc_final = f"[CONT: {so_cont_input} | SEAL: {so_seal_input} | LOAI: {loai_cont_input} | CHIEU: {chieu_cont_input}] {ghi_chu_thucong}".strip()
-                    else:
-                        gc_final = ghi_chu_thucong.strip()
+                    gc_final = f"[CONT: {so_cont_input} | SEAL: {so_seal_input} | LOAI: {loai_cont_input} | CHIEU: {chieu_cont_input}] {ghi_chu_thucong}".strip() if kieu_nghiep_vu == "Nghiệp vụ Container" else ghi_chu_thucong.strip()
 
                     data_chuyen_di = {
                         'ngay_chuyen_di': ngay_di.strftime('%Y-%m-%d'),                      
-                        'khach_hang_id': int(khach_id_final) if khach_id_final else None, 
-                        'ten_khach_hang': str(ten_kh_val),
+                        'khach_hang_id': khach_id_final, 
+                        'ten_khach_hang': ten_kh_val,
                         'dia_chi_khach_hang': str(dia_chi_kh_input),
                         'dia_diem_giao_nhan': f"{diem_dau} ➡️ {diem_cuoi}", 
                         'khoi_luong_kg': float(khoi_luong or 0.0),                          
                         'the_tich_cbm': float(so_cbm or 0.0),                       
                         'trang_thai_chuyen': str(STATUS_MAP[trang_thai_ui_value]),                    
                         'ghi_chu': gc_final,
-                        'is_hang_tra_ve': 1 if is_hang_ve_ui else 0,
-                        # FIX: Đảm bảo loai_hinh_xe luôn được lưu (Container / Xe_Tai) kể cả khi là xe nội bộ
-                        'loai_hinh_xe': "Container" if kieu_nghiep_vu == "Nghiệp vụ Container" else "Xe_Tai"
+                        'is_hang_tra_ve': 1 if (not is_chuyen_phu and is_hang_ve_ui) else 0, # Chuyến phụ không kích hoạt cờ chiều về tính cước
+                        'loai_hinh_xe': "Container" if kieu_nghiep_vu == "Nghiệp vụ Container" else "Xe_Tai",
+                        'chuyen_goc_id': int(chuyen_goc_id_val) if is_chuyen_phu and chuyen_goc_id_val else None
                     }
                     
                     if loai_hinh_xe == "🚀 Chạy Xe Công Ty":
-                        data_chuyen_di.update({'xe_id': int(c_xe_sel), 'is_thue_ngoai': int(0)})
+                        data_chuyen_di.update({'xe_id': int(c_xe_sel), 'is_thue_ngoai': 0})
                     else:
-                        if not ngoai_bien_so or not ngoai_ten_doi_tac or not ngoai_ten_tx or not ngoai_cccd_tx or not ngoai_sdt_tx:
-                            st.error("❌ Vui lòng điền đầy đủ thông tin: Biển số, Nhà xe, Tên tài xế, CCCD và SĐT tài xế ngoài!")
-                            st.stop()
                         data_chuyen_di.update({
-                            'xe_id': None, 
-                            'is_thue_ngoai': int(1),
-                            'loai_hinh_xe': str(ngoai_loai_hinh_xe), 
-                            'loai_doi_tac_ngoai': str(ngoai_loai_dt),
-                            'ten_doi_tac_ngoai': str(ngoai_ten_doi_tac).upper(),
-                            'bien_so_xe_ngoai': str(ngoai_bien_so).upper(),
-                            'tai_xe_ngoai_ten': str(ngoai_ten_tx),
-                            'tai_xe_ngoai_cccd': str(ngoai_cccd_tx),
-                            'tai_xe_ngoai_sdt': str(ngoai_sdt_tx),
-                            'chi_phi_thue_ngoai': gia_von_thue_ngoai,
-                            'hinh_thuc_thanh_toan_ngoai': str(ngoai_thanh_toan)
+                            'xe_id': None, 'is_thue_ngoai': 1, 'loai_hinh_xe': str(ngoai_loai_hinh_xe), 
+                            'loai_doi_tac_ngoai': str(ngoai_loai_dt), 'ten_doi_tac_ngoai': str(ngoai_ten_doi_tac).upper(),
+                            'bien_so_xe_ngoai': str(ngoai_bien_so).upper(), 'tai_xe_ngoai_ten': str(ngoai_ten_tx),
+                            'tai_xe_ngoai_cccd': str(ngoai_cccd_tx), 'tai_xe_ngoai_sdt': str(ngoai_sdt_tx),
+                            'chi_phi_thue_ngoai': gia_von_thue_ngoai, 'hinh_thuc_thanh_toan_ngoai': str(ngoai_thanh_toan)
                         })
                     
-                    with st.spinner("Hệ thống đang xử lý vui lòng đợi lưu và hiển thị nội dung gửi tài xế và khách hàng..."):
+                    with st.spinner("Đang lưu dữ liệu..."):
                         if mode_action == "➕ Tạo chuyến mới":
                             success, result = save_trip_full_process(db.pool, data_chuyen_di, tx_id_assign_final)
                             msg_success = f"✅ Lên lệnh điều xe thành công! Mã chuyến: {result}"
@@ -928,60 +837,45 @@ with tab1:
                             msg_success = f"✅ Đã cập nhật thành công chuyến đi mã {edit_trip_id_cast}!"
                     
                     if success:
-                        #st.success(msg_success)
                         st.toast(msg_success, icon="🎉")
-                        # Dọn rác cache danh sách chuyến đi
-                        for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]:
-                            st.session_state.pop(key, None)
+                        for key in ["df_search_nb", "df_search_ngoai", "df_canh_bao"]: st.session_state.pop(key, None)
                         
-                        # Cải tiến: Chỉ sinh ra thông báo gửi Zalo nếu trạng thái chuyến là "Tạo Mới"
-                        # Cải tiến: Chỉ sinh ra thông báo gửi Zalo nếu trạng thái chuyến là "Tạo Mới"
                         if STATUS_MAP[trang_thai_ui_value] == "Tao_Moi":
                             ma_chuyen_gui = result if mode_action == "➕ Tạo chuyến mới" else edit_trip_id_cast
                             if loai_hinh_xe == "🚀 Chạy Xe Công Ty":
-                                    bien_so_gui = xe_map.get(int(c_xe_sel), {}).get('bien_so_xe', '') if c_xe_sel else ''
-                                    df_tx = get_cached_master_data("SELECT ho_ten, so_dien_thoai, cccd FROM nhan_vien WHERE id=%s", (int(tx_id_assign),))
-                                    if isinstance(df_tx, pd.DataFrame) and not df_tx.empty:
-                                        ten_tx_gui = str(df_tx.iloc[0]['ho_ten'] or '')
-                                        sdt_tx_gui = str(df_tx.iloc[0]['so_dien_thoai'] or '')
-                                        cccd_tx_gui = str(df_tx.iloc[0]['cccd'] or '')
-                                    else:
-                                        ten_tx_gui, sdt_tx_gui, cccd_tx_gui = "Chưa cập nhật", "Chưa cập nhật", "Chưa cập nhật"
+                                bien_so_gui = xe_map.get(int(c_xe_sel), {}).get('bien_so_xe', '') if c_xe_sel else ''
+                                df_tx = get_cached_master_data("SELECT ho_ten, so_dien_thoai, cccd FROM nhan_vien WHERE id=%s", (int(tx_id_assign),))
+                                if isinstance(df_tx, pd.DataFrame) and not df_tx.empty:
+                                    ten_tx_gui = str(df_tx.iloc[0]['ho_ten'] or '')
+                                    sdt_tx_gui = str(df_tx.iloc[0]['so_dien_thoai'] or '')
+                                    cccd_tx_gui = str(df_tx.iloc[0]['cccd'] or '')
+                                else:
+                                    ten_tx_gui, sdt_tx_gui, cccd_tx_gui = "Chưa cập nhật", "Chưa cập nhật", "Chưa cập nhật"
                             else:
-                                    bien_so_gui = ngoai_bien_so
-                                    ten_tx_gui = ngoai_ten_tx
-                                    sdt_tx_gui = ngoai_sdt_tx
-                                    cccd_tx_gui = ngoai_cccd_tx
-                            # Rút gọn Tên Khách Hàng và Lộ Trình (Loại bỏ chữ Công ty TNHH / Cty TNHH)
+                                bien_so_gui, ten_tx_gui, sdt_tx_gui, cccd_tx_gui = ngoai_bien_so, ngoai_ten_tx, ngoai_sdt_tx, ngoai_cccd_tx
+                            
                             ten_kh_rut_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*', '', str(ten_kh_val)).strip()
                             diem_dau_rut_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*', '', str(diem_dau)).strip()
                             diem_cuoi_rut_gon = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*|cong ty\s*', '', str(diem_cuoi)).strip()
                             
-                            st.session_state["tn_tai_xe"] = f"🚛 Anh, em, chú, cậu vào:\n - Khách hàng: {ten_kh_rut_gon} giao, lấy hàng \n- Lộ trình: {diem_dau_rut_gon} ➡️ {diem_cuoi_rut_gon} \n- Mã chuyến: {ma_chuyen_gui}"
+                            msg_ghichu = ""
+                            if is_chuyen_phu: msg_ghichu = f"\n- Ghi chú: Chuyến ghép cùng đơn hàng lớn #{chuyen_goc_id_val}"
+                            
+                            st.session_state["tn_tai_xe"] = f"🚛 Anh, em, chú, cậu vào:\n - Khách hàng: {ten_kh_rut_gon} giao, lấy hàng \n- Lộ trình: {diem_dau_rut_gon} ➡️ {diem_cuoi_rut_gon} \n- Mã chuyến: {ma_chuyen_gui}{msg_ghichu}"
                             st.session_state["tn_khach"] = f"📦 THÔNG TIN TÀI XẾ\n- Tên tài xế: {ten_tx_gui}\n- SĐT: {sdt_tx_gui}\n- CCCD: {cccd_tx_gui}\n- Biển số xe: {bien_so_gui}"
 
                         st.session_state["tab1_mode_action"] = "➕ Tạo chuyến mới"
                         st.session_state["api_km"] = 0.0
                         if diachi_input_key in st.session_state: del st.session_state[diachi_input_key]
                         st.session_state["form_reset_counter"] += 1
-                        
                         time.sleep(1.2)
                         st.rerun()
-                    else:
-                        st.error(f"❌ Lỗi Database: {result}")
-
-                # Sau khi hết vòng lặp 30 giây, nếu biến vẫn còn thì tự động đóng
-                #if "tn_tai_xe" in st.session_state:
-                #    del st.session_state["tn_tai_xe"]
-                #    del st.session_state["tn_khach"]
-                #    msg_container.empty() # Xóa khối thông báo khỏi UI
-                #    st.rerun() # Refresh lại form
-                #st.divider()
+                    else: st.error(f"❌ Lỗi Database: {result}")
 
         vung_thao_tac_chuyen_di()
     except Exception as e:
         st.error(f"❌ Lỗi tải Tab 1: {e}")
-##################################
+##################################################### end of tab1
 
 with tab2:
     try:

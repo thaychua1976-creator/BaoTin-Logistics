@@ -486,7 +486,7 @@ def main_app():
     st.subheader("🧹 Dọn dẹp dữ liệu tồn đọng")
     st.markdown("Nếu tiến trình trước đó bị lỗi hoặc dừng đột ngột, hãy dọn rác trước khi tải file mới lên để tránh quá tải AI.")
     
-    if st.button("🗑️ Dọn sạch toàn bộ File VÀ Thư mục Zalo cũ", type="secondary"):
+    if st.button("🗑️ Dọn sạch toàn bộ File & Thư mục Zalo cũ", type="secondary"):
         deleted = clear_files_and_folders()
         if deleted > 0:
             st.success(f"✅ Đã xóa thành công {deleted} file/thư mục rác và dọn sạch cấu trúc!")

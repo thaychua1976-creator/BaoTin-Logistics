@@ -264,6 +264,10 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, tu_khoa_cong_ty):
             tk.phan_luong, COALESCE(tk.phi_khac, 0) AS phi_khac,
             kh.ten_khach_hang, cd.dia_diem_giao_nhan,
             c.phi_van_chuyen  AS c_phi_van_chuyen, cd.doanh_thu  AS cd_doanh_thu,
+            
+            -- [BỔ SUNG] Lấy thêm phụ cấp tài xế và nhận diện chuyến phụ
+            cd.tien_them AS cd_tien_them, cd.chuyen_goc_id,
+            
             c.loai_cont, c.so_cont,
             cd.is_thue_ngoai, cd.bien_so_xe_ngoai, cd.loai_hinh_xe,
             xe.bien_so_xe AS bien_so_noi_bo, xe.loai_xe AS loai_xe_noi_bo, xe.tai_trong_thiet_ke,
@@ -282,15 +286,14 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, tu_khoa_cong_ty):
         ORDER BY tk.ngay_khai ASC, tk.id ASC, c.id ASC
     """
     
-    # Truyền tham số từ khóa công ty vào SQL
     params = (tu_ngay, den_ngay, f"%{tu_khoa_cong_ty.upper()}%")
     df_raw = db.execute_query(sql_tk, params)
     
     if not isinstance(df_raw, pd.DataFrame) or df_raw.empty:
         return None
 
-    # Làm sạch các cột số liệu
-    numeric_cols_tk = ['phi_to_khai', 'phi_nang_ha_on', 'phi_nang_ha_off','phi_csht', 'tong_trong_luong', 'c_phi_van_chuyen', 'cd_doanh_thu', 'phi_khac']
+    # Làm sạch các cột số liệu (Đã thêm cd_tien_them)
+    numeric_cols_tk = ['phi_to_khai', 'phi_nang_ha_on', 'phi_nang_ha_off','phi_csht', 'tong_trong_luong', 'c_phi_van_chuyen', 'cd_doanh_thu', 'cd_tien_them', 'phi_khac']
     for col in numeric_cols_tk:
         if col in df_raw.columns:
             df_raw[col] = pd.to_numeric(df_raw[col], errors='coerce').fillna(0)
@@ -321,7 +324,6 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, tu_khoa_cong_ty):
     yyyy = dt_tu_ngay.strftime('%Y')
     mmm_eng = dt_tu_ngay.strftime('%b').upper()
 
-    # Hàm an toàn bẫy lỗi hiển thị chữ "nan"
     def safe_str(val):
         if pd.isna(val) or str(val).strip().lower() == 'nan': return ""
         return str(val).strip()
@@ -335,7 +337,6 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, tu_khoa_cong_ty):
     with pd.ExcelWriter(output, engine='xlsxwriter', engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
         workbook = writer.book
         
-        # ĐỊNH DẠNG XlsxWriter
         fmt_company = workbook.add_format({'font_name': 'Times New Roman', 'bold': True, 'font_size': 10, 'text_wrap': True, 'valign': 'top', 'align': 'center'})
         fmt_title = workbook.add_format({'font_name': 'Times New Roman', 'bold': True, 'font_size': 14, 'align': 'center', 'valign': 'vcenter'})
         fmt_subtitle = workbook.add_format({'font_name': 'Times New Roman', 'bold': True, 'font_size': 11, 'align': 'center', 'valign': 'vcenter'})
@@ -345,9 +346,6 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, tu_khoa_cong_ty):
         
         header_company_text = "CÔNG TY TNHH THƯƠNG MẠI VÀ GIAO NHẬN VẬN TẢI BẢO TÍN\nBAO TIN TRANSPORTATION CO., LTD\n TRỤ SỞ: Số 4, Đường Gia Tân 1, Khu phố Gia Tân, Phường Gia Lộc, Thị xã Trảng Bàng, Tỉnh Tây Ninh \n Address: 4th Gia Tan 1 Road, Gia Loc Commune, Trang Bang District, Tay Ninh Province, Vietnam.\n CN VP : Số 888, Quốc Lộ 22 , Khu phố Suối Sâu, Phường An Tịnh, Thị Xã Trảng Bàng, Tỉnh Tây Ninh \nRepresentative office: Highway 22, Suoi Sau, An Tinh Ward, Trang Bang Town, Tay Ninh Province, Vietnam\n Tel: 0888 039 888 | Tax code: 3901229506| Email: bao@truckingbaotin.com & baoxnk@gmail.com"
 
-        # =========================================================
-        # 1. SHEET HÀNG NHẬP KHẨU / XUẤT KHẨU
-        # =========================================================
         for loai in ['Nhap_Khau', 'Xuat_Khau']:
             df_loai = df_raw[df_raw['loai_to_khai'] == loai]
             if df_loai.empty: continue
@@ -410,7 +408,6 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, tu_khoa_cong_ty):
                         else:
                             ws.write(current_row, 0, stt, fmt_center)
                     
-                    # BÓC TÁCH AN TOÀN
                     cont_so = safe_str(r.get('so_cont'))
                     cont_loai = safe_str(r.get('loai_cont'))
                     is_thue_ngoai = safe_float(r.get('is_thue_ngoai'))
@@ -484,9 +481,7 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, tu_khoa_cong_ty):
                 
             ws.set_column('A:A', 6); ws.set_column('B:E', 18); ws.set_column('F:J', 14); ws.set_column('K:T', 15)
 
-        # =========================================================
         # 2. SHEET NHẬP NỘI ĐỊA
-        # =========================================================
         df_nd = df_raw[df_raw['loai_to_khai'] == 'Noi_Dia']
         if not df_nd.empty:
             ws_nd = workbook.add_worksheet(f'NHẬP NỘI ĐỊA {mm}.{yyyy}')
@@ -529,9 +524,7 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, tu_khoa_cong_ty):
                 
             ws_nd.set_column('A:A', 6); ws_nd.set_column('B:E', 22); ws_nd.set_column('F:L', 16)
 
-        # =========================================================
         # 3. SHEET BẢNG C.O
-        # =========================================================
         if isinstance(df_co_raw, pd.DataFrame) and not df_co_raw.empty:
             ws_co = workbook.add_worksheet(f'BẢNG C.O {mm}.{yyyy}')
             ws_co.set_row(0, 120)
@@ -574,12 +567,6 @@ def xuat_excel_hai_quan_bao_tin(db, tu_ngay, den_ngay, tu_khoa_cong_ty):
     return output.getvalue()
 #######################################
 def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
-    """
-    Xuất File Excel chuẩn Form CONTINENTAL:
-    - 1 Sheet BẢNG TỔNG (Kèm Summary & Merge Header)
-    - N Sheet riêng lẻ chia tách theo từng Số Vận Đơn (HBL) / Tờ Khai (Kèm Summary & Công thức Footer)
-    - Nhận diện hiển thị Biển số xe tải và lấy chuẩn Cước vận chuyển.
-    """
     # 1. Truy vấn toàn bộ dữ liệu (Đã bổ sung cột cho Xe Tải)
     sql_tk = """
         SELECT 
@@ -592,7 +579,12 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
             cd.id AS chuyen_di_id,
             cd.is_thue_ngoai, cd.bien_so_xe_ngoai, cd.loai_hinh_xe,
             xe.bien_so_xe AS bien_so_noi_bo, xe.loai_xe AS loai_xe_noi_bo, xe.tai_trong_thiet_ke,
+            
+            -- [BỔ SUNG] Lấy thêm phụ cấp tài xế và nhận diện chuyến phụ
             COALESCE(cd.doanh_thu, 0) AS cd_doanh_thu,
+            COALESCE(cd.tien_them, 0) AS cd_tien_them,
+            cd.chuyen_goc_id,
+            
             COALESCE(c.phi_van_chuyen,0)  AS c_phi_van_chuyen,
             COALESCE(c.phi_to_khai, 0) AS phi_to_khai,
             COALESCE(c.phi_nang_ha_on, 0) AS phi_nang_ha_on, c.so_hoa_don_lift_on,
@@ -623,15 +615,14 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
     if not isinstance(df_raw, pd.DataFrame) or df_raw.empty:
         return None
 
-    # Làm sạch dữ liệu số
-    numeric_cols = ['c_phi_van_chuyen', 'cd_doanh_thu', 'phi_to_khai', 'phi_nang_ha_on', 'phi_nang_ha_off', 'phi_bot', 'phi_lay_mau', 'phi_kiem_dich', 'phi_luu_bai', 'phi_do', 'phi_handling', 'phi_khu_trung', 'phi_khac', 'tong_trong_luong']
+    # Làm sạch dữ liệu số (Đã thêm cd_tien_them)
+    numeric_cols = ['c_phi_van_chuyen', 'cd_doanh_thu', 'cd_tien_them', 'phi_to_khai', 'phi_nang_ha_on', 'phi_nang_ha_off', 'phi_bot', 'phi_lay_mau', 'phi_kiem_dich', 'phi_luu_bai', 'phi_do', 'phi_handling', 'phi_khu_trung', 'phi_khac', 'tong_trong_luong']
     for col in numeric_cols:
         if col in df_raw.columns:
             df_raw[col] = pd.to_numeric(df_raw[col], errors='coerce').fillna(0)
 
     df_raw['so_van_don'] = df_raw['so_van_don'].replace('', pd.NA).fillna(df_raw['so_to_khai']).fillna('CHUA_CO_SO')
 
-    # Hàm lọc rác thư viện an toàn (Giống Ichihiro)
     def safe_str(val):
         if pd.isna(val) or str(val).strip().lower() == 'nan': return ""
         return str(val).strip()
@@ -648,7 +639,6 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
     with pd.ExcelWriter(output, engine='xlsxwriter', engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
         workbook = writer.book
         
-        # Định dạng chuẩn CONTINENTAL
         fmt_company = workbook.add_format({'font_name': 'Times New Roman', 'bold': True, 'font_size': 10, 'text_wrap': True, 'valign': 'top', 'align': 'center'})
         fmt_title = workbook.add_format({'font_name': 'Times New Roman', 'bold': True, 'font_size': 14, 'align': 'center', 'valign': 'vcenter'})
         fmt_header = workbook.add_format({'font_name': 'Times New Roman', 'bold': True, 'border': 1, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True})
@@ -790,7 +780,6 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
                     if num_rows_group > 1: ws.merge_range(start_row, col, end_row, col, val, fmt)
                     else: ws.write(start_row, col, val, fmt)
 
-                # Cước vận chuyển chuẩn
                 phi_vc = 0
                 unique_trips_hbl = {}
                 for _, r_cont in group.iterrows():
@@ -837,7 +826,6 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
                 ghi_chu_arr = [x for x in [safe_str(r_first.get('ma_loai_hinh')), safe_str(r_first.get('dia_diem_giao_nhan')), safe_str(r_first.get('phan_luong'))] if x]
                 write_merge(21, " - ".join(ghi_chu_arr), fmt_center)
                 
-                # Ghi phí Nâng/Hạ & Cột Số Container / Xe Tải (Cột 20 - U)
                 if num_rows_group == 1: 
                     phi_on = safe_float(r_first.get('phi_nang_ha_on')) + safe_float(r_first.get('phi_khu_trung'))
                     inv_on = ", ".join(filter(None, [safe_str(r_first.get('so_hoa_don_lift_on')), safe_str(r_first.get('so_hoa_don_khu_trung'))]))
@@ -876,9 +864,6 @@ def xuat_excel_hai_quan_continental(db, tu_ngay, den_ngay, khach_hang_id=None):
                 
                 row += num_rows_group; stt += 1
                 
-            # ==========================================
-            # BỔ SUNG: Dòng FOOTER Tổng cho từng Sheet HBL
-            # ==========================================
             hbl_grand_total = hbl_total_vc + hbl_total_bot + hbl_total_dv + hbl_total_laymau + hbl_total_kiemdich + hbl_total_luubai + hbl_total_nangha + hbl_total_do
             
             ws.merge_range(row, 0, row, 2, "TỔNG CỘNG", fmt_center_bold)

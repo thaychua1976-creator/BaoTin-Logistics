@@ -42,15 +42,21 @@ def tao_khach_hang_nhanh(db_pool, ten_khach_hang, so_dien_thoai, zalo_user_id, m
 #############################################        
 def save_trip_full_process(db_pool, data_chuyen_di: dict, tai_xe_id: int, phu_phi_list: list = None):
     """
-    Transaction tạo mới chuyến đi kèm tính năng lưu phụ phí động[cite: 3].
-    - data_chuyen_di: dict linh hoạt chứa các cột và giá trị insert vào bảng chuyen_di.
-    - phu_phi_list: danh sách các dict chứa [{'ma_phu_phi':..., 'so_tien':..., 'ghi_chu':...}]
+    Transaction tạo mới chuyến đi kèm tính năng lưu phụ phí động.
+    Bổ sung: Kiểm tra tính hợp lệ của chuyen_goc_id (Nghiệp vụ tách chuyến).
     """
     conn = db_pool.get_connection()
     cursor = conn.cursor()
     try:
-        conn.autocommit = False  # Bắt buộc dùng Transaction cho nhiều thao tác[cite: 3]
+        conn.autocommit = False  # Bắt buộc dùng Transaction cho nhiều thao tác[cite: 11]
         
+        # [BỔ SUNG]: Kiểm tra tính toàn vẹn của chuyen_goc_id nếu có truyền vào
+        chuyen_goc_id = data_chuyen_di.get('chuyen_goc_id')
+        if chuyen_goc_id:
+            cursor.execute("SELECT id FROM chuyen_di WHERE id = %s", (chuyen_goc_id,))
+            if not cursor.fetchone():
+                raise Exception(f"Lỗi: Chuyến đi gốc mã {chuyen_goc_id} không tồn tại. Không thể tạo chuyến phụ.")
+
         # 1. Tự động xác định loại hình xe nếu là xe nội bộ
         xe_id = data_chuyen_di.get('xe_id')
         if xe_id and data_chuyen_di.get('is_thue_ngoai', 0) == 0 and 'loai_hinh_xe' not in data_chuyen_di:
@@ -85,46 +91,59 @@ def save_trip_full_process(db_pool, data_chuyen_di: dict, tai_xe_id: int, phu_ph
                 INSERT INTO chuyen_di_phu_phi (chuyen_di_id, ma_phu_phi, so_tien, ghi_chu) 
                 VALUES (%s, %s, %s, %s)
             """
-            # Sử dụng tuple comprehensions để tạo danh sách insert và executemany để tối ưu tốc độ
             pp_data_tuples = [(new_cid, pp['ma_phu_phi'], pp['so_tien'], pp.get('ghi_chu', '')) for pp in phu_phi_list]
             cursor.executemany(sql_pp, pp_data_tuples)
             
-            # Kiểm tra rowcount theo quy tắc coding bắt buộc[cite: 3]
             if cursor.rowcount != len(phu_phi_list):
                 raise Exception("Lỗi: Không thể lưu toàn bộ các dòng phụ phí.")
         
-        # 5. Ghi log thao tác (Gộp thêm tổng tiền phụ phí nếu có)
+        # 5. Ghi log thao tác[cite: 11]
         log_data = {
             "hanh_trinh": data_chuyen_di.get('dia_diem_giao_nhan'), 
             "khach_hang": data_chuyen_di.get('ten_khach_hang'),
             "is_thue_ngoai": data_chuyen_di.get('is_thue_ngoai', 0),
             "loai_hinh_xe": data_chuyen_di.get('loai_hinh_xe', 'Container'),
+            "chuyen_goc_id": chuyen_goc_id, # Lưu vết mã chuyến gốc
             "so_luong_phu_phi": len(phu_phi_list) if phu_phi_list else 0
         }
         if phu_phi_list:
             log_data["tong_tien_phu_phi"] = sum(pp.get('so_tien', 0) for pp in phu_phi_list)
             
-        ghi_log_thao_tac(cursor, new_cid, st.session_state.get('username', 'Admin'), "TAO_MOI", log_data)
+        # Đánh dấu hành động là tạo chuyến phụ nếu có chuyen_goc_id
+        hanh_dong_log = "TAO_CHUYEN_PHU" if chuyen_goc_id else "TAO_MOI"
+        ghi_log_thao_tac(cursor, new_cid, st.session_state.get('username', 'Admin'), hanh_dong_log, log_data)
         
-        conn.commit()  # Cam kết toàn bộ thay đổi[cite: 3]
+        conn.commit()
         return True, new_cid
     except Exception as e:
-        conn.rollback()  # Hủy toàn bộ thay đổi nếu có lỗi để tránh rác DB[cite: 3]
+        conn.rollback()
         return False, str(e)
     finally:
         cursor.close()
         conn.close()
-#########################################################
+
+# =========================================================================
 
 def settle_trip_transaction(db_pool, data_chuyen_di: dict, trang_thai_enum: str, chuyen_di_id: int):
     """
-    Hàm Giao dịch Quyết toán dùng chung (Đã gỡ bỏ logic Odometer phụ thuộc so_km_thuc_te).
+    Hàm Giao dịch Quyết toán dùng chung (Đã tích hợp bảo mật nghiệp vụ Chuyến Phụ).
     """
     conn = db_pool.get_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
     try:
         conn.autocommit = False
         
+        # [BỔ SUNG] Kiểm tra trực tiếp dưới DB xem đây có phải là chuyến phụ không
+        cursor.execute("SELECT chuyen_goc_id FROM chuyen_di WHERE id = %s", (chuyen_di_id,))
+        db_trip = cursor.fetchone()
+        
+        if db_trip is None:
+            raise Exception(f"Lỗi: Chuyến đi mã {chuyen_di_id} không tồn tại trong hệ thống.")
+            
+        # 🛡️ CHỐT CHẶN BẢO MẬT: Ép buộc doanh thu bằng 0 nếu là chuyến phụ
+        if db_trip.get('chuyen_goc_id') is not None:
+            data_chuyen_di['doanh_thu'] = 0.0
+
         columns_to_set = []
         values = []
         
@@ -144,13 +163,13 @@ def settle_trip_transaction(db_pool, data_chuyen_di: dict, trang_thai_enum: str,
         """
         cursor.execute(sql_update, tuple(values))
         
+        # Tuân thủ quy tắc kiểm tra rowcount của hệ thống[cite: 12]
         if cursor.rowcount == 0:
-            cursor.execute("SELECT id FROM chuyen_di WHERE id = %s", (chuyen_di_id,))
-            if cursor.fetchone() is None:
-                conn.rollback()
-                return False, f"Lỗi: Chuyến đi mã {chuyen_di_id} không tồn tại trong hệ thống."
+            conn.rollback()
+            return False, f"Lỗi: Chuyến đi mã {chuyen_di_id} không tồn tại hoặc đã được chốt/hủy từ trước."
                 
         hanh_dong = "CHOT_SO" if trang_thai_enum == "Hoan_Thanh" else "CAP_NHAT"
+        from audit_logger import ghi_log_thao_tac
         ghi_log_thao_tac(cursor, chuyen_di_id, st.session_state.get('username', 'Admin'), hanh_dong, data_chuyen_di)    
         
         conn.commit() 
@@ -163,18 +182,24 @@ def settle_trip_transaction(db_pool, data_chuyen_di: dict, trang_thai_enum: str,
         conn.close()
 ################################################
 def update_trip_transaction(db_pool, data_chuyen_di: dict, trang_thai_enum: str, chuyen_di_id: int):
+    """
+    Sửa chuyến đi đã quyết toán (Có chốt chặn bảo vệ doanh thu chuyến phụ).
+    """
     conn = db_pool.get_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
     try:
         conn.autocommit = False 
         
-        # Đã xóa so_km_thuc_te khỏi câu query
-        cursor.execute("SELECT xe_id, is_thue_ngoai FROM chuyen_di WHERE id = %s", (chuyen_di_id,))
+        cursor.execute("SELECT xe_id, is_thue_ngoai, chuyen_goc_id FROM chuyen_di WHERE id = %s", (chuyen_di_id,))
         old_data = cursor.fetchone()
         
         if old_data is None:
             conn.rollback()
             return False, f"Chuyến đi mã {chuyen_di_id} không tồn tại trong hệ thống."
+            
+        # 🛡️ CHỐT CHẶN BẢO MẬT: Ép buộc doanh thu bằng 0 nếu là chuyến phụ
+        if old_data.get('chuyen_goc_id') is not None:
+            data_chuyen_di['doanh_thu'] = 0.0
             
         columns_to_set = []
         values = []
@@ -195,12 +220,11 @@ def update_trip_transaction(db_pool, data_chuyen_di: dict, trang_thai_enum: str,
         cursor.execute(sql_update, tuple(values))
         
         if cursor.rowcount == 0:
-            cursor.execute("SELECT id FROM chuyen_di WHERE id = %s", (chuyen_di_id,))
-            if cursor.fetchone() is None:
-                conn.rollback()
-                return False, f"Chuyến đi mã {chuyen_di_id} không tồn tại hoặc đã được chốt từ trước."
+            conn.rollback()
+            return False, f"Chuyến đi mã {chuyen_di_id} không tồn tại hoặc đã bị hủy."
 
         hanh_dong = "CHOT_SO" if trang_thai_enum == "Hoan_Thanh" else "CAP_NHAT"
+        from audit_logger import ghi_log_thao_tac
         ghi_log_thao_tac(cursor, chuyen_di_id, st.session_state.get('username', 'Admin'), hanh_dong, data_chuyen_di)    
         
         conn.commit()
@@ -221,14 +245,23 @@ def update_trip_full_process(db_pool, chuyen_di_id: int, data_chuyen_di: dict, t
     cursor = None
     try:
         conn = db_pool.get_connection()
-        conn.autocommit = False  # Tuân thủ quy tắc Transaction
+        conn.autocommit = False  # Tuân thủ quy tắc Transaction[cite: 11]
         cursor = conn.cursor()
         
         # Kiểm tra xem chuyến đi có tồn tại không trước khi update
         cursor.execute("SELECT id FROM chuyen_di WHERE id = %s", (chuyen_di_id,))
         if cursor.fetchone() is None:
-            conn.rollback()
-            return False, f"Chuyến đi mã {chuyen_di_id} không tồn tại trong hệ thống."
+            raise Exception(f"Chuyến đi mã {chuyen_di_id} không tồn tại trong hệ thống.")
+
+        # [BỔ SUNG]: Kiểm tra tính toàn vẹn của chuyen_goc_id nếu có thay đổi
+        chuyen_goc_id = data_chuyen_di.get('chuyen_goc_id')
+        if chuyen_goc_id:
+            if int(chuyen_goc_id) == int(chuyen_di_id):
+                raise Exception("Lỗi Database: Chuyến đi không thể tự làm chuyến gốc của chính nó (Self-reference).")
+            
+            cursor.execute("SELECT id FROM chuyen_di WHERE id = %s", (chuyen_goc_id,))
+            if not cursor.fetchone():
+                raise Exception(f"Lỗi: Chuyến đi gốc mã {chuyen_goc_id} không tồn tại.")
 
         # 1. Cập nhật bảng chuyen_di
         set_clause = ", ".join([f"{k}=%s" for k in data_chuyen_di.keys()])
@@ -237,15 +270,6 @@ def update_trip_full_process(db_pool, chuyen_di_id: int, data_chuyen_di: dict, t
         
         sql_update = f"UPDATE chuyen_di SET {set_clause} WHERE id=%s"
         cursor.execute(sql_update, tuple(values))
-        
-        # Bổ sung kiểm tra xem chuyến đi có thực sự tồn tại hay không
-        cursor.execute("SELECT id FROM chuyen_di WHERE id = %s", (chuyen_di_id,))
-        if not cursor.fetchone():
-            conn.rollback()
-            return False, "Chuyến đi không tồn tại trong hệ thống."
-        
-        # Bỏ qua việc chặn cursor.rowcount == 0 ở đây 
-        # vì người dùng có thể chỉ cập nhật mỗi tài xế ở bảng chuyen_di_tai_xe
 
         # 2. Xóa liên kết tài xế cũ và cập nhật tài xế mới (nếu là xe nội bộ)
         cursor.execute("DELETE FROM chuyen_di_tai_xe WHERE chuyen_di_id=%s", (chuyen_di_id,))
@@ -253,7 +277,7 @@ def update_trip_full_process(db_pool, chuyen_di_id: int, data_chuyen_di: dict, t
             sql_tx = "INSERT INTO chuyen_di_tai_xe (chuyen_di_id, tai_xe_id, loai_tai_xe) VALUES (%s, %s, 'Tai_Chinh')"
             cursor.execute(sql_tx, (chuyen_di_id, tai_xe_id))
             
-        # 3. Ghi vết thao tác bằng Audit Log
+        # 3. Ghi vết thao tác bằng Audit Log[cite: 11]
         ghi_log_thao_tac(
             cursor=cursor, 
             chuyen_di_id=chuyen_di_id, 
@@ -271,7 +295,6 @@ def update_trip_full_process(db_pool, chuyen_di_id: int, data_chuyen_di: dict, t
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
-##################################################
 
 def delete_trip_safe(db_pool, chuyen_di_id):
     conn = db_pool.get_connection()
@@ -398,14 +421,23 @@ def goi_gps_theo_thoi_gian_tuy_chinh(db_instance, chuyen_di_id, tg_bat_dau_quet,
     finally:
         if 'cursor' in locals() and cursor: cursor.close()
         if 'conn' in locals() and conn: conn.close()
+#############################################################
+
 
 def get_cong_no_khach_hang(db_pool, khach_hang_id, tu_ngay, den_ngay):
+    # [CẬP NHẬT] Lấy thêm tien_them, chuyen_goc_id và chặn chuyến phụ (doanh_thu = 0)
     sql = """
-        SELECT cd.ngay_chuyen_di, cd.dia_diem_giao_nhan, COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) as bien_so_xe, cd.doanh_thu, kh.ten_khach_hang, kh.ma_so_thue, kh.dia_chi
+        SELECT cd.ngay_chuyen_di, cd.dia_diem_giao_nhan, COALESCE(x.bien_so_xe, cd.bien_so_xe_ngoai) as bien_so_xe, 
+               cd.doanh_thu, cd.tien_them, cd.chuyen_goc_id,
+               kh.ten_khach_hang, kh.ma_so_thue, kh.dia_chi
         FROM chuyen_di cd
         JOIN khach_hang kh ON cd.khach_hang_id = kh.id
         LEFT JOIN xe x ON cd.xe_id = x.id
-        WHERE cd.khach_hang_id = %s AND cd.ngay_chuyen_di >= %s AND cd.ngay_chuyen_di <= %s AND cd.trang_thai_chuyen = 'Hoan_Thanh'
+        WHERE cd.khach_hang_id = %s 
+          AND cd.ngay_chuyen_di >= %s 
+          AND cd.ngay_chuyen_di <= %s 
+          AND cd.trang_thai_chuyen = 'Hoan_Thanh'
+          AND cd.chuyen_goc_id IS NULL -- Loại bỏ chuyến phụ để tránh rác hóa đơn 0đ
         ORDER BY cd.ngay_chuyen_di ASC
     """
     try:
@@ -418,28 +450,23 @@ def get_cong_no_khach_hang(db_pool, khach_hang_id, tu_ngay, den_ngay):
 
 
 import traceback
-from audit_logger import ghi_log_he_thong # Đảm bảo import hàm log hệ thống theo quy tắc dự án
+from audit_logger import ghi_log_he_thong
 
 def auto_calculate_trip_revenue(db_pool, tu_ngay, den_ngay, current_user="He_Thong_Batch"):
-    """
-    Quyết toán tự động: 
-    - Lớp 1: Khớp quy cách xe/cont và lộ trình.
-    - Lớp 2: Linh hoạt Khuyến mãi Chuyến tiếp nối (Cho Khách A).
-    - Lớp 3: Tự động tính cước độc lập cho Khách B, C (Ghép tiện chuyến).
-    """
     conn = None
     cursor = None
     try:
         conn = db_pool.get_connection()
-        conn.autocommit = False  # Bắt buộc dùng Transaction
+        conn.autocommit = False  
         cursor = conn.cursor(dictionary=True) 
 
-        # 1. Truy xuất các chuyến đi cần áp cước (Có lấy thêm is_gop_chuyen, stt_chuyen_ghep)
+        # [BỔ SUNG]: Lấy thêm trường chuyen_goc_id để xử lý chuyến phụ
         sql_trips = """
             SELECT cd.id, cd.khach_hang_id, cd.ngay_chuyen_di, cd.dia_diem_giao_nhan, 
                    cd.khoi_luong_kg, cd.the_tich_cbm, cd.loai_hinh_xe, 
                    cd.is_hang_tra_ve, cd.quy_cach_thuc_te, 
                    cd.is_gop_chuyen, cd.stt_chuyen_ghep, cd.ma_chuyen_ghep,
+                   cd.chuyen_goc_id,
                    x.tai_trong_thiet_ke, cql.loai_cont, tk.phan_luong
             FROM chuyen_di cd
             LEFT JOIN xe x ON cd.xe_id = x.id
@@ -459,13 +486,28 @@ def auto_calculate_trip_revenue(db_pool, tu_ngay, den_ngay, current_user="He_Tho
             kh_id = trip['khach_hang_id']
             if not kh_id: continue
             
+            # 🛡️ XỬ LÝ CHUYẾN PHỤ: Ghi đè bằng 0đ và bỏ qua dò bảng giá
+            if trip.get('chuyen_goc_id') is not None:
+                cursor.execute("""
+                    UPDATE chuyen_di 
+                    SET doanh_thu = 0, is_tinh_cuoc_tu_dong = 1,
+                        ghi_chu_quyet_toan = CASE 
+                            WHEN ghi_chu_quyet_toan IS NULL OR ghi_chu_quyet_toan = '' THEN %s 
+                            ELSE CONCAT_WS(' - ', ghi_chu_quyet_toan, %s) 
+                        END
+                    WHERE id = %s
+                """, (f"[Hệ thống]: Chuyến phụ ghép đơn #{int(trip['chuyen_goc_id'])}, miễn cước", 
+                      f"[Hệ thống]: Chuyến phụ ghép đơn #{int(trip['chuyen_goc_id'])}, miễn cước", 
+                      trip['id']))
+                if cursor.rowcount > 0: success_count += 1
+                continue
+            
             lo_trinh = str(trip['dia_diem_giao_nhan'] or "").upper()
             loai_hinh = trip['loai_hinh_xe']
             is_tra_ve = trip['is_hang_tra_ve'] or 0
             phan_luong = str(trip['phan_luong'] or "").upper()
             quy_cach_chay = str(trip.get('quy_cach_thuc_te') or "").strip().upper()
             
-            # Ép chuẩn định dạng xe
             loai_xe_khach = ""
             if loai_hinh == 'Container':
                 loai_xe_khach = str(trip['loai_cont'] or "40HC").upper()
@@ -476,7 +518,6 @@ def auto_calculate_trip_revenue(db_pool, tu_ngay, den_ngay, current_user="He_Tho
             kg_thuc = float(trip['khoi_luong_kg'] or 0)
             cbm_thuc = float(trip['the_tich_cbm'] or 0)
 
-            # 2. Truy vấn Biểu cước cho CHÍNH KHÁCH HÀNG NÀY (Độc lập từng chuyến dù đi chung xe)
             cursor.execute("SELECT * FROM rate_cards WHERE khach_hang_id = %s ORDER BY don_gia_cuoc ASC", (kh_id,))
             rates = cursor.fetchall()
             
@@ -489,9 +530,7 @@ def auto_calculate_trip_revenue(db_pool, tu_ngay, den_ngay, current_user="He_Tho
                 loai_xe_rate = str(rate['loai_xe_quy_cach'] or "").strip().upper()
                 rate_tra_ve = rate['is_hang_tra_ve']
                 
-                # Lớp Lọc 1: Khớp lộ trình
                 if (diem_di_kw in lo_trinh and diem_den_kw in lo_trinh) and (is_tra_ve == rate_tra_ve):
-                    # Lớp Lọc Ưu Tiên (Quy cách)
                     if quy_cach_chay and quy_cach_chay == loai_xe_rate:
                         if rate['phan_loai_phuong_tien'] == 'Hang_Le':
                             if kg_thuc <= float(rate['gioi_han_kg']) and cbm_thuc <= float(rate['gioi_han_cbm']):
@@ -502,7 +541,6 @@ def auto_calculate_trip_revenue(db_pool, tu_ngay, den_ngay, current_user="He_Tho
                             matched_rate = float(rate['don_gia_cuoc'])
                             gia_chuyen_tiep_noi = float(rate.get('gia_chuyen_tiep_noi', 0.0))
                             break
-                    # Lớp Lọc Fallback
                     elif not quy_cach_chay:
                         if rate['phan_loai_phuong_tien'] == 'Hang_Le':
                             if kg_thuc <= float(rate['gioi_han_kg']) and cbm_thuc <= float(rate['gioi_han_cbm']):
@@ -518,26 +556,17 @@ def auto_calculate_trip_revenue(db_pool, tu_ngay, den_ngay, current_user="He_Tho
                             gia_chuyen_tiep_noi = float(rate.get('gia_chuyen_tiep_noi', 0.0))
                             break
 
-            # =========================================================
-            # 3. XỬ LÝ NGHIỆP VỤ: TIẾP NỐI (Khách A) vs GHÉP CHUYẾN (Khách B, C)
-            # =========================================================
             tien_giam = 0.0
             ly_do_giam = ""
             
             if matched_rate > 0:
-                # 3.1 Nhận diện Khách A: Kiểm tra lịch sử chuyến đi cùng ngày, cùng tuyến
                 sql_check_history = """
                     SELECT COUNT(id) as so_chuyen_truoc_do 
                     FROM chuyen_di 
-                    WHERE khach_hang_id = %s 
-                      AND ngay_chuyen_di = %s
-                      AND dia_diem_giao_nhan = %s
-                      AND id < %s
-                      AND trang_thai_chuyen != 'Huy_Chuyen'
+                    WHERE khach_hang_id = %s AND ngay_chuyen_di = %s AND dia_diem_giao_nhan = %s AND id < %s AND trang_thai_chuyen != 'Huy_Chuyen'
                 """
                 cursor.execute(sql_check_history, (kh_id, trip['ngay_chuyen_di'], trip['dia_diem_giao_nhan'], trip['id']))
                 res_history = cursor.fetchone()
-                
                 is_chuyen_tiep_noi = False
                 
                 if res_history and res_history['so_chuyen_truoc_do'] > 0:
@@ -549,19 +578,12 @@ def auto_calculate_trip_revenue(db_pool, tu_ngay, den_ngay, current_user="He_Tho
                         matched_rate = gia_chuyen_tiep_noi
                         ly_do_giam = f" | 🔄 Khuyến mãi chuyến tiếp nối (Chuyến {chuyen_thu_may} trong ngày): -{tien_giam:,.0f}đ"
 
-                # 3.2 Nhận diện Khách B, C: Là chuyến ghép nhưng KHÔNG PHẢI khách quen chạy tiếp nối
                 if trip.get('is_gop_chuyen') == 1 and trip.get('stt_chuyen_ghep') and int(trip.get('stt_chuyen_ghep')) > 1:
-                    if not is_chuyen_tiep_noi:
-                        # Khách B, C bị thu nguyên cước dựa trên Kg/CBM đã cấu hình
-                        ly_do_giam = f" | 📦 Khách ghép tiện chuyến: Thu 100% cước chuẩn để tối ưu lợi nhuận"
+                    if not is_chuyen_tiep_noi: ly_do_giam = f" | 📦 Khách ghép tiện chuyến: Thu 100% cước chuẩn để tối ưu lợi nhuận"
 
-            # =========================================================
-            # 4. KẾT TÍNH PHỤ PHÍ VÀ GHI DATABASE
-            # =========================================================
             if matched_rate > 0:
                 cursor.execute("SELECT * FROM phu_phi_khach_hang WHERE khach_hang_id = %s AND loai_ap_dung = 'Tu_Dong'", (kh_id,))
                 surcharges = cursor.fetchall()
-                
                 tong_phu_phi = 0.0
                 ghi_chu_phu_phi = []
                 
@@ -573,19 +595,13 @@ def auto_calculate_trip_revenue(db_pool, tu_ngay, den_ngay, current_user="He_Tho
 
                 tong_doanh_thu = matched_rate + tong_phu_phi
                 ghi_chu_str = f"[Hệ thống tự tính]: Cước {matched_rate:,.0f}"
-                if ghi_chu_phu_phi:
-                    ghi_chu_str += f" | Phụ phí ({', '.join(ghi_chu_phu_phi)}): {tong_phu_phi:,.0f}"
-                if ly_do_giam:
-                    ghi_chu_str += ly_do_giam
-                if quy_cach_chay:
-                    ghi_chu_str += f" | (Mã Quy cách: {quy_cach_chay})"
+                if ghi_chu_phu_phi: ghi_chu_str += f" | Phụ phí ({', '.join(ghi_chu_phu_phi)}): {tong_phu_phi:,.0f}"
+                if ly_do_giam: ghi_chu_str += ly_do_giam
+                if quy_cach_chay: ghi_chu_str += f" | (Mã Quy cách: {quy_cach_chay})"
 
-                # Cập nhật kết quả vào chuyến đi
                 cursor.execute("""
                     UPDATE chuyen_di 
-                    SET doanh_thu = %s,
-                        tien_giam_gia = %s,
-                        is_tinh_cuoc_tu_dong = 1,
+                    SET doanh_thu = %s, tien_giam_gia = %s, is_tinh_cuoc_tu_dong = 1,
                         ghi_chu_quyet_toan = CASE 
                             WHEN ghi_chu_quyet_toan IS NULL OR ghi_chu_quyet_toan = '' THEN %s 
                             ELSE CONCAT_WS(' - ', ghi_chu_quyet_toan, %s) 
@@ -593,12 +609,9 @@ def auto_calculate_trip_revenue(db_pool, tu_ngay, den_ngay, current_user="He_Tho
                     WHERE id = %s
                 """, (tong_doanh_thu, tien_giam, ghi_chu_str, ghi_chu_str, trip['id']))
                 
-                # Nguyên tắc: Kiểm tra rowcount sau Update
-                if cursor.rowcount > 0:
-                    success_count += 1
+                if cursor.rowcount > 0: success_count += 1
 
-        # Ghi vết Audit Log
-        ghi_log_he_thong(cursor, "QUYET_TOAN_TU_DONG", None, current_user, "CHAY_BATCH_BILLING", f"Đã áp cước (Xử lý Đa khách hàng & Chuyến nối): {success_count} chuyến.")
+        ghi_log_he_thong(cursor, "QUYET_TOAN_TU_DONG", None, current_user, "CHAY_BATCH_BILLING", f"Đã áp cước (Bao gồm chuyến chính/phụ): {success_count} chuyến.")
         
         conn.commit()
         return True, f"✅ Đã xử lý cước phí linh hoạt thành công {success_count} chuyến đi!"
