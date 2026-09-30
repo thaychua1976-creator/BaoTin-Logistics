@@ -1744,7 +1744,8 @@ with tab4:
                         cd.doanh_thu AS 'Doanh Thu',
                         cd.tien_them AS 'Phụ Cấp',
                         cd.phi_khac AS 'Phí Khác', cd.chi_phi_thue_ngoai AS 'Phí Thuê Ngoài',
-                        cd.ghi_chu_quyet_toan AS 'Ghi Chú'
+                        cd.ghi_chu_quyet_toan AS 'Ghi Chú',
+                        cd.chuyen_goc_id AS 'Chuyen_Goc_ID'
                     FROM chuyen_di cd
                     LEFT JOIN xe x ON cd.xe_id = x.id
                     LEFT JOIN chuyen_di_tai_xe ctx ON cd.id = ctx.chuyen_di_id AND ctx.loai_tai_xe = 'Tai_Chinh'
@@ -1768,7 +1769,8 @@ with tab4:
                     df_kq['Lộ Trình'] = df_kq['Lộ Trình'].astype(str).apply(
                                             lambda x: re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*', '', x).strip()
                                         )
-                    df_loi = df_kq[df_kq['Doanh Thu'] <= 0]
+                    # [CẬP NHẬT] Lọc bỏ các chuyến phụ (Chuyen_Goc_ID không bị rỗng) khỏi cảnh báo lỗi
+                    df_loi = df_kq[(df_kq['Doanh Thu'] <= 0) & (df_kq['Chuyen_Goc_ID'].isna())]
                     
                     if not df_loi.empty:
                         st.error(f"🚨 PHÁT HIỆN {len(df_loi)} CHUYẾN ĐI ĐÃ QUYẾT TOÁN NHƯNG BỊ SÓT DOANH THU (0 VNĐ)!")
@@ -1779,7 +1781,8 @@ with tab4:
                         st.dataframe(df_loi_hien_thi, use_container_width=True, hide_index=True)
                         st.divider()
 
-                    df_hien_thi = df_kq.copy()
+                    # Ẩn cột Chuyen_Goc_ID khỏi giao diện hiển thị
+                    df_hien_thi = df_kq.drop(columns=['Chuyen_Goc_ID']).copy()
                     df_hien_thi['Ngày'] = pd.to_datetime(df_hien_thi['Ngày']).dt.strftime('%d/%m/%Y')
                     
                     for col in ['Doanh Thu', 'Phụ Cấp', 'Phí Khác', 'Phí Thuê Ngoài']:
