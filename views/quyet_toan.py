@@ -1408,11 +1408,12 @@ with tab3:
                                     is_bao_excel = parse_excel_bool(r.get('IS_BAO_CHUYEN'))
                                     loai_xe_bao_excel = str(r.get('LOAI_XE_BAO', 'Xe Tải')).strip()
                                     
-                                    # [BẢN VÁ LỖI CUỐI CÙNG] Đảm bảo tách đúng lộ trình (Sửa lỗi icon mũi tên)
+                                    # [BẢN VÁ LỖI ICON MŨI TÊN] Chuẩn hóa toàn bộ icon lạ về một chuẩn chung trước khi cắt
                                     parts = None
-                                    if "➡️" in lo_trinh_hien_tai: parts = lo_trinh_hien_tai.split("➡️")
-                                    elif "->" in lo_trinh_hien_tai: parts = lo_trinh_hien_tai.split("->")
-                                    elif "-" in lo_trinh_hien_tai: parts = lo_trinh_hien_tai.split("-")
+                                    if lo_trinh_hien_tai:
+                                        # Bọc (chuẩn hóa) các biến thể icon mũi tên/gạch nối về "->"
+                                        lo_trinh_chuan_hoa = re.sub(r'➡️|➡|➔|➜|->|-', '->', str(lo_trinh_hien_tai))
+                                        parts = lo_trinh_chuan_hoa.split("->")
                                     
                                     # Chuyến phụ không cần dò tìm tự động lại bảng giá
                                     if parts and kh_id and len(parts) >= 2 and not is_chuyen_phu:
@@ -1455,21 +1456,42 @@ with tab3:
 
                                                     has_nguy_hiem = 'nguy hiểm' in loai_hang_excel or 'nguy hiem' in loai_hang_excel
                                                     has_lanh = any(kw in loai_cont_excel for kw in ['lạnh', 'lanh', 'rf'])
+                                                    
+                                                    # 1. Khai báo thực tế từ file Excel
                                                     is_cont = loai_cont_excel not in ["thường", "thuong", "khác", "khac"]
                                                     loai_cont_clean = loai_cont_excel.replace(" (lạnh)", "").replace(" (lanh)", "").strip()
 
                                                     valid_candidates_di, valid_candidates_ve = [], []
                                                     is_thue_ngoai_auto = pd.isna(row_db.get('xe_id'))
                                                     
-                                                    # Dọn dẹp hoàn toàn logic loai_hinh_xe_db gây nhiễu, sử dụng phương thức chuẩn của Tab 1
+                                                    # 2. Đọc cấu hình gốc từ DB và BỌC LOGIC BẢO VỆ
+                                                    loai_hinh_xe_db = str(row_db.get('loai_hinh_xe', '')).strip().lower()
+                                                    is_thuc_te_cont = ('container' in loai_hinh_xe_db) or ('cont' in loai_hinh_xe_db)
+                                                    is_thuc_te_xe_may = ('xe_may' in loai_hinh_xe_db) or ('xe may' in loai_hinh_xe_db)
+
+                                                    if is_cont: 
+                                                        # Excel khai báo là Cont -> Ép thực tế thành Cont (Bỏ qua DB nếu DB lưu nhầm Xe Tải)
+                                                        is_thuc_te_cont = True
+                                                        is_thuc_te_xe_may = False
+                                                    elif not is_cont and is_thuc_te_cont:
+                                                        # Excel khai báo Xe Tải ("Thường") -> Ép thực tế thành Xe Tải (Bỏ qua DB nếu DB lưu nhầm Cont)
+                                                        is_thuc_te_cont = False
+
+                                                    is_thuc_te_xe_tai = not is_thuc_te_cont and not is_thuc_te_xe_may
+                                                    
                                                     for _, rc in df_matched.iterrows():
                                                         pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip().lower() 
                                                         qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ").replace(",", ".")
                                                         
-                                                        # Bộ lọc chéo Container/Xe Tải
-                                                        is_container_db_check = ('container' in pl_pt_gia) or ('cont' in pl_pt_gia)
-                                                        if not is_cont and is_container_db_check: continue
-                                                        if is_cont and not is_container_db_check: continue
+                                                        # 3. Phân loại cấu hình Bảng giá
+                                                        is_gia_cont = ('container' in pl_pt_gia) or ('cont' in pl_pt_gia)
+                                                        is_gia_xemay = ('xe_may' in pl_pt_gia) or ('xemay' in pl_pt_gia) or ('xe máy' in qc_gia) or ('xe may' in qc_gia)
+                                                        is_gia_xetai = not is_gia_cont and not is_gia_xemay
+
+                                                        # 4. Áp dụng bộ lọc chéo (Đã bọc chống nhiễu)
+                                                        if is_thuc_te_cont and not is_gia_cont: continue
+                                                        if is_thuc_te_xe_tai and not is_gia_xetai: continue
+                                                        if is_thuc_te_xe_may and not is_gia_xemay: continue
                                                         
                                                         raw_ve = rc.get('is_hang_tra_ve', 0)
                                                         rc_hang_ve_check = 0
