@@ -472,8 +472,11 @@ with tab1:
                     LEFT JOIN xe x ON cd.xe_id = x.id
                     LEFT JOIN chuyen_di_tai_xe ctx ON cd.id = ctx.chuyen_di_id AND ctx.loai_tai_xe = 'Tai_Chinh'
                     LEFT JOIN nhan_vien nv ON ctx.tai_xe_id = nv.id
-                    WHERE cd.trang_thai_chuyen IN ('Quyet_Toan','Tao_Moi','Dang_Di')
-                       OR (cd.trang_thai_chuyen = 'Hoan_Thanh' AND (cd.doanh_thu IS NULL OR cd.doanh_thu = 0))
+                    WHERE cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di', 'Quyet_Toan')
+                        -- Vớt chuyến chính quên doanh thu
+                        OR (cd.trang_thai_chuyen = 'Hoan_Thanh' AND (cd.doanh_thu IS NULL OR cd.doanh_thu <= 0) AND cd.chuyen_goc_id IS NULL)
+                        -- [BỔ SUNG] Vớt các chuyến phụ đã bị giải phóng nhanh mang cờ WAIT_QUYET_TOAN
+                        OR (cd.trang_thai_chuyen = 'Hoan_Thanh' AND cd.chuyen_goc_id IS NOT NULL AND cd.ghi_chu LIKE '%WAIT_QUYET_TOAN%')
                     ORDER BY cd.ngay_chuyen_di DESC
                 """
                 st.session_state[cache_key_cd] = db.execute_query(sql_load)
@@ -930,11 +933,21 @@ with tab1:
 
                     if submit_chot:
                         try:
-                            # [BỔ SUNG] Ép doanh thu val = 0 nếu là chuyến phụ
-                            if is_chuyen_phu: doanh_thu_val = 0.0
+                            doanh_thu_tinh_phi = 0.0
+                            if is_chuyen_phu: 
+                                doanh_thu_val = 0.0
+                                # [FIX] Lấy mốc doanh thu để AI tính % phụ phí cho chuyến phụ
+                                doanh_thu_tinh_phi = doanh_thu_hien_tai # Ưu tiên lấy giá AI vừa dò ra
+                                if doanh_thu_tinh_phi == 0 and pd.notna(chuyen_goc_id_val):
+                                    try: # Nếu AI không dò ra, tự động móc vào DB lấy doanh thu của chuyến gốc
+                                        df_goc = db.execute_query("SELECT doanh_thu FROM chuyen_di WHERE id = %s", (int(chuyen_goc_id_val),))
+                                        if isinstance(df_goc, pd.DataFrame) and not df_goc.empty:
+                                            doanh_thu_tinh_phi = float(df_goc.iloc[0]['doanh_thu'] or 0.0)
+                                    except: pass
                             else:
                                 doanh_thu_val = parse_money_input(doanh_thu_input)
                                 if doanh_thu_val == 0 and doanh_thu_hien_tai > 0: doanh_thu_val = doanh_thu_hien_tai
+                                doanh_thu_tinh_phi = doanh_thu_val
                                 
                             phi_khac_nhap_tay = parse_money_input(num_k)
                             phi_bx_nhap_tay = parse_money_input(num_bx)
@@ -965,7 +978,7 @@ with tab1:
                                 'is_hang_tra_ve': is_hang_ve_ui, 'is_chu_nhat': is_chu_nhat
                             }
                             
-                            tong_phi_ai, chuoi_ghi_chu_ai = rule_engine_calc(kh_id_qt, tt_xe_tan, doanh_thu_val, facts_dict, db)
+                            tong_phi_ai, chuoi_ghi_chu_ai = rule_engine_calc(kh_id_qt, tt_xe_tan, doanh_thu_tinh_phi, facts_dict, db)
                             tien_phu_cap_tx, chuoi_phu_cap_tx = tinh_phu_cap_tai_xe(db, row_sel.get('xe_id'), selected_tc_ids)
                             tienthem_raw = row_sel.get('tien_them')
                             tien_them_hien_tai = 0.0 if pd.isna(tienthem_raw) or tienthem_raw == "" else float(tienthem_raw)
@@ -976,6 +989,10 @@ with tab1:
                             if is_chuyen_phu: gc_final += f" [CHUYẾN PHỤ CỦA ĐƠN #{int(chuyen_goc_id_val)}]"
                             if chuoi_ghi_chu_ai: gc_final += f" [AI: {', '.join(chuoi_ghi_chu_ai)}]"
                             if chuoi_phu_cap_tx: gc_final += f" [Phụ cấp TX: +{tien_phu_cap_tx:,.0f}đ ({chuoi_phu_cap_tx})]"
+                            
+                            # [FIX] Xóa cờ WAIT_QUYET_TOAN ở ghi chú gốc trên hệ thống
+                            db_ghi_chu_goc = str(row_sel.get('ghi_chu', ''))
+                            ghi_chu_sach = db_ghi_chu_goc.replace('WAIT_QUYET_TOAN', '').strip()
 
                             data_dict_thu_cong = {
                                 'ten_khach_hang': edit_cong_ty, 'doanh_thu': doanh_thu_val, 
@@ -984,7 +1001,8 @@ with tab1:
                                 'phi_hai_quan': phi_hq_nhap_tay, 'phi_boc_xep': phi_bx_nhap_tay,
                                 'phi_khac': phi_khac_final, 'tien_them': tien_them_final,
                                 'ghi_chu_quyet_toan': gc_final,
-                                'is_hang_tra_ve': 1 if is_hang_ve_ui else 0
+                                'is_hang_tra_ve': 1 if is_hang_ve_ui else 0,
+                                'ghi_chu': ghi_chu_sach # Bổ sung cập nhật lại cột ghi_chu gốc
                             }
 
                             if submit_chot and not xac_nhan_chot:
@@ -1229,7 +1247,10 @@ with tab3:
                     LEFT JOIN chuyen_di_tai_xe ctx ON cd.id = ctx.chuyen_di_id AND ctx.loai_tai_xe = 'Tai_Chinh'
                     LEFT JOIN nhan_vien nv ON ctx.tai_xe_id = nv.id
                     WHERE cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di', 'Quyet_Toan')
-                    OR (cd.trang_thai_chuyen = 'Hoan_Thanh' AND (cd.doanh_thu IS NULL OR cd.doanh_thu <= 0))
+                        -- Vớt chuyến chính quên doanh thu
+                        OR (cd.trang_thai_chuyen = 'Hoan_Thanh' AND (cd.doanh_thu IS NULL OR cd.doanh_thu <= 0) AND cd.chuyen_goc_id IS NULL)
+                        -- [BỔ SUNG] Vớt các chuyến phụ đã bị giải phóng nhanh mang cờ WAIT_QUYET_TOAN
+                        OR (cd.trang_thai_chuyen = 'Hoan_Thanh' AND cd.chuyen_goc_id IS NOT NULL AND cd.ghi_chu LIKE '%WAIT_QUYET_TOAN%')
                     ORDER BY cd.ngay_chuyen_di ASC
                 """
                 st.session_state[cache_key_pending] = db.execute_query(sql_pending)
@@ -1403,17 +1424,25 @@ with tab3:
                                         doanh_thu_chuyen = 0.0
                                         ghi_chu_goc = f"{ghi_chu_goc} [Tự động lưu 0đ vì là chuyến ghép phụ của #{int(chuyen_goc_id_val)}]".strip()
 
+                                    # [FIX] Khởi tạo giá trị mặc định để chống lỗi UnboundLocalError khi biến bị skip
                                     matched_khoang_cach = 0.0
+                                    matched_price_di = 0.0
+                                    matched_price_ve = 0.0
+                                    tong_cuoc = 0.0
+                                    
                                     is_hang_ve_excel = parse_excel_bool(r.get('IS_HANG_VE'))
                                     is_bao_excel = parse_excel_bool(r.get('IS_BAO_CHUYEN'))
                                     loai_xe_bao_excel = str(r.get('LOAI_XE_BAO', 'Xe Tải')).strip()
                                     
-                                    # [BẢN VÁ LỖI ICON MŨI TÊN] Chuẩn hóa toàn bộ icon lạ về một chuẩn chung trước khi cắt
+                                    # [BẢN VÁ LỖI CẮT NHẦM ĐỊA DANH] Ưu tiên cắt theo icon mũi tên trước khi dùng dấu gạch ngang
                                     parts = None
                                     if lo_trinh_hien_tai:
-                                        # Bọc (chuẩn hóa) các biến thể icon mũi tên/gạch nối về "->"
-                                        lo_trinh_chuan_hoa = re.sub(r'➡️|➡|➔|➜|->|-', '->', str(lo_trinh_hien_tai))
-                                        parts = lo_trinh_chuan_hoa.split("->")
+                                        if "➡️" in lo_trinh_hien_tai: parts = lo_trinh_hien_tai.split("➡️")
+                                        elif "➡" in lo_trinh_hien_tai: parts = lo_trinh_hien_tai.split("➡")
+                                        elif "➔" in lo_trinh_hien_tai: parts = lo_trinh_hien_tai.split("➔")
+                                        elif "➜" in lo_trinh_hien_tai: parts = lo_trinh_hien_tai.split("➜")
+                                        elif "->" in lo_trinh_hien_tai: parts = lo_trinh_hien_tai.split("->")
+                                        elif "-" in lo_trinh_hien_tai: parts = lo_trinh_hien_tai.split("-")
                                     
                                     # Chuyến phụ không cần dò tìm tự động lại bảng giá
                                     if parts and kh_id and len(parts) >= 2 and not is_chuyen_phu:
@@ -1451,49 +1480,70 @@ with tab3:
                                                     loai_hang_excel = str(r.get('LOAI_HANG_HOA', 'Thường')).strip().lower()
                                                     loai_cont_excel = str(r.get('LOAI_CONT', 'Thường')).strip().lower()
 
+                                                    # --- BẮT ĐẦU BLOCK DEBUG & XỬ LÝ CHÍNH XÁC ---
+                                                   # print(f"\n[DEBUG] ĐANG XỬ LÝ CHUYẾN ID: {cid}")
+                                                    
+                                                    loai_hang_excel = str(r.get('LOAI_HANG_HOA', 'Thường')).strip().lower()
+                                                    loai_cont_excel = str(r.get('LOAI_CONT', 'Thường')).strip().lower()
+
                                                     if loai_hang_excel in ['nan', 'null', 'none', '']: loai_hang_excel = 'thường'
                                                     if loai_cont_excel in ['nan', 'null', 'none', '']: loai_cont_excel = 'thường'
 
                                                     has_nguy_hiem = 'nguy hiểm' in loai_hang_excel or 'nguy hiem' in loai_hang_excel
                                                     has_lanh = any(kw in loai_cont_excel for kw in ['lạnh', 'lanh', 'rf'])
                                                     
-                                                    # 1. Khai báo thực tế từ file Excel
                                                     is_cont = loai_cont_excel not in ["thường", "thuong", "khác", "khac"]
                                                     loai_cont_clean = loai_cont_excel.replace(" (lạnh)", "").replace(" (lanh)", "").strip()
 
                                                     valid_candidates_di, valid_candidates_ve = [], []
                                                     is_thue_ngoai_auto = pd.isna(row_db.get('xe_id'))
                                                     
-                                                    # 2. Đọc cấu hình gốc từ DB (Đã thêm từ khóa "xe máy" có dấu để khắc phục lỗi chuyến 109)
+                                                    # Chuẩn hóa xóa dấu và ký tự đặc biệt để so sánh 100% chính xác
                                                     loai_hinh_xe_db = str(row_db.get('loai_hinh_xe', '')).strip().lower()
                                                     loai_xe_db = str(row_db.get('loai_xe', '')).strip().lower()
+                                                    
+                                                    db_lhx_norm = unidecode_vn(loai_hinh_xe_db).replace('_', ' ')
+                                                    db_lx_norm = unidecode_vn(loai_xe_db).replace('_', ' ')
 
-                                                    is_thuc_te_cont = any(kw in loai_hinh_xe_db for kw in ['container', 'cont']) or any(kw in loai_xe_db for kw in ['container', 'cont'])
-                                                    is_thuc_te_xe_may = any(kw in loai_hinh_xe_db for kw in ['xe_may', 'xe may', 'xe máy', 'xemay']) or any(kw in loai_xe_db for kw in ['xe_may', 'xe may', 'xe máy', 'xemay'])
+                                                    is_thuc_te_cont = 'cont' in db_lhx_norm or 'cont' in db_lx_norm
+                                                    is_thuc_te_xe_may = 'xe may' in db_lhx_norm or 'xemay' in db_lhx_norm or 'xe may' in db_lx_norm or 'xemay' in db_lx_norm
 
+                                                   # print(f"  > Gốc DB: loai_hinh_xe='{loai_hinh_xe_db}' -> Chuẩn hóa: '{db_lhx_norm}'")
+                                                    
                                                     if is_cont: 
-                                                        # Excel khai báo là Cont -> Ép thực tế thành Cont (Ưu tiên Excel)
                                                         is_thuc_te_cont = True
                                                         is_thuc_te_xe_may = False
+                                                        #print("  > Bị Excel ghi đè thành: Container")
                                                     elif not is_cont and is_thuc_te_cont:
-                                                        # Excel khai báo Xe Tải ("Thường") -> Ép thực tế thành Xe Tải
                                                         is_thuc_te_cont = False
+                                                       # print("  > Bị Excel ghi đè thành: Xe tải/Xe máy (do Excel chọn Thường)")
 
                                                     is_thuc_te_xe_tai = not is_thuc_te_cont and not is_thuc_te_xe_may
+                                                    #print(f"  > CHỐT LOẠI THỰC TẾ: Xe Tải={is_thuc_te_xe_tai} | Xe Máy={is_thuc_te_xe_may} | Cont={is_thuc_te_cont}")
                                                     
                                                     for _, rc in df_matched.iterrows():
                                                         pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip().lower() 
-                                                        qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ").replace(",", ".")
+                                                        qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower()
                                                         
-                                                        # 3. Phân loại cấu hình Bảng giá (Bắt mọi biến thể chữ Xe Máy)
-                                                        is_gia_cont = ('container' in pl_pt_gia) or ('cont' in pl_pt_gia)
-                                                        is_gia_xemay = any(kw in pl_pt_gia for kw in ['xe_may', 'xe may', 'xe máy', 'xemay']) or any(kw in qc_gia for kw in ['xe_may', 'xe may', 'xe máy', 'xemay'])
+                                                        rc_pl_norm = unidecode_vn(pl_pt_gia).replace('_', ' ')
+                                                        rc_qc_norm = unidecode_vn(qc_gia).replace('_', ' ')
+                                                        
+                                                        is_gia_cont = 'cont' in rc_pl_norm or 'container' in rc_pl_norm
+                                                        is_gia_xemay = 'xe may' in rc_pl_norm or 'xemay' in rc_pl_norm or 'xe may' in rc_qc_norm or 'xemay' in rc_qc_norm
                                                         is_gia_xetai = not is_gia_cont and not is_gia_xemay
 
-                                                        # 4. Áp dụng bộ lọc chéo nghiêm ngặt (Khóa chặt việc nhận nhầm bảng giá)
-                                                        if is_thuc_te_cont and not is_gia_cont: continue
-                                                        if is_thuc_te_xe_tai and not is_gia_xetai: continue
-                                                        if is_thuc_te_xe_may and not is_gia_xemay: continue
+                                                        gia_dang_check = float(rc.get('don_gia_cuoc', 0))
+                                                        #print(f"    - Đang duyệt Bảng giá {gia_dang_check:,.0f} | phan_loai='{rc_pl_norm}' -> Nhận diện Giá: Tải={is_gia_xetai}, Máy={is_gia_xemay}")
+
+                                                        if is_thuc_te_cont and not is_gia_cont: 
+                                                           # print("      -> SKIP: Chuyến là Cont nhưng Bảng giá không phải Cont")
+                                                            continue
+                                                        if is_thuc_te_xe_tai and not is_gia_xetai:
+                                                           #print("      -> SKIP: Chuyến là Xe Tải nhưng Bảng giá không phải Xe Tải")
+                                                            continue
+                                                        if is_thuc_te_xe_may and not is_gia_xemay:
+                                                           # print("      -> SKIP: Chuyến là Xe Máy nhưng Bảng giá không phải Xe Máy")
+                                                            continue
                                                         
                                                         raw_ve = rc.get('is_hang_tra_ve', 0)
                                                         rc_hang_ve_check = 0
@@ -1505,47 +1555,47 @@ with tab3:
 
                                                         if is_bao_excel:
                                                             target_kw = "bao xe tai" if "tai" in loai_xe_bao_excel.lower() or "tải" in loai_xe_bao_excel.lower() else "bao xe cont"
-                                                            if target_kw in qc_gia or target_kw.replace(" ", "_") in qc_gia:
+                                                            rc_qc_norm_bao = rc_qc_norm.replace('_', ' ')
+                                                            if target_kw in rc_qc_norm_bao:
                                                                 m_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
                                                                 m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
                                                                 penalty = (0 if rc['match_type'] == 'direct' else 1000.0) - (rc.get('route_score', 0) * 10.0)
                                                                 
                                                                 if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
                                                                 else: valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
+                                                                #print("      => MATCH: Giá Bao chuyến")
                                                             continue
                                                         else:
-                                                            if 'bao xe tai' in qc_gia or 'bao_xe_tai' in qc_gia or 'bao xe cont' in qc_gia or 'bao_xe_cont' in qc_gia: continue
+                                                            if 'bao xe tai' in rc_qc_norm or 'bao xe cont' in rc_qc_norm: continue
                                                             
                                                         if is_cont:
                                                             cont_sizes = ['20dc', '20', '40', '40dc', '40hc', '45hc', '20rf', '40rf']
                                                             has_cont_size_in_qc = any(cs in qc_gia for cs in cont_sizes)
                                                             if has_cont_size_in_qc and loai_cont_clean not in qc_gia: continue
 
-                                                        req_nguy_hiem = any(x in qc_gia for x in ['nguy hiem', 'nguyhiem'])
-                                                        req_lanh = any(x in qc_gia for x in ['lạnh', 'lanh', 'rf'])
-                                                        req_thuong = any(x in qc_gia for x in ['thường', 'thuong'])
+                                                        req_nguy_hiem = any(x in rc_qc_norm for x in ['nguy hiem', 'nguyhiem'])
+                                                        req_lanh = any(x in rc_qc_norm for x in ['lanh', 'rf'])
+                                                        req_thuong = any(x in rc_qc_norm for x in ['thuong'])
                                                         is_prop_match = True
                                                         if req_nguy_hiem and not has_nguy_hiem: is_prop_match = False
                                                         if req_lanh and not has_lanh: is_prop_match = False
                                                         if req_thuong and (has_nguy_hiem or has_lanh): is_prop_match = False
-                                                        if not is_prop_match: continue
+                                                        if not is_prop_match: 
+                                                           # print("      -> SKIP: Không khớp tính chất hàng hóa (Lạnh/Nguy hiểm)")
+                                                            continue
 
-                                                        # 5. Xử lý giá theo từng loại hình xe (Khắc phục lỗi chuyến 107)
-                                                        if is_gia_xemay:
+                                                        # Lấy giá thẳng cho Xe Máy & Cont (Bỏ qua khâu xét tải trọng)
+                                                        if is_gia_xemay or is_gia_cont:
                                                             m_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
                                                             m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
                                                             penalty = (0 if rc['match_type'] == 'direct' else 1000.0) - (rc.get('route_score', 0) * 10.0)
                                                             if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
                                                             else: valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
+                                                           # print(f"      => MATCH! Đã đưa vào ứng viên giá: {m_price:,.0f}")
+                                                            continue 
 
-                                                        elif is_gia_cont:
-                                                            m_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
-                                                            m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
-                                                            penalty = (0 if rc['match_type'] == 'direct' else 1000.0) - (rc.get('route_score', 0) * 10.0)
-                                                            if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
-                                                            else: valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
-
-                                                        elif is_gia_xetai: # Chắc chắn nhảy vào block tính tải trọng cho Xe Tải
+                                                        elif is_gia_xetai:
+                                                            # (Phần tính xét logic tải trọng giữ nguyên từ đây...)
                                                             is_weight_match = False
                                                             gh_kg = float(rc.get('gioi_han_kg', 0) or 0)
                                                             gh_cbm = float(rc.get('gioi_han_cbm', 0) or 0)
@@ -1631,7 +1681,22 @@ with tab3:
                                         'loai_cont_rong_text': cont_rong_excel, 'is_hang_tra_ve': is_hang_ve_excel, 'is_chu_nhat': is_chu_nhat
                                     }
                                     
-                                    tong_phi_ai, chuoi_ghi_chu_ai = rule_engine_calc(kh_id, tai_trong_so_sanh_tan, doanh_thu_chuyen, facts, db)
+                                                                                
+                                    # [FIX] Tách biệt Doanh thu lưu Database (0đ) và Doanh thu dùng để tính AI %
+                                    doanh_thu_tinh_phi = doanh_thu_chuyen
+                                    if is_chuyen_phu:
+                                        # Ưu tiên 1: Lấy giá trị kế toán nhập sẵn trong cột DOANH_THU_CHUYEN của file Excel
+                                        doanh_thu_tinh_phi = parse_excel_money(r.get('DOANH_THU_CHUYEN'))
+                                        
+                                        # Ưu tiên 2: Tự động móc vào DB lấy doanh thu của chuyến gốc để làm mốc tính %
+                                        if doanh_thu_tinh_phi == 0 and pd.notna(chuyen_goc_id_val):
+                                            try:
+                                                df_goc = db.execute_query("SELECT doanh_thu FROM chuyen_di WHERE id = %s", (int(chuyen_goc_id_val),))
+                                                if isinstance(df_goc, pd.DataFrame) and not df_goc.empty:
+                                                    doanh_thu_tinh_phi = float(df_goc.iloc[0]['doanh_thu'] or 0.0)
+                                            except: pass
+                                            
+                                    tong_phi_ai, chuoi_ghi_chu_ai = rule_engine_calc(kh_id, tai_trong_so_sanh_tan, doanh_thu_tinh_phi, facts, db)
                                     ds_phu_cap_str = str(r.get('DS_PHU_CAP_TAI_XE', '')).strip()
                                     selected_tc_ids_excel = []
                                     
@@ -1695,6 +1760,10 @@ with tab3:
 
                                     # [BỔ SUNG] Điều kiện ghi dữ liệu (cập nhật để phù hợp khi doanh_thu=0 của chuyến phụ)
                                     if doanh_thu_chuyen > 0 or is_chuyen_phu:
+                                            # [FIX] Xóa cờ WAIT_QUYET_TOAN ở ghi chú gốc trên hệ thống
+                                            db_ghi_chu_goc = str(row_db.get('ghi_chu', ''))
+                                            ghi_chu_sach = db_ghi_chu_goc.replace('WAIT_QUYET_TOAN', '').strip()
+
                                             data_dict_excel = {
                                                 'ten_khach_hang': ten_khach_hang_db,
                                                 'cong_chuyen': parse_excel_money(r.get('TIEN_CONG_TAI_XE', 0)),
@@ -1703,7 +1772,8 @@ with tab3:
                                                 'phi_boc_xep': parse_excel_money(r.get('PHI_BOC_XEP')),
                                                 'phi_khac': tong_phi_khac_final,
                                                 'tien_them': tien_them_final,
-                                                'ghi_chu_quyet_toan': ghi_chu_goc 
+                                                'ghi_chu_quyet_toan': ghi_chu_goc,
+                                                'ghi_chu': ghi_chu_sach # Bổ sung cập nhật lại cột ghi_chu gốc
                                             }
                                 
                                             if trang_thai == 'Hoan_Thanh': success, msg = update_trip_transaction(db.pool, data_dict_excel, 'Hoan_Thanh', cid)

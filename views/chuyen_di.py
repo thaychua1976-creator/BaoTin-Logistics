@@ -1811,15 +1811,26 @@ with tab6:
                             thanh_cong = 0
                             
                             for i, ma_cd in enumerate(ds_ma_chuyen):
-                                cursor.execute("SELECT trang_thai_chuyen FROM chuyen_di WHERE id = %s", (ma_cd,))
+                                # [FIX] Lấy thêm chuyen_goc_id và ghi_chu để xử lý logic chuyến phụ
+                                cursor.execute("SELECT trang_thai_chuyen, chuyen_goc_id, ghi_chu FROM chuyen_di WHERE id = %s", (ma_cd,))
                                 row = cursor.fetchone()
                                 
                                 if row:
                                     tt_hien_tai = row[0]
+                                    chuyen_goc_id_val = row[1]
+                                    ghi_chu_ht = str(row[2] or "").strip()
+                                    
                                     if tt_hien_tai in ['Hoan_Thanh', 'Huy_Chuyen', 'Quyet_Toan']:
                                         st.warning(f"⚠️ Bỏ qua chuyến #{ma_cd}: Đang ở trạng thái '{tt_hien_tai}'.")
                                     else:
-                                        cursor.execute("UPDATE chuyen_di SET trang_thai_chuyen = 'Hoan_Thanh' WHERE id = %s", (ma_cd,))
+                                        if chuyen_goc_id_val is not None:
+                                            # Đây là chuyến phụ: Ép thêm chữ WAIT_QUYET_TOAN vào ghi chú để kế toán biết đường vớt lại
+                                            ghi_chu_moi = f"{ghi_chu_ht} WAIT_QUYET_TOAN".strip() if "WAIT_QUYET_TOAN" not in ghi_chu_ht else ghi_chu_ht
+                                            cursor.execute("UPDATE chuyen_di SET trang_thai_chuyen = 'Hoan_Thanh', ghi_chu = %s WHERE id = %s", (ghi_chu_moi, ma_cd))
+                                        else:
+                                            # Chuyến chính: Cập nhật bình thường, hệ thống tự vớt bằng điều kiện doanh_thu = 0 ở phần quyết toán
+                                            cursor.execute("UPDATE chuyen_di SET trang_thai_chuyen = 'Hoan_Thanh' WHERE id = %s", (ma_cd,))
+                                            
                                         if cursor.rowcount > 0:
                                             chi_tiet = f'{{"trang_thai_cu": "{tt_hien_tai}", "trang_thai_moi": "Hoan_Thanh", "ghi_chu": "Cập nhật nhanh giải phóng đầu xe"}}'
                                             cursor.execute("INSERT INTO lich_su_thao_tac (chuyen_di_id, nguoi_dung, hanh_dong, chi_tiet) VALUES (%s, %s, 'CAP_NHAT_Nhanh_Hoan_Thanh', %s)", (ma_cd, nguoi_dung, chi_tiet))
