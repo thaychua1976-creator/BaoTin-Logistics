@@ -1451,9 +1451,6 @@ with tab3:
                                                     loai_hang_excel = str(r.get('LOAI_HANG_HOA', 'Thường')).strip().lower()
                                                     loai_cont_excel = str(r.get('LOAI_CONT', 'Thường')).strip().lower()
 
-                                                    loai_hang_excel = str(r.get('LOAI_HANG_HOA', 'Thường')).strip().lower()
-                                                    loai_cont_excel = str(r.get('LOAI_CONT', 'Thường')).strip().lower()
-
                                                     if loai_hang_excel in ['nan', 'null', 'none', '']: loai_hang_excel = 'thường'
                                                     if loai_cont_excel in ['nan', 'null', 'none', '']: loai_cont_excel = 'thường'
 
@@ -1467,19 +1464,19 @@ with tab3:
                                                     valid_candidates_di, valid_candidates_ve = [], []
                                                     is_thue_ngoai_auto = pd.isna(row_db.get('xe_id'))
                                                     
-                                                    # 2. Đọc cấu hình gốc từ DB (Chỉ tin tưởng Data lúc book, KHÔNG đoán mò qua ghi chú/tải trọng)
+                                                    # 2. Đọc cấu hình gốc từ DB (Đã thêm từ khóa "xe máy" có dấu để khắc phục lỗi chuyến 109)
                                                     loai_hinh_xe_db = str(row_db.get('loai_hinh_xe', '')).strip().lower()
-                                                    loai_xe_db = str(row_db.get('loai_xe', '')).strip().lower() # Backup từ bảng xe
+                                                    loai_xe_db = str(row_db.get('loai_xe', '')).strip().lower()
 
-                                                    is_thuc_te_cont = ('container' in loai_hinh_xe_db) or ('cont' in loai_hinh_xe_db) or ('container' in loai_xe_db) or ('cont' in loai_xe_db)
-                                                    is_thuc_te_xe_may = ('xe_may' in loai_hinh_xe_db) or ('xe may' in loai_hinh_xe_db) or ('xe_may' in loai_xe_db) or ('xe may' in loai_xe_db)
+                                                    is_thuc_te_cont = any(kw in loai_hinh_xe_db for kw in ['container', 'cont']) or any(kw in loai_xe_db for kw in ['container', 'cont'])
+                                                    is_thuc_te_xe_may = any(kw in loai_hinh_xe_db for kw in ['xe_may', 'xe may', 'xe máy', 'xemay']) or any(kw in loai_xe_db for kw in ['xe_may', 'xe may', 'xe máy', 'xemay'])
 
                                                     if is_cont: 
                                                         # Excel khai báo là Cont -> Ép thực tế thành Cont (Ưu tiên Excel)
                                                         is_thuc_te_cont = True
                                                         is_thuc_te_xe_may = False
                                                     elif not is_cont and is_thuc_te_cont:
-                                                        # Excel khai báo Xe Tải ("Thường") -> Ép thực tế thành Xe Tải (Bỏ qua DB Cont)
+                                                        # Excel khai báo Xe Tải ("Thường") -> Ép thực tế thành Xe Tải
                                                         is_thuc_te_cont = False
 
                                                     is_thuc_te_xe_tai = not is_thuc_te_cont and not is_thuc_te_xe_may
@@ -1488,12 +1485,12 @@ with tab3:
                                                         pl_pt_gia = str(rc.get('phan_loai_phuong_tien', '')).strip().lower() 
                                                         qc_gia = str(rc.get('loai_xe_quy_cach', '')).strip().lower().replace("_", " ").replace(",", ".")
                                                         
-                                                        # 3. Phân loại cấu hình Bảng giá
+                                                        # 3. Phân loại cấu hình Bảng giá (Bắt mọi biến thể chữ Xe Máy)
                                                         is_gia_cont = ('container' in pl_pt_gia) or ('cont' in pl_pt_gia)
-                                                        is_gia_xemay = ('xe_may' in pl_pt_gia) or ('xemay' in pl_pt_gia) or ('xe máy' in qc_gia) or ('xe may' in qc_gia)
+                                                        is_gia_xemay = any(kw in pl_pt_gia for kw in ['xe_may', 'xe may', 'xe máy', 'xemay']) or any(kw in qc_gia for kw in ['xe_may', 'xe may', 'xe máy', 'xemay'])
                                                         is_gia_xetai = not is_gia_cont and not is_gia_xemay
 
-                                                        # 4. Áp dụng bộ lọc chéo nghiêm ngặt (Tải -> Giá Tải, Máy -> Giá Máy)
+                                                        # 4. Áp dụng bộ lọc chéo nghiêm ngặt (Khóa chặt việc nhận nhầm bảng giá)
                                                         if is_thuc_te_cont and not is_gia_cont: continue
                                                         if is_thuc_te_xe_tai and not is_gia_xetai: continue
                                                         if is_thuc_te_xe_may and not is_gia_xemay: continue
@@ -1533,23 +1530,22 @@ with tab3:
                                                         if req_thuong and (has_nguy_hiem or has_lanh): is_prop_match = False
                                                         if not is_prop_match: continue
 
-                                                        # Lấy giá cho Xe Máy (Bỏ điều kiện check is_thue_ngoai_auto)
+                                                        # 5. Xử lý giá theo từng loại hình xe (Khắc phục lỗi chuyến 107)
                                                         if is_gia_xemay:
                                                             m_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
                                                             m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
                                                             penalty = (0 if rc['match_type'] == 'direct' else 1000.0) - (rc.get('route_score', 0) * 10.0)
                                                             if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
                                                             else: valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
-                                                            continue 
 
-                                                        if is_container_db_check:
+                                                        elif is_gia_cont:
                                                             m_price = float(rc.get('don_gia_cuoc', 0) or 0.0)
                                                             m_kc = float(rc.get('khoang_cach', 0.0) or 0.0)
                                                             penalty = (0 if rc['match_type'] == 'direct' else 1000.0) - (rc.get('route_score', 0) * 10.0)
                                                             if rc_hang_ve_check == 1: valid_candidates_ve.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
                                                             else: valid_candidates_di.append({'price': m_price, 'kc': m_kc, 'cap': penalty})
 
-                                                        elif pl_pt_gia in ['xe_tai', 'hang_le', 'xe tai', 'xe tải', 'hang le', 'hàng lẻ', '', 'nan', 'none'] or any(kw in pl_pt_gia for kw in ['tai', 'tải', 'le', 'lẻ']):
+                                                        elif is_gia_xetai: # Chắc chắn nhảy vào block tính tải trọng cho Xe Tải
                                                             is_weight_match = False
                                                             gh_kg = float(rc.get('gioi_han_kg', 0) or 0)
                                                             gh_cbm = float(rc.get('gioi_han_cbm', 0) or 0)
