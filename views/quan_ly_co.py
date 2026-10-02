@@ -34,7 +34,7 @@ def get_idx(lst, val, default=0):
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>📄 PHÂN HỆ QUẢN LÝ CHỨNG TỪ C/O (XUẤT KHẨU)</h3>", unsafe_allow_html=True)
 st.divider()
 
-tab_khai_co, tab_quan_ly_co = st.tabs(["📋 KHAI BÁO C/O MỚI", "🔍 DANH SÁCH & QUẢN LÝ (SỬA / XÓA)"])
+tab_khai_co, tab_file_co, tab_quan_ly_co = st.tabs(["📋 KHAI BÁO C/O MỚI", "📂 TẠO C/O TỪ FILE", "🔍 DANH SÁCH & QUẢN LÝ (SỬA / XÓA)"])
 
 # ==========================================
 # TAB 1: KHAI BÁO C/O MỚI (TÍCH HỢP TỰ ĐỘNG ĐIỀN GIÁ)
@@ -46,7 +46,8 @@ with tab_khai_co:
         # -------------------------------------------------------------
         # BƯỚC 1: CÁC TRƯỜNG ĐỘNG BÊN NGOÀI FORM ĐỂ STREAMLIT CẬP NHẬT REALTIME
         # -------------------------------------------------------------
-        col_a, col_b, col_c = st.columns(3)
+        # Chia tỷ lệ: Khách hàng (2 phần) - Tờ khai (1 phần) - Phân loại (1 phần)
+        col_a, col_b, col_c = st.columns([5, 3, 2])
         
         # 1. Chọn khách hàng (Sử dụng Cache)
         sql_kh = "SELECT id, ten_khach_hang, ma_khach_hang FROM khach_hang ORDER BY ten_khach_hang ASC"
@@ -86,7 +87,7 @@ with tab_khai_co:
         # -------------------------------------------------------------
         with st.form("form_khai_co", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
-            form_co = c1.selectbox("Form C/O", ["", "Form E", "Form D", "Form AJ", "Form VJ", "Form AK"])
+            form_co = c1.selectbox("Form C/O", ["", "Form EURO.1", "Form EURO.1UK", "Form AI", "Form EAV","Form AJ","Form AHK","Form RCEP","Form AK", "Form D","Form E","Form VK","Form VJ","Form S","Form VI"])
             so_co = c2.text_input("Số C/O*")
             ngay_co = c3.date_input("Ngày Cấp C/O", value=datetime.date.today())
             
@@ -127,6 +128,162 @@ with tab_khai_co:
                     else:
                         st.error(f"Lỗi: {msg}")
     vung_thao_tac_declare_co()
+#######################################
+# ==========================================
+# TAB 1.5: TẠO C/O TỪ FILE EXCEL
+# ==========================================
+with tab_file_co:
+    st.markdown("#### 📥 Nhập Liệu Chứng Từ C/O Hàng Loạt Từ File Excel")
+    st.info("Hỗ trợ đọc file danh sách C/O kết xuất từ phần mềm khai báo (VD: CO Fortuna09.xlsx). Hệ thống sẽ tự động đối chiếu Số tờ khai HQ để liên kết dữ liệu.")
+    
+    uploaded_file = st.file_uploader("📂 Chọn file Excel danh sách C/O", type=["xls", "xlsx"], key="upload_co_excel")
+    
+    if uploaded_file is not None:
+        try:
+            df_upload = pd.read_excel(uploaded_file)
+            
+            # --- 1. LÀM SẠCH DỮ LIỆU TỔNG THỂ ---
+            # Xóa các dòng trống hoàn toàn và thay thế NaN/NaT bằng chuỗi rỗng để dễ xử lý
+            df_upload.dropna(how='all', inplace=True)
+            df_upload.fillna('', inplace=True)
+            
+            # --- 2. KIỂM TRA ĐỊNH DẠNG FILE ---
+            required_cols = ['Số C/O', 'Số tờ khai HQ']
+            missing = [c for c in required_cols if c not in df_upload.columns]
+            
+            if missing:
+                st.error(f"❌ File Excel không đúng định dạng. Thiếu các cột: {', '.join(missing)}")
+            else:
+                # Lấy danh sách tờ khai hiện có trong hệ thống để đối chiếu (Không dùng Cache)
+                sql_tk = "SELECT id, so_to_khai FROM to_khai_hai_quan"
+                df_tk_sys = db.execute_query(sql_tk)
+                
+                dict_tk_sys = {}
+                if isinstance(df_tk_sys, pd.DataFrame) and not df_tk_sys.empty:
+                    for _, row in df_tk_sys.iterrows():
+                        tk_str = str(row['so_to_khai']).strip()
+                        # Khử đuôi .0 do Pandas tự ép kiểu float cho cột số
+                        if tk_str.endswith('.0'): tk_str = tk_str[:-2] 
+                        dict_tk_sys[tk_str] = row['id']
+                
+                valid_records = []
+                invalid_records = []
+                
+                # --- 3. QUÉT VÀ BÓC TÁCH TỪNG DÒNG DỮ LIỆU ---
+                for idx, row in df_upload.iterrows():
+                    # Xử lý Số C/O an toàn
+                    so_co = str(row.get('Số C/O', '')).strip()
+                    if not so_co or so_co.lower() == 'nan':
+                        continue # Bỏ qua dòng không có Số C/O
+                        
+                    # Xử lý Số tờ khai HQ an toàn
+                    so_tk = str(row.get('Số tờ khai HQ', '')).strip()
+                    if so_tk.endswith('.0'): so_tk = so_tk[:-2]
+                    
+                    tk_id = dict_tk_sys.get(so_tk)
+                    
+                    if not tk_id:
+                        invalid_records.append({
+                            "Số C/O": so_co,
+                            "Số tờ khai HQ": so_tk,
+                            "Lý do lỗi": "Không tìm thấy Số Tờ Khai này trong hệ thống."
+                        })
+                        continue
+                        
+                    # Trích xuất phí C/O
+                    phi_co = 0.0
+                    raw_phi = row.get('PHI', '')
+                    if str(raw_phi).strip():
+                        try: phi_co = float(raw_phi)
+                        except: pass
+                        
+                    # Trích xuất Ngày cấp phép C/O
+                    ngay_co_val = datetime.date.today()
+                    raw_ngay = row.get('Ngày cấp phép', '')
+                    if str(raw_ngay).strip():
+                        try:
+                            # Chuyển đổi thành ngày tháng (VD: 02/10/2026 14:14:38 -> 2026-10-02)
+                            ngay_co_val = pd.to_datetime(raw_ngay, dayfirst=True).date()
+                        except: pass
+                            
+                    # Tự động nhận diện Form C/O
+                    form_co = ""
+                    if "VN-CN" in so_co.upper(): form_co = "Form E"
+                    elif "VN-KR" in so_co.upper(): form_co = "Form VK"
+                    elif "VN-JP" in so_co.upper(): form_co = "Form VJ"
+                    elif "VN-CU" in so_co.upper(): form_co = "Form VN-CU"
+                    
+                    doanh_nghiep = str(row.get('Doanh nghiệp ký', '')).strip()
+                    
+                    valid_records.append({
+                        "to_khai_id": tk_id,
+                        "Số tờ khai": so_tk,
+                        "Doanh nghiệp": doanh_nghiep,
+                        "form_co": form_co,
+                        "so_co": so_co,
+                        "ngay_co": ngay_co_val,
+                        "phi_co": phi_co,
+                        "phi_dvhq": 0, # Mặc định là 0
+                        "so_hoa_don_co": "",
+                        "ghi_chu": "Import hàng loạt từ Excel"
+                    })
+                
+                # --- 4. HIỂN THỊ KẾT QUẢ VÀ NÚT LƯU ---
+                if invalid_records:
+                    st.warning(f"⚠️ Phát hiện {len(invalid_records)} dòng bị từ chối do chưa có Tờ Khai HQ trong phần mềm:")
+                    st.dataframe(pd.DataFrame(invalid_records), use_container_width=True)
+                    
+                if valid_records:
+                    st.success(f"✅ Đã chuẩn bị sẵn sàng {len(valid_records)} chứng từ C/O hợp lệ.")
+                    df_valid = pd.DataFrame(valid_records)
+                    
+                    # Căn chỉnh lại hiển thị số tiền cho dễ nhìn
+                    df_view = df_valid[['so_co', 'Số tờ khai', 'Doanh nghiệp', 'form_co', 'ngay_co', 'phi_co']].copy()
+                    df_view['phi_co'] = df_view['phi_co'].apply(lambda x: f"{int(x):,}")
+                    
+                    st.dataframe(df_view, use_container_width=True)
+                    
+                    if st.button("🚀 XÁC NHẬN LƯU HÀNG LOẠT VÀO HỆ THỐNG", type="primary"):
+                        # Tránh click đúp bằng cách đổi key
+                        with st.spinner("Đang kết nối Database và tiến hành lưu dữ liệu..."):
+                            success_count = 0
+                            error_msgs = []
+                            
+                            # Lưu lần lượt từng dòng để đảm bảo toàn vẹn dữ liệu và bắt lỗi chính xác
+                            for rec in valid_records:
+                                data_save = {
+                                    'to_khai_id': rec['to_khai_id'],
+                                    'form_co': rec['form_co'],
+                                    'so_co': rec['so_co'],
+                                    'ngay_co': rec['ngay_co'].strftime('%Y-%m-%d'),
+                                    'phi_co': rec['phi_co'],
+                                    'phi_dvhq': rec['phi_dvhq'],
+                                    'so_hoa_don_co': rec['so_hoa_don_co'],
+                                    'ghi_chu': rec['ghi_chu']
+                                }
+                                # Hàm save_co_transaction đã có sẵn cơ chế Transaction và Audit Log
+                                ok, msg = save_co_transaction(db.pool, data_save, None, current_user)
+                                if ok: 
+                                    success_count += 1
+                                else: 
+                                    error_msgs.append(f"- Lỗi ở Số C/O {rec['so_co']}: {msg}")
+                            
+                            clear_master_cache()
+                            
+                            if success_count > 0:
+                                st.success(f"🎉 Hoàn tất! Đã lưu thành công {success_count}/{len(valid_records)} chứng từ C/O.")
+                            if error_msgs:
+                                st.error("❌ Các lỗi phát sinh trong quá trình lưu:")
+                                for err in error_msgs: 
+                                    st.write(err)
+                                    
+                            # Tự động reload để người dùng thấy dữ liệu mới ở Tab Quản lý
+                            if success_count > 0:
+                                time.sleep(1.5)
+                                st.rerun()
+                                    
+        except Exception as e:
+            st.error(f"❌ Xảy ra lỗi khi phân tích file Excel: {e}")
 # ==========================================
 # TAB 2: DANH SÁCH & QUẢN LÝ (SỬA / XÓA)
 # ==========================================

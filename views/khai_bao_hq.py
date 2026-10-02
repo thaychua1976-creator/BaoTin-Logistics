@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime, time
+import PyPDF2
 import json,re
 import uuid
 import traceback
@@ -215,7 +216,7 @@ if active_tab == "📋 KHAI BÁO TỜ KHAI MỚI":
                 st.session_state["file_uploader_hq_key"] = "upload_file_to_khai_hq_init"
             try:
                 # --- SỬA LẠI THAM SỐ KEY Ở ĐÂY LẤY TỪ SESSION_STATE ---
-                uploaded_file = st.file_uploader("📂 Chọn file Excel tờ khai hải quan", type=["txt", "xls", "xlsx"], key=st.session_state["file_uploader_hq_key"])
+                uploaded_file = st.file_uploader("📂 Chọn file Excel tờ khai hải quan", type=["txt", "xls", "xlsx","PDF"], key=st.session_state["file_uploader_hq_key"])
                 if uploaded_file is not None:
                     file_sig = f"{uploaded_file.name}_{uploaded_file.size}"
                     if st.session_state.get("last_uploaded_sig") != file_sig:# --- XỬ LÝ FILE EXCEL (.xls, .xlsx) ---
@@ -317,10 +318,77 @@ if active_tab == "📋 KHAI BÁO TỜ KHAI MỚI":
                                             auto_data["ten_doi_tac"] = vals[idx+1]
                                             
                             st.toast(f"✅ Đã trích xuất dữ liệu Excel. Đơn vị XNK: **{auto_data.get('extracted_ten_khach_hang')}**")
+                        # --- XỬ LÝ FILE PDF TỜ KHAI HẢI QUAN ---
+                        elif uploaded_file.name.lower().endswith('.pdf'):
+                            pdf_reader = PyPDF2.PdfReader(uploaded_file)
+                            text_content = ""
+                            for page in pdf_reader.pages:
+                                text_content += page.extract_text() + "\n"
                             
+                            # 1. Loại tờ khai
+                            if "xuất khẩu" in text_content.lower():
+                                auto_data["loai_to_khai"] = "Xuat_Khau"
+                            elif "nhập khẩu" in text_content.lower():
+                                auto_data["loai_to_khai"] = "Nhap_Khau"
+                                
+                            # 2. Số tờ khai
+                            match_stk = re.search(r'Số tờ khai[^\d]*(\d{11,12})', text_content, re.IGNORECASE)
+                            if match_stk:
+                                auto_data["so_to_khai"] = match_stk.group(1)
+                                
+                            # 3. Mã loại hình
+                            match_mlh = re.search(r'Mã loại hình[^\w]*([A-Z0-9]+)', text_content, re.IGNORECASE)
+                            if match_mlh:
+                                auto_data["ma_loai_hinh"] = match_mlh.group(1)
+                                
+                            # 4. Phân luồng (1: Xanh, 2: Vàng, 3: Đỏ)
+                            match_luong = re.search(r'Mã phân loại kiểm tra[^\d]*([123])', text_content, re.IGNORECASE)
+                            if match_luong:
+                                pl = match_luong.group(1)
+                                if pl == "1": auto_data["phan_luong"] = "Xanh"
+                                elif pl == "2": auto_data["phan_luong"] = "Vang"
+                                elif pl == "3": auto_data["phan_luong"] = "Do"
+                                
+                            # 5. Ngày đăng ký
+                            match_ngay = re.search(r'Ngày đăng ký[^\d]*(\d{2}/\d{2}/\d{4})', text_content, re.IGNORECASE)
+                            if match_ngay:
+                                try: auto_data['ngay_khai'] = datetime.datetime.strptime(match_ngay.group(1), '%d/%m/%Y').date()
+                                except: pass
+                                
+                            # 6. Tổng trọng lượng (Gross)
+                            match_tl = re.search(r'Tổng trọng lượng hàng \(Gross\)[^\d]*([\d\.,]+)', text_content, re.IGNORECASE)
+                            if match_tl:
+                                raw_weight = match_tl.group(1)
+                                if "." in raw_weight and "," in raw_weight:
+                                    raw_weight = raw_weight.replace(".", "").replace(",", ".")
+                                elif "." in raw_weight and len(raw_weight.split(".")[-1]) == 3:
+                                    raw_weight = raw_weight.replace(".", "")
+                                elif "," in raw_weight:
+                                    raw_weight = raw_weight.replace(",", ".")
+                                try: auto_data["tong_trong_luong_hang"] = float(raw_weight)
+                                except: pass
+                                
+                            # 7. Số Vận đơn (B/L)
+                            match_vd = re.search(r'Số vận đơn[^\w]*([A-Z0-9]+)', text_content, re.IGNORECASE)
+                            if match_vd:
+                                auto_data["so_van_don"] = match_vd.group(1)
+                                
+                            # 8. Mã số thuế (Thường đi sau chữ Mã)
+                            match_mst = re.search(r'Mã\s*:?\s*([\d-]+)', text_content, re.IGNORECASE)
+                            if match_mst:
+                                auto_data["ma_so_thue"] = match_mst.group(1).replace("-", "").strip()
+                            # 9. Số hóa đơn thương mại (TM)
+                            match_hd = re.search(r'Số hóa đơn(?: thương mại)?\s*:?\s*([A-Za-z0-9]+(?:[\s\-\–\—]+[A-Za-z0-9]+)*)', text_content, re.IGNORECASE)
+                            if match_hd:
+                                # Lấy toàn bộ cụm và dùng re.sub để xóa sạch khoảng trắng thừa do lỗi đọc PDF
+                                auto_data["so_hoa_don_tm"] = re.sub(r'\s+', '', match_hd.group(1))
+                                
+                            st.toast(f"✅ Đã trích xuất dữ liệu PDF thành công! Số TK: **{auto_data.get('so_to_khai')}**")
+
+                        st.session_state["last_uploaded_sig"] = file_sig    
                         
                                 
-                        st.session_state["last_uploaded_sig"] = file_sig
+                       # st.session_state["last_uploaded_sig"] = file_sig
             except Exception as e:
                 st.error(f"❌ Có lỗi xảy ra khi đọc file: {str(e)}")
 

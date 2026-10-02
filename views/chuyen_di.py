@@ -117,7 +117,7 @@ st.divider()
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["➕ Tạo/Sửa chuyến ","📋 Ghép chuyến", "➕ Tạo chuyến theo file", "📊 Chuyến đi trong ngày", "📊 Chuyến theo ngày chọn", "⚠️ Chuyển trạng thái xe - Cảnh báo Xe tồn đọng"])
 
 # Ứng dụng Cache lấy toàn bộ Danh mục dùng chung
-df_xe_full = get_cached_master_data("SELECT id, bien_so_xe,loai_xe, tai_trong_thiet_ke, tai_xe_co_dinh_id FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'")
+df_xe_full = get_cached_master_data("SELECT id, bien_so_xe,loai_xe, tai_trong_thiet_ke,dung_tich_cbm, tai_xe_co_dinh_id FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'")
 xe_map = {int(r['id']): r for _, r in df_xe_full.iterrows()} if isinstance(df_xe_full, pd.DataFrame) and not df_xe_full.empty else {}
 
 df_tx_full = get_cached_master_data("SELECT id, ho_ten FROM nhan_vien WHERE loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu') AND trang_thai='Dang_Lam_Viec'")
@@ -191,7 +191,7 @@ with tab1:
             chuyen_goc_id_val = None
             thong_tin_chuyen_goc = {}
             
-            col_mode1, col_mode2 = st.columns(2)
+            col_mode1, col_mode2 = st.columns([3,1])
             
             with col_mode1:
                 mode_action = st.radio(
@@ -414,8 +414,8 @@ with tab1:
                 
                 if kieu_nghiep_vu == "Nghiệp vụ Xe Tải":
                     col_hl1, col_hl2 = st.columns(2)
-                    khoi_luong = col_hl1.number_input("📦 Khối lượng (KG)* (Nhập 0 nếu là xe phụ)", min_value=0.0, value=val_kl if val_kl > 0 else 0.0, format="%g", step=1.0, key=kg_key)
-                    so_cbm = col_hl2.number_input("🧊 Thể tích (CBM)", min_value=0.0, value=val_cbm if val_cbm > 0 else 0.0, format="%g", step=0.1, key=cbm_key)
+                    khoi_luong = col_hl1.number_input("📦 Khối lượng (KG)* (Nhập 0 nếu là xe phụ)", min_value=0.0, value=val_kl if val_kl > 0 else None, format="%g", step=1.0, key=kg_key)
+                    so_cbm = col_hl2.number_input("🧊 Thể tích (CBM)", min_value=0.0, value=val_cbm if val_cbm > 0 else None, format="%g", step=0.1, key=cbm_key)
                 else:
                     c_c1, c_c2 = st.columns(2)
                     so_cont_input = c_c1.text_input("🔢 Số Container", value=so_cont_val, key=f"so_cont_{trip_suffix}")
@@ -430,7 +430,7 @@ with tab1:
                     def_chieu_idx = chieu_opts.index(chieu_cont_val) if chieu_cont_val in chieu_opts else 0
                     chieu_cont_input = c_c4.selectbox("🔄 Chiều Hàng", options=chieu_opts, key=f"chieu_cont_{trip_suffix}", index=def_chieu_idx)
                     
-                    khoi_luong = c_c5.number_input("⚖️ Trọng lượng hàng (KG)*", min_value=0.0, value=val_kl if val_kl > 0 else 0.0, format="%g", step=1.0, key=kg_key)
+                    khoi_luong = c_c5.number_input("⚖️ Trọng lượng hàng (KG)*", min_value=0.0, value=val_kl if val_kl > 0 else None, format="%g", step=1.0, key=kg_key)
                     so_cbm = 0.0 
                 
                 # Logic xác định xe nội bộ / thuê ngoài (Giữ nguyên)
@@ -520,10 +520,14 @@ with tab1:
                             tx_id_raw = v.get('tai_xe_co_dinh_id')
                             ten_tx = tx_opts[int(float(tx_id_raw))] if pd.notna(tx_id_raw) and int(float(tx_id_raw)) in tx_opts else "Chưa gán TX"
                             
+                            # Đọc an toàn thông số khối và tấn để render ra giao diện
+                            ton_val = v.get('tai_trong_thiet_ke') or 0
+                            cbm_val = v.get('dung_tich_cbm') or 0
+
                             if is_busy and not is_assigned_to_this:
-                                xe_dict_opts[k_int] = f"🔄 [ĐANG CHẠY] {v['bien_so_xe']} ({v.get('tai_trong_thiet_ke', 0)}T) | 🧑‍✈️ TX: {ten_tx}"
+                                xe_dict_opts[k_int] = f"🔄 [ĐANG CHẠY] {v['bien_so_xe']} ({ton_val}T - {cbm_val} Khối) | 🧑‍✈️ TX: {ten_tx}"
                             else:
-                                xe_dict_opts[k_int] = f"🚛 [SẴN SÀNG] {v['bien_so_xe']} ({v.get('tai_trong_thiet_ke', 0)}T) | 🧑‍✈️ TX: {ten_tx}"
+                                xe_dict_opts[k_int] = f"🚛 [SẴN SÀNG] {v['bien_so_xe']} ({ton_val}T - {cbm_val} Khối) | 🧑‍✈️ TX: {ten_tx}"
                             
                         xe_keys = list(xe_dict_opts.keys())
                         default_xe_idx = xe_keys.index(saved_xe_id) if mode_action == "✏️ Sửa chuyến hiện tại" and saved_xe_id in xe_keys else 0
