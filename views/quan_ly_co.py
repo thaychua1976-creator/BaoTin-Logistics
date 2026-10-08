@@ -456,21 +456,21 @@ with tab_ocr_co:
                     
                     # --- BẢN VÁ LỖI CHO MOBILE: Xử lý nền trắng cho chữ ký ---
                     img_data = canvas_result.image_data
+                    from PIL import Image
                     img_rgba = Image.fromarray(img_data.astype('uint8'), 'RGBA')
                     
-                    # Tạo một khung ảnh nền trắng hoàn toàn (WHITE)
+                    # Tạo một khung ảnh nền trắng hoàn toàn (WHITE) để chặn lỗi Alpha Channel trên iOS
                     img_bg = Image.new("RGBA", img_rgba.size, "WHITE")
-                    # Dán chữ ký nét xanh đè lên cái nền trắng đó
                     img_bg.paste(img_rgba, mask=img_rgba)
-                    # Ép định dạng về RGB chuẩn (Loại bỏ hoàn toàn lớp trong suốt gây lỗi trên điện thoại)
                     img_rgb = img_bg.convert('RGB')
                     
                     img_buffer = io.BytesIO()
                     img_rgb.save(img_buffer, format="PNG")
+                    img_buffer.seek(0)
                     
-                    # --- Xử lý file Excel (Đoạn này giữ nguyên như cũ) ---
+                    # --- XUẤT FILE BẰNG XLSXWRITER (Tương thích 100% iOS/iPhone) ---
                     excel_buffer = io.BytesIO()
-                    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                    with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
                         # Cập nhật thông tin vào DF
                         edited_df['KÝ NHẬN'] = ten_dai_ly
                         edited_df['NGÀY NHẬN'] = ngay_nhan.strftime('%d/%m/%Y')
@@ -479,42 +479,48 @@ with tab_ocr_co:
                         workbook = writer.book
                         worksheet = writer.sheets['So_Giao_Nhan']
                         
-                        # Định dạng Excel Openpyxl
-                        font_title = Font(name='Times New Roman', size=18, bold=True)
-                        font_header = Font(name='Times New Roman', size=13, bold=True)
-                        font_normal = Font(name='Times New Roman', size=13)
-                        align_center = Alignment(horizontal='center', vertical='center')
-                        align_left = Alignment(horizontal='left', vertical='center')
-                        border_thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-                        fill_header = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+                        # Cấu hình in ấn A4
+                        worksheet.set_paper(9)
+                        worksheet.set_margins(left=0.45, right=0.45, top=0.75, bottom=0.75)
                         
-                        # Header Công ty
-                        worksheet.merge_cells('A1:D1'); worksheet['A1'] = "CÔNG TY FORTUNATE HONGKONG VIỆT NAM"; worksheet['A1'].font = font_title; worksheet['A1'].alignment = align_center
-                        worksheet.merge_cells('A2:D2'); worksheet['A2'] = "GỞI CÔNG TY: EXPEDITORS"; worksheet['A2'].font = font_title; worksheet['A2'].alignment = align_center
+                        # Khởi tạo các bộ định dạng (Format)
+                        format_title = workbook.add_format({'font_name': 'Times New Roman', 'font_size': 18, 'bold': True, 'align': 'center', 'valign': 'vcenter'})
+                        format_header = workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'bold': True, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'bg_color': '#D9D9D9'})
+                        format_cell_center = workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'align': 'center', 'valign': 'vcenter', 'border': 1})
+                        format_cell_left = workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'align': 'left', 'valign': 'vcenter', 'border': 1})
+                        format_sign_header = workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'bold': True, 'align': 'center', 'valign': 'vcenter'})
                         
+                        # Ghi Tiêu đề Công ty
+                        worksheet.merge_range('A1:D1', "CÔNG TY FORTUNATE HONGKONG VIỆT NAM", format_title)
+                        worksheet.merge_range('A2:D2', "GỞI CÔNG TY: EXPEDITORS", format_title)
+                        
+                        # Ghi Tiêu đề Cột
                         headers = ['STT', 'SỐ C/O BẢN GỐC', 'KÝ NHẬN', 'NGÀY NHẬN']
-                        for col_num, h_text in enumerate(headers, 1):
-                            cell = worksheet.cell(row=4, column=col_num, value=h_text)
-                            cell.font = font_header; cell.alignment = align_center; cell.border = border_thin; cell.fill = fill_header
+                        for col_num, h_text in enumerate(headers):
+                            worksheet.write(3, col_num, h_text, format_header)
                         
-                        for r_idx in range(5, 5 + len(edited_df)):
-                            worksheet.row_dimensions[r_idx].height = 20
-                            for c_idx in range(1, 5):
-                                cell = worksheet.cell(row=r_idx, column=c_idx)
-                                cell.font = font_normal; cell.border = border_thin
-                                cell.alignment = align_center if c_idx == 1 else align_left
+                        # Căn lề, kẻ khung dữ liệu
+                        for r_idx in range(len(edited_df)):
+                            row_excel = r_idx + 4
+                            worksheet.set_row(row_excel, 20)
+                            worksheet.write(row_excel, 0, edited_df.iloc[r_idx, 0], format_cell_center)
+                            worksheet.write(row_excel, 1, edited_df.iloc[r_idx, 1], format_cell_left)
+                            worksheet.write(row_excel, 2, edited_df.iloc[r_idx, 2], format_cell_left)
+                            worksheet.write(row_excel, 3, edited_df.iloc[r_idx, 3], format_cell_left)
                         
-                        worksheet.column_dimensions['A'].width = 10; worksheet.column_dimensions['B'].width = 35; worksheet.column_dimensions['C'].width = 30; worksheet.column_dimensions['D'].width = 25
+                        # Cài đặt độ rộng cột
+                        worksheet.set_column('A:A', 10)
+                        worksheet.set_column('B:B', 35)
+                        worksheet.set_column('C:C', 30)
+                        worksheet.set_column('D:D', 25)
                         
-                        # Chèn ảnh chữ ký
-                        dong_ky_ten = 5 + len(edited_df) + 2
-                        worksheet.cell(row=dong_ky_ten, column=2, value="ĐẠI DIỆN BÀN GIAO").font = font_header; worksheet.cell(row=dong_ky_ten, column=2).alignment = align_center
-                        worksheet.cell(row=dong_ky_ten, column=3, value=f"ĐẠI LÝ NHẬN: {ten_dai_ly}").font = font_header; worksheet.cell(row=dong_ky_ten, column=3).alignment = align_center
+                        # Chèn chữ ký và Người đại diện (Dưới cùng)
+                        dong_ky_ten = 5 + len(edited_df) + 1
+                        worksheet.write(dong_ky_ten, 1, "ĐẠI DIỆN BÀN GIAO", format_sign_header)
+                        worksheet.write(dong_ky_ten, 2, f"ĐẠI LÝ NHẬN: {ten_dai_ly}", format_sign_header)
                         
-                        img_buffer.seek(0)
-                        excel_img = OpenpyxlImage(img_buffer)
-                        excel_img.width = 160; excel_img.height = 70
-                        worksheet.add_image(excel_img, f'C{dong_ky_ten + 1}')
+                        # Dùng hàm insert_image mạnh mẽ của xlsxwriter (x_scale/y_scale dùng để thu gọn tỷ lệ hình)
+                        worksheet.insert_image(dong_ky_ten + 1, 2, 'signature.png', {'image_data': img_buffer, 'x_scale': 0.6, 'y_scale': 0.6})
                     
                     st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao đã sẵn sàng!")
                     st.download_button(
