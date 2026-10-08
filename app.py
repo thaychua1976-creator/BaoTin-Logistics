@@ -37,17 +37,33 @@ def show_page():
             /* Trên Desktop: Ẩn thanh trắng ở trên cùng để tiết kiệm diện tích */
             @media (min-width: 768px) {
                 header[data-testid="stHeader"] { display: none !important; }
+                [data-testid="collapsedControl"] { display: none !important; }
             }
-            /* Trên Mobile: Đổi nền trong suốt, giữ lại nút Hamburger (3 gạch) để vuốt/mở menu */
+            
+            /* Trên Mobile: Cưỡng chế hiển thị nút 3 gạch (Hamburger) nổi lên trên cùng */
             @media (max-width: 767px) {
-                header[data-testid="stHeader"] { background-color: transparent !important; }
+                header[data-testid="stHeader"] { 
+                    background-color: transparent !important; 
+                    display: block !important;
+                    visibility: visible !important;
+                    z-index: 999999 !important; /* Đẩy lên lớp trên cùng */
+                }
+                [data-testid="collapsedControl"] { 
+                    display: flex !important; 
+                    visibility: visible !important;
+                    opacity: 1 !important;
+                    z-index: 999999 !important;
+                    background-color: rgba(255, 255, 255, 0.8) !important; /* Tạo nền mờ để dễ nhìn nút */
+                    border-radius: 5px;
+                    padding: 2px;
+                    margin: 5px;
+                }
             }
 
             /* --- XỬ LÝ SIDEBAR MENU --- */
             section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
                 border-right: 2px solid #e2e8f0 !important;
-                /* XÓA các lệnh ép hiển thị cứng ở đây để Streamlit tự động thu/mở trên Mobile */
             }
 
             /* Tùy chỉnh độ rộng Sidebar trên Desktop */
