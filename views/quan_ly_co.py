@@ -531,8 +531,17 @@ with tab_ocr_co:
                         type="primary"
                     )
         
-        if st.button("🔄 Xóa Lưới Dữ Liệu Hiện Tại"):
+        if st.button("🔄 Tải Lại Phiên Mới (Xóa Trắng)"):
+            # 1. Làm rỗng lưới dữ liệu
             st.session_state["ocr_data"] = []
+            
+            # 2. Quét và xóa sạch toàn bộ cache của file upload, lưới editor và khung chữ ký
+            keys_to_reset = ["upload_pdfs_ocr", "upload_excel_to_sign", "co_data_editor", "canvas_ky_ten_2"]
+            for key in keys_to_reset:
+                if key in st.session_state:
+                    del st.session_state[key]
+                    
+            # 3. Tải lại trang
             st.rerun()
 
 
