@@ -21,7 +21,7 @@ def show_page():
         """
         st.markdown(custom_css, unsafe_allow_html=True)
         
-    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar (Tối ưu Mobile & PC)
+    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar
     st.markdown("""
         <style>
             .block-container {
@@ -33,41 +33,32 @@ def show_page():
             }
             [data-testid="stAppViewBlockContainer"] { padding-top: 1rem !important; }
             
-            /* --- XỬ LÝ HEADER & NÚT MENU (MOBILE) --- */
-            /* Trên Desktop: Ẩn thanh trắng ở trên cùng để tiết kiệm diện tích */
-            @media (min-width: 768px) {
+            /* TÙY CHỈNH HEADER DỰA TRÊN THIẾT BỊ */
+            /* 1. Trên máy tính: Ẩn thanh header và nút menu đi vì sidebar đã mở sẵn */
+            @media screen and (min-width: 768px) {
                 header[data-testid="stHeader"] { display: none !important; }
                 [data-testid="collapsedControl"] { display: none !important; }
             }
             
-            /* Trên Mobile: Cưỡng chế hiển thị nút 3 gạch (Hamburger) nổi lên trên cùng */
-            @media (max-width: 767px) {
+            /* 2. Trên điện thoại/thiết bị nhỏ: GIỮ LẠI NÚT MENU (Hamburger) nhưng làm nền header trong suốt */
+            @media screen and (max-width: 767px) {
                 header[data-testid="stHeader"] { 
                     background-color: transparent !important; 
-                    display: block !important;
-                    visibility: visible !important;
-                    z-index: 999999 !important; /* Đẩy lên lớp trên cùng */
                 }
                 [data-testid="collapsedControl"] { 
-                    display: flex !important; 
-                    visibility: visible !important;
-                    opacity: 1 !important;
-                    z-index: 999999 !important;
-                    background-color: rgba(255, 255, 255, 0.8) !important; /* Tạo nền mờ để dễ nhìn nút */
-                    border-radius: 5px;
-                    padding: 2px;
-                    margin: 5px;
+                    display: block !important; 
                 }
             }
 
-            /* --- XỬ LÝ SIDEBAR MENU --- */
             section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
                 border-right: 2px solid #e2e8f0 !important;
+                /* BỎ ĐI CÁC LỆNH ÉP CỨNG GIAO DIỆN (display: flex !important, transform: none !important) 
+                   ĐỂ STREAMLIT TỰ DO ẨN/HIỆN TRÊN ĐIỆN THOẠI */
             }
 
-            /* Tùy chỉnh độ rộng Sidebar trên Desktop */
-            @media (min-width: 768px) {
+            /* CHỈ ÉP CHIỀU RỘNG TRÊN MÁY TÍNH */
+            @media screen and (min-width: 768px) {
                 section[data-testid="stSidebar"] {
                     min-width: 330px !important; 
                     max-width: 330px !important;
@@ -78,7 +69,6 @@ def show_page():
             [data-testid="stSidebarNav"] { padding-top: 0rem !important; }
             div[data-testid="InputInstructions"] { display: none !important; visibility: hidden !important; }
 
-            /* Định dạng Font chữ Menu */
             [data-testid="stSidebarNav"] ul li div {
                 font-size: 16px !important;
                 font-weight: 800 !important;
@@ -110,7 +100,6 @@ def show_page():
                 border-bottom: none !important;
             }
 
-            /* Hiệu ứng khi Hover và Active */
             [data-testid="stSidebarNav"] ul li ul li:hover {
                 background-color: #e2e8f0 !important; 
                 border-left: 3px solid #0b5394 !important;
@@ -126,7 +115,6 @@ def show_page():
                 font-weight: 800 !important;
             }
 
-            /* Định dạng Nút Đăng xuất */
             section[data-testid="stSidebar"] .stButton button {
                 width: 100%;
                 font-size: 15px !important;
