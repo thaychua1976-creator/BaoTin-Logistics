@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import datetime, time
+import datetime, time, io, re
 from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 from co_manager import save_co_transaction, delete_co_transaction, get_don_gia_co_theo_khach_hang
 
@@ -34,7 +34,13 @@ def get_idx(lst, val, default=0):
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>📄 PHÂN HỆ QUẢN LÝ CHỨNG TỪ C/O (XUẤT KHẨU)</h3>", unsafe_allow_html=True)
 st.divider()
 
-tab_khai_co, tab_file_co, tab_quan_ly_co = st.tabs(["📋 KHAI BÁO C/O MỚI", "📂 TẠO C/O TỪ FILE", "🔍 DANH SÁCH & QUẢN LÝ (SỬA / XÓA)"])
+# Thêm tab OCR vào danh sách tabs
+tab_khai_co, tab_file_co, tab_ocr_co, tab_quan_ly_co = st.tabs([
+    "📋 KHAI BÁO C/O MỚI", 
+    "📂 TẠO C/O TỪ FILE", 
+    "🤖 TRÍCH XUẤT C/O TỪ PDF", 
+    "🔍 DANH SÁCH & QUẢN LÝ"
+])
 
 # ==========================================
 # TAB 1: KHAI BÁO C/O MỚI (TÍCH HỢP TỰ ĐỘNG ĐIỀN GIÁ)
@@ -43,9 +49,6 @@ with tab_khai_co:
     st.markdown("#### 📥 Nhập Liệu Chứng Từ C/O Mới")
     @st.fragment
     def vung_thao_tac_declare_co():
-        # -------------------------------------------------------------
-        # BƯỚC 1: CÁC TRƯỜNG ĐỘNG BÊN NGOÀI FORM ĐỂ STREAMLIT CẬP NHẬT REALTIME
-        # -------------------------------------------------------------
         # Chia tỷ lệ: Khách hàng (2 phần) - Tờ khai (1 phần) - Phân loại (1 phần)
         col_a, col_b, col_c = st.columns([5, 3, 2])
         
@@ -82,9 +85,6 @@ with tab_khai_co:
             
         st.divider()
 
-        # -------------------------------------------------------------
-        # BƯỚC 2: FORM NHẬP LIỆU CHÍNH
-        # -------------------------------------------------------------
         with st.form("form_khai_co", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
             form_co = c1.selectbox("Form C/O", ["", "Form EURO.1", "Form EURO.1UK", "Form AI", "Form EAV","Form AJ","Form AHK","Form RCEP","Form AK", "Form D","Form E","Form VK","Form VJ","Form S","Form VI"])
@@ -92,14 +92,12 @@ with tab_khai_co:
             ngay_co = c3.date_input("Ngày Cấp C/O", value=datetime.date.today())
             
             c4, c5, c6 = st.columns(3)
-            # Ẩn số 0 nếu giá tự động bằng 0
             phi_co_val = f"{gia_co_tu_dong:,.0f}" if gia_co_tu_dong > 0 else ""
             
             phi_co = c4.text_input(f"Lệ Phí C/O (VNĐ)*", value=phi_co_val, placeholder="0", help="Hệ thống tự động đề xuất giá theo cấu hình. Có thể sửa tay.")
             phi_dvhq = c5.text_input("Phí DVHQ C/O (VNĐ)", value="", placeholder="0")
             so_hoa_don_co = c6.text_input("Số Hóa Đơn Phí C/O")
             
-            # Ghi chú mặc định thêm Loại làm C/O để đối soát sau này
             ghi_chu_co = st.text_input("Ghi chú bổ sung", value=f"Phân loại C/O: {phan_loai_co}")
             
             if st.form_submit_button("💾 LƯU CHỨNG TỪ C/O", type="primary"):
@@ -128,9 +126,9 @@ with tab_khai_co:
                     else:
                         st.error(f"Lỗi: {msg}")
     vung_thao_tac_declare_co()
-#######################################
+
 # ==========================================
-# TAB 1.5: TẠO C/O TỪ FILE EXCEL
+# TAB 2: TẠO C/O TỪ FILE EXCEL
 # ==========================================
 with tab_file_co:
     st.markdown("#### 📥 Nhập Liệu Chứng Từ C/O Hàng Loạt Từ File Excel")
@@ -141,20 +139,15 @@ with tab_file_co:
     if uploaded_file is not None:
         try:
             df_upload = pd.read_excel(uploaded_file)
-            
-            # --- 1. LÀM SẠCH DỮ LIỆU TỔNG THỂ ---
-            # Xóa các dòng trống hoàn toàn và thay thế NaN/NaT bằng chuỗi rỗng để dễ xử lý
             df_upload.dropna(how='all', inplace=True)
             df_upload.fillna('', inplace=True)
             
-            # --- 2. KIỂM TRA ĐỊNH DẠNG FILE ---
             required_cols = ['Số C/O', 'Số tờ khai HQ']
             missing = [c for c in required_cols if c not in df_upload.columns]
             
             if missing:
                 st.error(f"❌ File Excel không đúng định dạng. Thiếu các cột: {', '.join(missing)}")
             else:
-                # Lấy danh sách tờ khai hiện có trong hệ thống để đối chiếu (Không dùng Cache)
                 sql_tk = "SELECT id, so_to_khai FROM to_khai_hai_quan"
                 df_tk_sys = db.execute_query(sql_tk)
                 
@@ -162,21 +155,17 @@ with tab_file_co:
                 if isinstance(df_tk_sys, pd.DataFrame) and not df_tk_sys.empty:
                     for _, row in df_tk_sys.iterrows():
                         tk_str = str(row['so_to_khai']).strip()
-                        # Khử đuôi .0 do Pandas tự ép kiểu float cho cột số
                         if tk_str.endswith('.0'): tk_str = tk_str[:-2] 
                         dict_tk_sys[tk_str] = row['id']
                 
                 valid_records = []
                 invalid_records = []
                 
-                # --- 3. QUÉT VÀ BÓC TÁCH TỪNG DÒNG DỮ LIỆU ---
                 for idx, row in df_upload.iterrows():
-                    # Xử lý Số C/O an toàn
                     so_co = str(row.get('Số C/O', '')).strip()
                     if not so_co or so_co.lower() == 'nan':
-                        continue # Bỏ qua dòng không có Số C/O
+                        continue 
                         
-                    # Xử lý Số tờ khai HQ an toàn
                     so_tk = str(row.get('Số tờ khai HQ', '')).strip()
                     if so_tk.endswith('.0'): so_tk = so_tk[:-2]
                     
@@ -190,23 +179,19 @@ with tab_file_co:
                         })
                         continue
                         
-                    # Trích xuất phí C/O
                     phi_co = 0.0
                     raw_phi = row.get('PHI', '')
                     if str(raw_phi).strip():
                         try: phi_co = float(raw_phi)
                         except: pass
                         
-                    # Trích xuất Ngày cấp phép C/O
                     ngay_co_val = datetime.date.today()
                     raw_ngay = row.get('Ngày cấp phép', '')
                     if str(raw_ngay).strip():
                         try:
-                            # Chuyển đổi thành ngày tháng (VD: 02/10/2026 14:14:38 -> 2026-10-02)
                             ngay_co_val = pd.to_datetime(raw_ngay, dayfirst=True).date()
                         except: pass
                             
-                    # Tự động nhận diện Form C/O
                     form_co = ""
                     if "VN-CN" in so_co.upper(): form_co = "Form E"
                     elif "VN-KR" in so_co.upper(): form_co = "Form VK"
@@ -223,12 +208,11 @@ with tab_file_co:
                         "so_co": so_co,
                         "ngay_co": ngay_co_val,
                         "phi_co": phi_co,
-                        "phi_dvhq": 0, # Mặc định là 0
+                        "phi_dvhq": 0,
                         "so_hoa_don_co": "",
                         "ghi_chu": "Import hàng loạt từ Excel"
                     })
                 
-                # --- 4. HIỂN THỊ KẾT QUẢ VÀ NÚT LƯU ---
                 if invalid_records:
                     st.warning(f"⚠️ Phát hiện {len(invalid_records)} dòng bị từ chối do chưa có Tờ Khai HQ trong phần mềm:")
                     st.dataframe(pd.DataFrame(invalid_records), use_container_width=True)
@@ -237,19 +221,16 @@ with tab_file_co:
                     st.success(f"✅ Đã chuẩn bị sẵn sàng {len(valid_records)} chứng từ C/O hợp lệ.")
                     df_valid = pd.DataFrame(valid_records)
                     
-                    # Căn chỉnh lại hiển thị số tiền cho dễ nhìn
                     df_view = df_valid[['so_co', 'Số tờ khai', 'Doanh nghiệp', 'form_co', 'ngay_co', 'phi_co']].copy()
                     df_view['phi_co'] = df_view['phi_co'].apply(lambda x: f"{int(x):,}")
                     
                     st.dataframe(df_view, use_container_width=True)
                     
                     if st.button("🚀 XÁC NHẬN LƯU HÀNG LOẠT VÀO HỆ THỐNG", type="primary"):
-                        # Tránh click đúp bằng cách đổi key
                         with st.spinner("Đang kết nối Database và tiến hành lưu dữ liệu..."):
                             success_count = 0
                             error_msgs = []
                             
-                            # Lưu lần lượt từng dòng để đảm bảo toàn vẹn dữ liệu và bắt lỗi chính xác
                             for rec in valid_records:
                                 data_save = {
                                     'to_khai_id': rec['to_khai_id'],
@@ -261,7 +242,6 @@ with tab_file_co:
                                     'so_hoa_don_co': rec['so_hoa_don_co'],
                                     'ghi_chu': rec['ghi_chu']
                                 }
-                                # Hàm save_co_transaction đã có sẵn cơ chế Transaction và Audit Log
                                 ok, msg = save_co_transaction(db.pool, data_save, None, current_user)
                                 if ok: 
                                     success_count += 1
@@ -277,15 +257,269 @@ with tab_file_co:
                                 for err in error_msgs: 
                                     st.write(err)
                                     
-                            # Tự động reload để người dùng thấy dữ liệu mới ở Tab Quản lý
                             if success_count > 0:
                                 time.sleep(1.5)
                                 st.rerun()
                                     
         except Exception as e:
             st.error(f"❌ Xảy ra lỗi khi phân tích file Excel: {e}")
+
 # ==========================================
-# TAB 2: DANH SÁCH & QUẢN LÝ (SỬA / XÓA)
+# TAB 3: TRÍCH XUẤT C/O BẰNG AI & ĐẠI LÝ KÝ NHẬN BẢN GỐC
+# ==========================================
+with tab_ocr_co:
+    st.markdown("#### 🤖 Trích Xuất Dữ Liệu C/O & Ký Nhận Bàn Giao")
+    
+    try:
+        from streamlit_drawable_canvas import st_canvas
+        from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+        from openpyxl.drawing.image import Image as OpenpyxlImage
+        from PIL import Image
+        import pdfplumber
+        import easyocr
+        import numpy as np
+    except ImportError:
+        st.error("⚠️ Server thiếu thư viện. Chạy lệnh: `pip install streamlit-drawable-canvas openpyxl pdfplumber easyocr`")
+        st.stop()
+
+    # --- CHỌN CHẾ ĐỘ LÀM VIỆC ---
+    che_do_tab3 = st.radio(
+        "Lựa chọn luồng công việc:", 
+        ["1️⃣ Quét PDF Mới & Chỉnh Sửa", "2️⃣ Tải File Excel Cũ Lên Để Ký Nhận (Làm tiếp)"],
+        horizontal=True
+    )
+    
+    st.divider()
+    
+    # Khởi tạo Session State giữ dữ liệu
+    if "ocr_data" not in st.session_state:
+        st.session_state["ocr_data"] = []
+    
+    # ---------------------------------------------------------
+    # CHẾ ĐỘ 1: QUÉT PDF MỚI VÀ CHỈNH SỬA TRỰC TIẾP
+    # ---------------------------------------------------------
+    if che_do_tab3 == "1️⃣ Quét PDF Mới & Chỉnh Sửa":
+        uploaded_pdfs = st.file_uploader("📂 Kéo thả file PDF C/O vào đây", type=["pdf"], accept_multiple_files=True, key="upload_pdfs_ocr")
+        
+        if uploaded_pdfs:
+            if st.button("🚀 Bắt Đầu Quét & Trích Xuất", type="primary"):
+                with st.spinner("⏳ Đang xử lý siêu tốc..."):
+                    extracted_data = []
+                    
+                    @st.cache_resource
+                    def load_ocr_reader():
+                        return easyocr.Reader(['en'], gpu=False)
+                    reader = load_ocr_reader()
+                    
+                    pattern = r'([A-Z0-9.\-\s]{0,20})(\d{2})\s*[-/|17lI\.]\s*(\d{2})\s*[-/|17lI\.]\s*([0-9O\s]{5,})'
+                    
+                    for pdf_file in uploaded_pdfs:
+                        try:
+                            with pdfplumber.open(pdf_file) as pdf:
+                                for page in pdf.pages:
+                                    co_number = "Không nhận diện được"
+                                    
+                                    # Thử text chìm trước
+                                    text_fast = (page.extract_text() or "").upper()
+                                    match = re.search(pattern, text_fast)
+                                    
+                                    # Nếu không có text chìm thì gọi OCR
+                                    if not match:
+                                        bounding_box = (page.width * 0.35, 0, page.width, page.height * 0.35)
+                                        micro_crop = page.crop(bounding_box)
+                                        pil_img = micro_crop.to_image(resolution=200).original.convert('L')
+                                        
+                                        from PIL import ImageOps
+                                        padded_img = ImageOps.expand(pil_img, border=50, fill='white')
+                                        img_array = np.array(padded_img)
+                                        
+                                        result = reader.readtext(img_array, detail=0, allowlist='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-/. ')
+                                        text_ai = " ".join(result).upper()
+                                        match = re.search(pattern, text_ai)
+                                    
+                                    if match:
+                                        prefix_raw, dd, mm = match.group(1), match.group(2), match.group(3)
+                                        num_clean = re.sub(r'\s+', '', match.group(4)).replace('O', '0')
+                                        suffix_clean = f"{dd}/{mm}/{num_clean}"
+                                        
+                                        prefix_clean = re.sub(r'[\s.\-]', '', prefix_raw)
+                                        for noise in ['EUR1', 'EUR', 'NO', 'NUM']:
+                                            prefix_clean = prefix_clean.replace(noise, '')
+                                            
+                                        country = "??"
+                                        for c in ['DE', 'NL', 'SE', 'UK', 'KZ', 'K2', 'K7']:
+                                            if c in prefix_clean:
+                                                country = c.replace('K2', 'KZ').replace('K7', 'KZ')
+                                                break
+                                                
+                                        if country == "??" and len(prefix_clean) >= 2: country = prefix_clean[-2:]
+                                        if country == "??" and prefix_clean.endswith('E'): country = 'DE'
+                                            
+                                        co_number = f"VN-{country} {suffix_clean}" if country != "??" else f"VN-?? {suffix_clean}"
+                                    
+                                    extracted_data.append({"STT": len(extracted_data) + 1, "SỐ C/O BẢN GỐC": co_number, "KÝ NHẬN": "", "NGÀY NHẬN": ""})
+                        except Exception as inner_e:
+                            st.warning(f"Lỗi đọc {pdf_file.name}: {inner_e}")
+                    
+                    st.session_state["ocr_data"] = extracted_data
+                    st.rerun()
+
+    # ---------------------------------------------------------
+    # CHẾ ĐỘ 2: TẢI LÊN FILE EXCEL (KHÔI PHỤC PHIÊN LÀM VIỆC)
+    # ---------------------------------------------------------
+    elif che_do_tab3 == "2️⃣ Tải File Excel Cũ Lên Để Ký Nhận (Làm tiếp)":
+        uploaded_excel = st.file_uploader("📂 Kéo thả file Excel (Bản chưa ký) vào đây", type=["xlsx", "xls"], key="upload_excel_to_sign")
+        if uploaded_excel:
+            try:
+                # Đọc Excel bỏ qua 3 dòng tiêu đề đầu, lấy từ dòng số 4 làm header
+                df_load = pd.read_excel(uploaded_excel, skiprows=3)
+                if 'SỐ C/O BẢN GỐC' in df_load.columns:
+                    st.session_state["ocr_data"] = df_load.to_dict('records')
+                    st.success("✅ Đã khôi phục dữ liệu từ file Excel thành công!")
+                else:
+                    st.error("❌ File Excel không đúng định dạng chuẩn của phần mềm.")
+            except Exception as e:
+                st.error(f"Lỗi đọc file Excel: {e}")
+
+    # ==========================================
+    # KHU VỰC CHUNG: HIỂN THỊ LƯỚI DATA & KÝ NHẬN (CÓ DỮ LIỆU MỚI HIỆN)
+    # ==========================================
+    if st.session_state.get("ocr_data"):
+        df_current = pd.DataFrame(st.session_state["ocr_data"])
+        
+        st.markdown(f"#### 📝 Danh sách {len(df_current)} mã C/O (Nhấp đúp chuột vào ô để sửa lỗi)")
+        
+        # 1. TÍNH NĂNG CHỈNH SỬA TRỰC TIẾP (Data Editor)
+        edited_df = st.data_editor(
+            df_current, 
+            use_container_width=True, 
+            num_rows="dynamic",
+            disabled=["STT", "KÝ NHẬN", "NGÀY NHẬN"], # Khóa các cột không cần sửa
+            key="co_data_editor"
+        )
+        
+        # Đồng bộ lại dữ liệu đã sửa vào Session State
+        st.session_state["ocr_data"] = edited_df.to_dict('records')
+        
+        # OPTION 1: TẢI XUỐNG BẢN NHÁP CHƯA KÝ (Dùng pandas cơ bản cho nhanh)
+        excel_nhap_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_nhap_buffer, engine='xlsxwriter') as writer:
+            # Ghi tiêu đề tĩnh (3 dòng đầu)
+            workbook = writer.book
+            worksheet = writer.sheets.setdefault('So_Giao_Nhan', workbook.add_worksheet('So_Giao_Nhan'))
+            worksheet.write('A1', "CÔNG TY FORTUNATE HONGKONG VIỆT NAM")
+            worksheet.write('A2', "GỞI CÔNG TY: EXPEDITORS")
+            # Ghi dữ liệu từ dòng 4
+            edited_df.to_excel(writer, sheet_name='So_Giao_Nhan', index=False, startrow=3)
+            worksheet.set_column('A:A', 10); worksheet.set_column('B:B', 35); worksheet.set_column('C:C', 30); worksheet.set_column('D:D', 25)
+            
+        st.download_button(
+            label="📥 OPTION 1: Tải File Nháp (Chưa Ký) Để Lưu Trữ",
+            data=excel_nhap_buffer.getvalue(),
+            file_name=f"Ban_Nhap_Giao_CO_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Tải file này về máy. Lúc nào đại lý tới, chọn chế độ (2) tải file này lên lại để ký tên."
+        )
+
+        st.divider()
+        
+        # OPTION 2: KÝ TÊN VÀ XUẤT BẢN CHÍNH THỨC
+        st.markdown("#### 🤝 OPTION 2: Ký Nhận & Xuất Phiếu Bản Giao Chính Thức")
+        c_ten, c_ngay = st.columns(2)
+        ten_dai_ly = c_ten.text_input("Tên người nhận (Đại lý):", placeholder="Nhập họ tên người nhận C/O...")
+        ngay_nhan = c_ngay.date_input("Ngày nhận:", value=datetime.date.today())
+        
+        st.write("Đại lý vẽ chữ ký xác nhận vào khung bên dưới:")
+        canvas_result = st_canvas(
+            fill_color="rgba(255, 165, 0, 0.3)", stroke_width=2.5, stroke_color="#000080",
+            background_color="#f0f2f6", height=150, width=450, drawing_mode="freedraw",
+            return_image_data=True, key="canvas_ky_ten_2"
+        )
+        
+        if st.button("🤝 KÝ NHẬN & XUẤT EXCEL CHUẨN", type="primary"):
+            if not ten_dai_ly.strip():
+                st.error("Vui lòng nhập Tên đại lý.")
+            elif canvas_result.image_data is None or canvas_result.image_data.sum() == 0:
+                st.error("Đại lý chưa ký xác nhận vào khung.")
+            else:
+                with st.spinner("Đang chèn chữ ký và xử lý File..."):
+                    # --- Lưu Audit Log theo chuẩn dự án ---
+                    try:
+                        from audit_logger import ghi_log_he_thong
+                        chi_tiet_log = f"Bàn giao {len(edited_df)} C/O gốc cho đại lý: {ten_dai_ly}"
+                        ghi_log_he_thong(db.pool, "QUAN_LY_CO", None, current_user, "BAN_GIAO_CO", chi_tiet_log)
+                    except Exception as log_err:
+                        pass
+                    
+                    # --- Xử lý chèn chữ ký vào Excel ---
+                    img_data = canvas_result.image_data
+                    img = Image.fromarray(img_data.astype('uint8'), 'RGBA')
+                    img_buffer = io.BytesIO()
+                    img.save(img_buffer, format="PNG")
+                    
+                    excel_buffer = io.BytesIO()
+                    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                        # Cập nhật thông tin vào DF
+                        edited_df['KÝ NHẬN'] = ten_dai_ly
+                        edited_df['NGÀY NHẬN'] = ngay_nhan.strftime('%d/%m/%Y')
+                        edited_df.to_excel(writer, sheet_name='So_Giao_Nhan', startrow=3, index=False, header=False)
+                        
+                        workbook = writer.book
+                        worksheet = writer.sheets['So_Giao_Nhan']
+                        
+                        # Định dạng Excel Openpyxl
+                        font_title = Font(name='Times New Roman', size=18, bold=True)
+                        font_header = Font(name='Times New Roman', size=13, bold=True)
+                        font_normal = Font(name='Times New Roman', size=13)
+                        align_center = Alignment(horizontal='center', vertical='center')
+                        align_left = Alignment(horizontal='left', vertical='center')
+                        border_thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+                        fill_header = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+                        
+                        # Header Công ty
+                        worksheet.merge_cells('A1:D1'); worksheet['A1'] = "CÔNG TY FORTUNATE HONGKONG VIỆT NAM"; worksheet['A1'].font = font_title; worksheet['A1'].alignment = align_center
+                        worksheet.merge_cells('A2:D2'); worksheet['A2'] = "GỞI CÔNG TY: EXPEDITORS"; worksheet['A2'].font = font_title; worksheet['A2'].alignment = align_center
+                        
+                        headers = ['STT', 'SỐ C/O BẢN GỐC', 'KÝ NHẬN', 'NGÀY NHẬN']
+                        for col_num, h_text in enumerate(headers, 1):
+                            cell = worksheet.cell(row=4, column=col_num, value=h_text)
+                            cell.font = font_header; cell.alignment = align_center; cell.border = border_thin; cell.fill = fill_header
+                        
+                        for r_idx in range(5, 5 + len(edited_df)):
+                            worksheet.row_dimensions[r_idx].height = 20
+                            for c_idx in range(1, 5):
+                                cell = worksheet.cell(row=r_idx, column=c_idx)
+                                cell.font = font_normal; cell.border = border_thin
+                                cell.alignment = align_center if c_idx == 1 else align_left
+                        
+                        worksheet.column_dimensions['A'].width = 10; worksheet.column_dimensions['B'].width = 35; worksheet.column_dimensions['C'].width = 30; worksheet.column_dimensions['D'].width = 25
+                        
+                        # Chèn ảnh chữ ký
+                        dong_ky_ten = 5 + len(edited_df) + 2
+                        worksheet.cell(row=dong_ky_ten, column=2, value="ĐẠI DIỆN BÀN GIAO").font = font_header; worksheet.cell(row=dong_ky_ten, column=2).alignment = align_center
+                        worksheet.cell(row=dong_ky_ten, column=3, value=f"ĐẠI LÝ NHẬN: {ten_dai_ly}").font = font_header; worksheet.cell(row=dong_ky_ten, column=3).alignment = align_center
+                        
+                        img_buffer.seek(0)
+                        excel_img = OpenpyxlImage(img_buffer)
+                        excel_img.width = 160; excel_img.height = 70
+                        worksheet.add_image(excel_img, f'C{dong_ky_ten + 1}')
+                    
+                    st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao đã sẵn sàng!")
+                    st.download_button(
+                        label="📥 TẢI PHIẾU BÀN GIAO ĐÃ KÝ (EXCEL)",
+                        data=excel_buffer.getvalue(),
+                        file_name=f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary"
+                    )
+        
+        if st.button("🔄 Xóa Lưới Dữ Liệu Hiện Tại"):
+            st.session_state["ocr_data"] = []
+            st.rerun()
+
+
+# ==========================================
+# TAB 4: DANH SÁCH & QUẢN LÝ (SỬA / XÓA)
 # ==========================================
 with tab_quan_ly_co:
     tao_tieu_de_kem_nut_refresh("🔍 Danh sách Chứng từ C/O", "ref_tab_ds_co")
@@ -297,7 +531,6 @@ with tab_quan_ly_co:
         co_tu_ngay = col_f1.date_input("Từ ngày", value=today.replace(day=1), key="co_tu_ngay")
         co_den_ngay = col_f2.date_input("Đến ngày", value=today, key="co_den_ngay")
         
-        # Bổ sung trường kh.id (khach_hang_id) để phòng trường hợp sửa Tờ khai (Truy vấn động KHÔNG CẦN CACHE)
         sql_ds_co = """
             SELECT co.id, co.to_khai_id, co.form_co, co.so_co, co.ngay_co, 
                 co.phi_co, co.phi_dvhq, co.so_hoa_don_co, co.ghi_chu, 
@@ -311,7 +544,6 @@ with tab_quan_ly_co:
         df_co = db.execute_query(sql_ds_co, (co_tu_ngay.strftime('%Y-%m-%d'), co_den_ngay.strftime('%Y-%m-%d')))
         
         if isinstance(df_co, pd.DataFrame) and not df_co.empty:
-            # [CẬP NHẬT]: Làm sạch DataFrame, khử triệt để giá trị NaN/None trên giao diện hiển thị
             df_co['phi_co'] = pd.to_numeric(df_co['phi_co'], errors='coerce').fillna(0)
             df_co['phi_dvhq'] = pd.to_numeric(df_co['phi_dvhq'], errors='coerce').fillna(0)
             df_co['so_hoa_don_co'] = df_co['so_hoa_don_co'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
@@ -339,7 +571,6 @@ with tab_quan_ly_co:
             if selected_co_id is not None:
                 co_info = df_co[df_co['id'] == selected_co_id].iloc[0]
                 
-                # [CẬP NHẬT]: Các hàm trích xuất dữ liệu an toàn, chống crash NaN
                 def get_safe_val(key, default=""):
                     val = co_info.get(key)
                     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
@@ -380,7 +611,6 @@ with tab_quan_ly_co:
                         e_form_co = ec1.text_input("Loại Form C/O", value=get_safe_val('form_co'))
                         e_so_co = ec2.text_input("Số C/O*", value=get_safe_val('so_co'))
                         
-                        # Xử lý an toàn ngày cấp C/O chống lỗi NaT/NaN
                         raw_ngay_co = co_info.get('ngay_co')
                         default_ngay_co = pd.to_datetime(raw_ngay_co).date() if pd.notna(raw_ngay_co) and str(raw_ngay_co).strip().lower() != 'nan' else datetime.date.today()
                         e_ngay_co = ec3.date_input("Ngày Cấp C/O", value=default_ngay_co)

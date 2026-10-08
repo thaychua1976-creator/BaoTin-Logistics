@@ -15,6 +15,13 @@ def clear_master_cache():
     get_cached_master_data.clear()
 # ---------------------------------
 
+# Khởi tạo trạng thái mặc định cho form bằng các BỘ ĐẾM (Counters) để xóa form 100%
+def init_nv_session_state():
+    if 'nv_add_counter' not in st.session_state: st.session_state['nv_add_counter'] = 0
+    if 'nv_edit_counter' not in st.session_state: st.session_state['nv_edit_counter'] = 0
+
+init_nv_session_state()
+
 tab1, tab2, tab3 = st.tabs(["📋 Danh sách Nhân viên", "➕ Thêm Nhân viên Mới", "📝 Sửa thông tin & Thôi việc"])
 
 # ==========================================
@@ -22,16 +29,13 @@ tab1, tab2, tab3 = st.tabs(["📋 Danh sách Nhân viên", "➕ Thêm Nhân viê
 # ==========================================
 hide_enter_submit_css = """
 <style>
-    /* Nhắm mục tiêu chính xác vào thẻ div chứa dòng chữ hướng dẫn của Streamlit */
     div[data-testid="InputInstructions"] {
         display: none !important;
         visibility: hidden !important;
     }
 </style>
 """
-# Thực thi CSS
 st.markdown(hide_enter_submit_css, unsafe_allow_html=True)
-# Thêm dòng này để định nghĩa current_user
 current_user = st.session_state.get('username', 'Admin')
 
 
@@ -51,30 +55,23 @@ with tab1:
         df_nv_list = get_cached_master_data(db, sql_nv)
         
         if isinstance(df_nv_list, pd.DataFrame) and not df_nv_list.empty:
-            # [CẬP NHẬT]: Làm sạch dữ liệu, khử NaN và các chuỗi rác trên giao diện danh sách
             df_nv_list['Trạng thái'] = df_nv_list['Tình trạng'].apply(lambda x: "🟢 Đang làm việc" if x == "Dang_Lam_Viec" else "🔴 Đã nghỉ việc")
             df_nv_list['CCCD'] = df_nv_list['CCCD'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
             df_nv_list['GPLX'] = df_nv_list['GPLX'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
             df_nv_list['Hạng'] = df_nv_list['Hạng'].fillna('Khác').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else 'Khác')
             
-            # Cập nhật format ngày tháng hiển thị sang dd/mm/yyyy an toàn chống lỗi NaT
             df_nv_list['Hạn Bằng'] = pd.to_datetime(df_nv_list['Hạn Bằng'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("---")
             df_nv_list['Hạn Tập Huấn'] = pd.to_datetime(df_nv_list['Hạn Tập Huấn'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("---")
             
             df_nv_list = df_nv_list.drop(columns=['Tình trạng'])
             
-            # --- BẮT ĐẦU XỬ LÝ PHÂN TRANG VÀ HIỂN THỊ TẤT CẢ ---
             col_opt1, col_opt2 = st.columns([1, 7])
             with col_opt1:
                 che_do_xem = st.selectbox("Hiển thị:", ["10 dòng", "Tất cả"])
             
             if che_do_xem == "Tất cả":
                 st.caption(f"Đang hiển thị toàn bộ {len(df_nv_list)} nhân viên.")
-                st.dataframe(
-                    df_nv_list,
-                    use_container_width=True,
-                    hide_index=True
-                )
+                st.dataframe(df_nv_list, use_container_width=True, hide_index=True)
             else:
                 rows_per_page = 10
                 total_rows = len(df_nv_list)
@@ -110,89 +107,91 @@ with tab1:
                     end_idx = start_idx + rows_per_page
                     df_page = df_nv_list.iloc[start_idx:end_idx]
                     
-                    st.dataframe(
-                        df_page,
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                    st.dataframe(df_page, use_container_width=True, hide_index=True)
         else:
             st.info("Chưa có dữ liệu nhân viên.")
     except Exception as e:
         st.error(f"⚠️ Không thể tải danh sách nhân viên. Lỗi: {e}")
 
 # ==========================================
-# TAB 2: THÊM NHÂN VIÊN
+# TAB 2: THÊM NHÂN VIÊN (ÁP DỤNG DYNAMIC KEY ĐỂ RESET)
 # ==========================================
 with tab2:
-    with st.form("form_them_nv", clear_on_submit=True, enter_to_submit=False):
-        st.subheader("Thông tin cơ bản")
-        c1, c2, c3 = st.columns(3)
-        ma_nv = c1.text_input("Mã nhân viên*", placeholder="VD: NV001")
-        ten_nv = c2.text_input("Họ và tên*", placeholder="VD: Nguyễn Văn A")
-        sdt_nv = c3.text_input("Số điện thoại*", placeholder="VD: 0912345678")
-        
-        st.subheader("Thông tin Pháp lý & Bằng lái")
-        c4, c5, c6 = st.columns(3)
-        cccd = c4.text_input("Số CCCD")
-        gplx = c5.text_input("Số GPLX")
-        hang_gplx = c6.selectbox("Hạng Bằng", ["A1","D","D2","C","CE", "E", "FC", "FD", "B2", "Khác"], index=0)
-        
-        c7, c8 = st.columns(2)
-        # Tab 2 đã có sẵn format="DD/MM/YYYY"
-        han_gplx = c7.date_input("Ngày Hết Hạn Bằng Lái", value=datetime.date.today() + datetime.timedelta(days=365), format="DD/MM/YYYY")
-        han_tth = c8.date_input("Ngày Hết Hạn Thẻ Tập Huấn", value=datetime.date.today() + datetime.timedelta(days=365), format="DD/MM/YYYY")
-        
-        dict_chuc_vu = {
-            "Tai_Chinh": "Tài xế chính",
-            "Tai_Phu": "Tài xế phụ",
-            "Van_Phong": "NV văn phòng",
-            "Dieu_Hanh": "Điều hành"
-        }
+    ac = st.session_state['nv_add_counter']
 
-        loai_nv = st.selectbox(
-            "Chức vụ", 
-            options=list(dict_chuc_vu.keys()), 
-            format_func=lambda x: dict_chuc_vu[x]
-        )
-        
-        if st.form_submit_button("💾 Lưu Nhân Viên", type="primary"):
-            if not ma_nv or not ten_nv or not sdt_nv:
-                st.error("⚠️ Vui lòng điền đầy đủ Mã, Họ tên và Số điện thoại!")
+    st.subheader("Thông tin cơ bản")
+    c1, c2, c3 = st.columns(3)
+    ma_nv = c1.text_input("Mã nhân viên*", placeholder="VD: NV001", key=f"add_ma_nv_{ac}")
+    ten_nv = c2.text_input("Họ và tên*", placeholder="VD: Nguyễn Văn A", key=f"add_ten_nv_{ac}")
+    sdt_nv = c3.text_input("Số điện thoại*", placeholder="VD: 0912345678", key=f"add_sdt_nv_{ac}")
+    
+    st.subheader("Thông tin Pháp lý & Bằng lái")
+    c4, c5, c6 = st.columns(3)
+    cccd = c4.text_input("Số CCCD", key=f"add_cccd_{ac}")
+    gplx = c5.text_input("Số GPLX", key=f"add_gplx_{ac}")
+    hang_gplx = c6.selectbox("Hạng Bằng", ["A1","D","D2","C","CE", "E", "FC", "FD", "B2", "Khác"], index=0, key=f"add_hang_{ac}")
+    
+    c7, c8 = st.columns(2)
+    han_gplx = c7.date_input("Ngày Hết Hạn Bằng Lái", value=datetime.date.today() + datetime.timedelta(days=365), format="DD/MM/YYYY", key=f"add_han_gplx_{ac}")
+    han_tth = c8.date_input("Ngày Hết Hạn Thẻ Tập Huấn", value=datetime.date.today() + datetime.timedelta(days=365), format="DD/MM/YYYY", key=f"add_han_tth_{ac}")
+    
+    dict_chuc_vu = {
+        "Tai_Chinh": "Tài xế chính",
+        "Tai_Phu": "Tài xế phụ",
+        "Van_Phong": "NV văn phòng",
+        "Dieu_Hanh": "Điều hành"
+    }
+
+    loai_nv = st.selectbox("Chức vụ", options=list(dict_chuc_vu.keys()), format_func=lambda x: dict_chuc_vu[x], key=f"add_loai_{ac}")
+    
+    if st.button("💾 Lưu Nhân Viên", type="primary", use_container_width=True):
+        if not ma_nv or not ten_nv or not sdt_nv:
+            st.error("⚠️ Vui lòng điền đầy đủ Mã, Họ tên và Số điện thoại!")
+        else:
+            ma_nv_clean = ma_nv.strip().upper()
+            ten_nv_clean = ten_nv.strip().upper()
+            han_gplx_db = han_gplx.strftime('%Y-%m-%d')
+            han_tth_db = han_tth.strftime('%Y-%m-%d')
+            nv_data = (ma_nv_clean, ten_nv_clean, sdt_nv, cccd, gplx, hang_gplx, han_gplx_db, han_tth_db, loai_nv)
+            
+            is_ok, msg = save_nhan_vien_transaction(db.pool, action='ADD', nv_data=nv_data, current_user=current_user)
+            
+            if is_ok:
+                clear_master_cache()
+                st.success("✅ Đã thêm nhân viên mới thành công!")
+                st.balloons()
+                
+                # --- TĂNG BIẾN ĐẾM ĐỂ XÓA TRẮNG FORM ---
+                st.session_state['nv_add_counter'] += 1
+                
+                time.sleep(1.5)
+                st.rerun()
             else:
-                # [CẬP NHẬT] Thêm .upper() cho mã nhân viên và họ tên trước khi lưu
-                ma_nv_clean = ma_nv.strip().upper()
-                ten_nv_clean = ten_nv.strip().upper()
-                # Format lại thành %Y-%m-%d để lưu vào database
-                han_gplx_db = han_gplx.strftime('%Y-%m-%d')
-                han_tth_db = han_tth.strftime('%Y-%m-%d')
-                nv_data = (ma_nv, ten_nv, sdt_nv, cccd, gplx, hang_gplx, han_gplx_db, han_tth_db, loai_nv)
-                
-                is_ok, msg = save_nhan_vien_transaction(db.pool, action='ADD', nv_data=nv_data, current_user=current_user)
-                
-                if is_ok:
-                    clear_master_cache()
-                    st.success("✅ Đã thêm nhân viên mới thành công!")
-                    time.sleep(2)
-                    st.rerun()
-                else:
-                    st.error(f"❌ Lỗi: {msg}")
+                st.error(f"❌ Lỗi: {msg}")
                 
 
 # ==========================================
 # TAB 3: SỬA THÔNG TIN & THÔI VIỆC
 # ==========================================
 with tab3:
-    if "reset_nv_form" not in st.session_state: st.session_state["reset_nv_form"] = 0
+    ec = st.session_state['nv_edit_counter']
     df_nv_active = get_cached_master_data(db, "SELECT * FROM nhan_vien WHERE trang_thai = 'Dang_Lam_Viec' ORDER BY ho_ten")
     
     if isinstance(df_nv_active, pd.DataFrame) and not df_nv_active.empty:
         dict_nv = {row['id']: f"{row['ma_nhan_vien']} - {row['ho_ten']}" for _, row in df_nv_active.iterrows()}
-        nv_id = st.selectbox("🔍 Chọn nhân viên cần thao tác:", options=list(dict_nv.keys()), index=None, format_func=lambda x: dict_nv[x], key=f"nv_key_{st.session_state['reset_nv_form']}")
+        
+        # Áp dụng Dynamic Key vào ô tìm kiếm để nó có thể tự reset về None
+        nv_id = st.selectbox(
+            "🔍 Chọn nhân viên cần thao tác:", 
+            options=list(dict_nv.keys()), 
+            index=None, 
+            format_func=lambda x: dict_nv[x], 
+            key=f"select_edit_nv_{ec}"
+        )
         
         if nv_id is not None:
             nv_data = df_nv_active[df_nv_active['id'] == nv_id].iloc[0]
             
-            # [CẬP NHẬT]: Hàm lấy giá trị an toàn chống crash NaN
             def get_safe_val(key, default=""):
                 val = nv_data.get(key)
                 if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
@@ -208,7 +207,7 @@ with tab3:
                 except:
                     return datetime.date.today()
 
-            with st.form("form_update_nv"):
+            with st.form("form_update_nv", clear_on_submit=True):
                 c_edit1, c_edit2, c_edit3 = st.columns(3)
                 edit_ma = c_edit1.text_input("Mã NV", value=get_safe_val('ma_nhan_vien'))
                 edit_ten = c_edit2.text_input("Họ tên", value=get_safe_val('ho_ten'))
@@ -234,21 +233,21 @@ with tab3:
                 
                 col_btn1, col_btn2 = st.columns(2)
                 if col_btn1.form_submit_button("🔄 Lưu thay đổi", type="primary"):
-                    # [CẬP NHẬT] Thêm .upper() cho mã nhân viên và họ tên khi cập nhật
                     edit_ma_clean = edit_ma.strip().upper()
                     edit_ten_clean = edit_ten.strip().upper()
-                    # Format lại thành %Y-%m-%d để lưu vào database
                     edit_han_gplx_db = edit_han_gplx.strftime('%Y-%m-%d')
                     edit_han_tth_db = edit_han_tth.strftime('%Y-%m-%d')
-                    update_data = (edit_ma, edit_ten, edit_sdt, edit_cccd, edit_gplx, edit_hang, edit_han_gplx_db, edit_han_tth_db, edit_loai)
+                    update_data = (edit_ma_clean, edit_ten_clean, edit_sdt, edit_cccd, edit_gplx, edit_hang, edit_han_gplx_db, edit_han_tth_db, edit_loai)
                     
                     is_ok, msg = save_nhan_vien_transaction(db.pool, action='UPDATE', nv_data=update_data, nv_id=nv_id, current_user=current_user)
                     
                     if is_ok:
                         clear_master_cache()
                         st.success("✅ Cập nhật thành công!")
-                        st.session_state["reset_nv_form"] += 1
-                        time.sleep(2)
+                        
+                        # Tăng đếm để ẩn form
+                        st.session_state['nv_edit_counter'] += 1
+                        time.sleep(1.5)
                         st.rerun()
                     else:
                         st.error(f"❌ Lỗi: {msg}")
@@ -259,7 +258,10 @@ with tab3:
                     if is_ok:
                         clear_master_cache()
                         st.success("✅ Đã xoá (chuyển trạng thái nghỉ việc) thành công!")
-                        time.sleep(2)
+                        
+                        # --- CẬP NHẬT: Tăng đếm khi xóa thành công để ẩn form ---
+                        st.session_state['nv_edit_counter'] += 1
+                        time.sleep(1.5)
                         st.rerun()
                     else:
                         st.error(f"❌ Lỗi: {msg}")

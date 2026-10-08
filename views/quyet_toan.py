@@ -1312,9 +1312,53 @@ with tab3:
                 buffer_close = io.BytesIO()
                 with pd.ExcelWriter(buffer_close, engine='xlsxwriter') as writer: 
                     df_tpl_close.to_excel(writer, index=False, sheet_name="MAU_QUYET_TOAN")
+                    
+                    workbook = writer.book
+                    
+                    # 1. Tạo định dạng Tiêu đề: Nền đỏ, chữ trắng, in đậm, có viền
+                    header_format = workbook.add_format({
+                        'bg_color': '#FF0000',
+                        'font_color': '#FFFFFF',
+                        'bold': True,
+                        'border': 1
+                    })
+                    
+                    # 2. Tạo định dạng Dữ liệu: Chỉ kẻ viền
+                    data_format = workbook.add_format({
+                        'border': 1
+                    })
+                    
+                    # --- XỬ LÝ SHEET 1: MAU_QUYET_TOAN ---
+                    worksheet1 = writer.sheets['MAU_QUYET_TOAN']
+                    
+                    # Quét và tô màu đỏ cho tất cả các cột tiêu đề (Dòng 0)
+                    for col_num, value in enumerate(df_tpl_close.columns.values):
+                        worksheet1.write(0, col_num, value, header_format)
+                        
+                    # Kẻ viền cho tất cả các ô chứa dữ liệu
+                    for row_num in range(len(df_tpl_close)):
+                        for col_num in range(len(df_tpl_close.columns)):
+                            val = df_tpl_close.iloc[row_num, col_num]
+                            if pd.isna(val): val = ""
+                            worksheet1.write(row_num + 1, col_num, val, data_format)
+
+                    # --- XỬ LÝ SHEET 2: TỪ ĐIỂN PHỤ CẤP ---
                     if isinstance(df_dm_pc, pd.DataFrame) and not df_dm_pc.empty:
                         df_dm_pc.columns = ["ID_PHU_CAP", "TEN_TIEU_CHI_COPPY_SANG_SHEET_1"]
                         df_dm_pc.to_excel(writer, index=False, sheet_name="TỪ ĐIỂN PHỤ CẤP")
+                        
+                        worksheet2 = writer.sheets['TỪ ĐIỂN PHỤ CẤP']
+                        
+                        # Tô màu đỏ cho tất cả tiêu đề sheet 2
+                        for col_num, value in enumerate(df_dm_pc.columns.values):
+                            worksheet2.write(0, col_num, value, header_format)
+                            
+                        # Kẻ viền cho dữ liệu sheet 2
+                        for row_num in range(len(df_dm_pc)):
+                            for col_num in range(len(df_dm_pc.columns)):
+                                val = df_dm_pc.iloc[row_num, col_num]
+                                if pd.isna(val): val = ""
+                                worksheet2.write(row_num + 1, col_num, val, data_format)
                     
                 st.download_button(label="⬇️ Tải mẫu Excel Quyết toán hàng loạt", data=buffer_close.getvalue(), file_name=f"Mau_Quyet_Toan_Tudong_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx", use_container_width=True)
             

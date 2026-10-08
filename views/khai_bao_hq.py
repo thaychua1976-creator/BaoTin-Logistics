@@ -354,7 +354,7 @@ if active_tab == "📋 KHAI BÁO TỜ KHAI MỚI":
                     return False, str(e)
 
             # ==============================================================
-            # UI: CHIA TAB ĐƠN LẺ VÀ HÀNG LOẠT
+            # UI: CHIA TAB KHAI TỜ KHAI ĐƠN LẺ VÀ HÀNG LOẠT
             # ==============================================================
             sub_single, sub_batch = st.tabs(["📄 KHAI BÁO ĐƠN LẺ (1 FILE)", "📚 UPLOAD HÀNG LOẠT (NHIỀU FILE)"])
             
@@ -534,6 +534,7 @@ if active_tab == "📋 KHAI BÁO TỜ KHAI MỚI":
                             row_display = {
                                 "Tên File": f_obj.name,
                                 "Số Tờ Khai": "",
+                                "Mã Loại Hình": "", # Bổ sung thêm dòng này
                                 "Số Vận Đơn": "",
                                 "Số HĐ TM": "",
                                 "Luồng": "",
@@ -555,6 +556,7 @@ if active_tab == "📋 KHAI BÁO TỜ KHAI MỚI":
                                 # Đẩy toàn bộ thông tin lấy được vào dòng hiển thị
                                 row_display.update({
                                     "Số Tờ Khai": so_tk_batch,
+                                    "Mã Loại Hình": p_data.get('ma_loai_hinh', ''), # Bổ sung thêm dòng này
                                     "Số Vận Đơn": p_data.get('so_van_don', ''),
                                     "Số HĐ TM": p_data.get('so_hoa_don_tm', ''),
                                     "Luồng": p_data.get('phan_luong', ''),
@@ -903,20 +905,21 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
         try:
             st.markdown("#### 📦 Quản Lý Danh Sách Container & Phí (DV Hải Quan, Nâng/Hạ Chi Tiết)")
             
-            sub_tab_tao, sub_tab_sua_xoa, sub_tab_ds = st.tabs(["📥 Tạo Mới / Cập Nhật Cont Theo Lô", "🛠️ Sửa / Xóa Container Đơn Lẻ", "🔍 Tra Cứu Danh Sách"])
+            sub_tab_tao, sub_tab_sua_xoa, sub_tab_ds = st.tabs(["📥 Tạo Mới / Cập Nhật Phí Container", "🛠️ Sửa / Xóa Phí Container", "🔍 Tra Cứu Danh Sách"])
             
-            # Lấy chuyến chưa chốt HOẶC chuyến đã hoàn thành trong 30 ngày gần nhất
+            # Lấy chuyến của xe cont trong tháng, đã hoàn thành và có doanh thu
             sql_cd_cont = """
-                SELECT id, ngay_chuyen_di, dia_diem_giao_nhan, doanh_thu,loai_hinh_xe 
+                SELECT id, ngay_chuyen_di, dia_diem_giao_nhan, doanh_thu, loai_hinh_xe 
                 FROM chuyen_di cd
-                WHERE (trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di', 'Quyet_Toan')  
-                   OR (trang_thai_chuyen = 'Hoan_Thanh' AND ngay_chuyen_di >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)))
-                   AND cd.loai_hinh_xe LIKE '%cont%'
-
+                WHERE trang_thai_chuyen = 'Hoan_Thanh'
+                  AND doanh_thu > 0
+                  AND MONTH(ngay_chuyen_di) = MONTH(CURRENT_DATE())
+                  AND YEAR(ngay_chuyen_di) = YEAR(CURRENT_DATE())
+                  AND loai_hinh_xe LIKE '%cont%'
                 ORDER BY id DESC LIMIT 250
             """
             df_cd_cont = db.execute_query(sql_cd_cont)
-            dict_cd_cont = {0: "-- Không liên kết chuyến đi --"}
+            dict_cd_cont = {0: "-- Liên kết chuyến đi --"}
             # Tạo dictionary lưu trữ doanh thu tương ứng với ID chuyến đi
             dict_doanh_thu_cd = {0: 0} 
             
@@ -927,7 +930,7 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
                     dict_doanh_thu_cd[r['id']] = float(r['doanh_thu'] or 0.0) 
             # ---------------------------
 
-            dict_tk_cont = {0: "-- Không liên kết tờ khai hải quan --"}
+            dict_tk_cont = {0: "-- Liên kết tờ khai hải quan --"}
             dict_phi_hq_tk = {0: 0}
             try:
                 # Lấy tờ khai trong tháng hiện tại, join với bảng khach_hang để lấy tên
@@ -1067,7 +1070,7 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
 
                     raw_container_text = st.text_area(
                         "Số Container*",
-                        placeholder="Nhập hoặc dán danh sách số container vào đây",
+                        placeholder="Nhập hoặc dán số container vào đây",
                         help="Hỗ trợ nhập liệu hàng loạt cho các lô hàng lớn."
                     )
 
@@ -1172,7 +1175,7 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
                                 st.rerun()
                             else:
                                 st.error(f"Lỗi: {msg}")
-
+            # chỉ sửa phí đã cập nhật cont, edit cont
             with sub_tab_sua_xoa:
                 sql_get_all_cont = """
                     SELECT c.id, c.so_cont, c.loai_cont, c.chuyen_di_id, c.to_khai_id, 
@@ -1184,9 +1187,11 @@ elif active_tab == "📦 QUẢN LÝ CONTAINER & PHÍ (DVHQ, NÂNG/HẠ)":
                     FROM container_quan_ly c
                     LEFT JOIN chuyen_di cd ON c.chuyen_di_id = cd.id
                     LEFT JOIN to_khai_hai_quan tk ON c.to_khai_id = tk.id
-                    WHERE cd.id IS NULL 
-                       OR cd.trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di', 'Quyet_Toan') 
-                       OR (cd.trang_thai_chuyen = 'Hoan_Thanh' AND (cd.doanh_thu IS NULL OR cd.doanh_thu = 0))
+                    WHERE cd.trang_thai_chuyen = 'Hoan_Thanh' 
+                           AND cd.doanh_thu > 0 
+                           AND MONTH(cd.ngay_chuyen_di) = MONTH(CURRENT_DATE()) 
+                           AND YEAR(cd.ngay_chuyen_di) = YEAR(CURRENT_DATE())
+                       
                     ORDER BY c.id DESC LIMIT 200
                 """
                 df_all_cont = db.execute_query(sql_get_all_cont)

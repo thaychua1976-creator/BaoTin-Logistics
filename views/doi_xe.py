@@ -15,6 +15,15 @@ def clear_master_cache():
     get_cached_master_data.clear()
 # ---------------------------------
 
+# --- KHỞI TẠO BỘ ĐẾM RESET FORM (DYNAMIC KEYS) ---
+def init_xe_session_state():
+    if 'xe_add_counter' not in st.session_state: st.session_state['xe_add_counter'] = 0
+    if 'xe_edit_counter' not in st.session_state: st.session_state['xe_edit_counter'] = 0
+    if 'bd_add_counter' not in st.session_state: st.session_state['bd_add_counter'] = 0
+
+init_xe_session_state()
+# ---------------------------------
+
 # ==========================================
 # CSS ẨN HƯỚNG DẪN "PRESS ENTER TO SUBMIT"
 # ==========================================
@@ -31,14 +40,17 @@ hide_enter_submit_css = """
 st.markdown(hide_enter_submit_css, unsafe_allow_html=True)
 
 db = st.session_state['db']
+current_user = st.session_state.get('username', 'Admin')
 
-tab1, tab2, tab3, tab4,tab5,tab6 = st.tabs(["📋 Danh sách đội xe", "➕ Thêm xe mới", "🔧 Sửa/Xoá xe", "🚨 Cảnh báo pháp lý toàn diện","🛠️ Cảnh báo/Lập phiếu bảo dưỡng ","🔧 Báo cáo hiệu năng"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📋 Danh sách đội xe", "➕ Thêm xe mới", "🔧 Sửa/Xoá xe", "🚨 Cảnh báo pháp lý toàn diện","🛠️ Cảnh báo/Lập phiếu bảo dưỡng ","🔧 Báo cáo hiệu năng"])
 
 # Tải danh sách tài xế để làm danh mục gán cố định (Sử dụng Cache)
 df_all_tx = get_cached_master_data(db, "SELECT id, ho_ten FROM nhan_vien WHERE loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu') AND trang_thai='Dang_Lam_Viec'")
 tx_dict = {row['id']: row['ho_ten'] for _, row in df_all_tx.iterrows()} if isinstance(df_all_tx, pd.DataFrame) and not df_all_tx.empty else {}
 
-### Danh sách đội xe
+# ==========================================
+# TAB 1: DANH SÁCH ĐỘI XE
+# ==========================================
 with tab1:
     try:
         sql_xe_list = """
@@ -55,21 +67,18 @@ with tab1:
         # Sử dụng Cache
         df_xe = get_cached_master_data(db, sql_xe_list)
         if isinstance(df_xe, pd.DataFrame) and not df_xe.empty:
-            # [CẬP NHẬT]: Làm sạch DataFrame, khử triệt để giá trị NaN/None trên giao diện hiển thị
+            # Làm sạch DataFrame, khử triệt để giá trị NaN/None trên giao diện hiển thị
             df_xe['Ghi chú'] = df_xe['Ghi chú'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
             df_xe['Nhãn Hiệu'] = df_xe['Nhãn Hiệu'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
             df_xe['Tài xế cố định'] = df_xe['Tài xế cố định'].fillna('Chưa gán tài xế')
+            
             col_opt1, col_opt2 = st.columns([1, 7])
             with col_opt1:
                 che_do_xem = st.selectbox("Hiển thị:", ["10 dòng", "Tất cả"])
             
             if che_do_xem == "Tất cả":
                 st.caption(f"Đang hiển thị toàn bộ {len(df_xe)} xe.")
-                st.dataframe(
-                    df_xe,
-                    use_container_width=True,
-                    hide_index=True
-                )
+                st.dataframe(df_xe, use_container_width=True, hide_index=True)
             else:
                 rows_per_page = 10
                 total_rows = len(df_xe)
@@ -105,77 +114,77 @@ with tab1:
                     end_idx = start_idx + rows_per_page
                     df_page = df_xe.iloc[start_idx:end_idx]
                     
-                    st.dataframe(
-                        df_page,
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                    st.dataframe(df_page, use_container_width=True, hide_index=True)
         else:
             st.info("Chưa có dữ liệu xe hoạt động.")
     except Exception as e: st.error(f"Lỗi: {e}")
 
-## Thêm mới xe
+# ==========================================
+# TAB 2: THÊM MỚI XE (Dùng Dynamic Key)
+# ==========================================
 with tab2:
-    if "reset_tab2" not in st.session_state: st.session_state["reset_tab2"] = 0
-    with st.form("form_them_xe", clear_on_submit=True):
-        st.subheader("Thông tin Phương tiện & Phân bổ tài xế")
-        c1, c2, c3, c4 = st.columns(4)
-        bien_so = c1.text_input("Biển số xe*", placeholder="70H-077.09")
-        nhan_hieu = c2.text_input("Nhãn hiệu xe", placeholder="ISUZU, MITSUBISHI...")
-        tai_trong = c3.number_input("Tải trọng (Tấn)", min_value=0.0, step=0.1)
-        dung_tich = c4.number_input("Dung tích xe (CBM / Khối)", min_value=0.0, step=0.1)
-        
-        c5, c6,c7,c8 = st.columns(4)
-        loai_xe = c5.selectbox("Loại xe", ["XE TẢI THÙNG", "ĐẦU KÉO", "SƠ MI RƠ MOOC", "Khác"])
-        tx_co_dinh = c6.selectbox("Gán Tài xế cố định", options=[None] + list(tx_dict.keys()), format_func=lambda x: tx_dict[x] if x else "Chưa gán tài xế")
-        num_dinh_muc_bd=c7.number_input("Định mức km bảo dưỡng", min_value=0.0, step=0.1)
-        txt_ghi_chu= c8.text_input("Ghi chú thêm")
-        
-        if pd.isna(txt_ghi_chu)  or str(txt_ghi_chu).strip().lower() == 'nan':
-            gc_dat_moi=""
-        else: 
-            gc_dat_moi= str(txt_ghi_chu)
-       
-        if st.form_submit_button("💾 Lưu Xe Mới", type="primary"):
-            if not bien_so: 
-                st.error("Vui lòng nhập Biển số xe!")
+    ac = st.session_state['xe_add_counter']
+    st.subheader("Thông tin Phương tiện & Phân bổ tài xế")
+    
+    c1, c2, c3, c4 = st.columns(4)
+    bien_so = c1.text_input("Biển số xe*", placeholder="70H-077.09", key=f"add_bs_{ac}")
+    nhan_hieu = c2.text_input("Nhãn hiệu xe", placeholder="ISUZU, MITSUBISHI...", key=f"add_nh_{ac}")
+    tai_trong = c3.number_input("Tải trọng (Tấn)", min_value=0.0, step=0.1, key=f"add_tt_{ac}")
+    dung_tich = c4.number_input("Dung tích xe (CBM / Khối)", min_value=0.0, step=0.1, key=f"add_dt_{ac}")
+    
+    c5, c6, c7, c8 = st.columns(4)
+    loai_xe = c5.selectbox("Loại xe", ["XE TẢI THÙNG", "ĐẦU KÉO", "SƠ MI RƠ MOOC", "Khác"], key=f"add_lx_{ac}")
+    tx_co_dinh = c6.selectbox("Gán Tài xế cố định", options=[None] + list(tx_dict.keys()), format_func=lambda x: tx_dict[x] if x else "Chưa gán tài xế", key=f"add_tx_{ac}")
+    num_dinh_muc_bd = c7.number_input("Định mức km bảo dưỡng", min_value=0.0, step=0.1, key=f"add_dmbd_{ac}")
+    txt_ghi_chu = c8.text_input("Ghi chú thêm", key=f"add_gc_{ac}")
+    
+    if pd.isna(txt_ghi_chu) or str(txt_ghi_chu).strip().lower() == 'nan':
+        gc_dat_moi = ""
+    else: 
+        gc_dat_moi = str(txt_ghi_chu)
+    
+    if st.button("💾 Lưu Xe Mới", type="primary", use_container_width=True, key=f"btn_add_xe_{ac}"):
+        if not bien_so: 
+            st.error("Vui lòng nhập Biển số xe!")
+        else:
+            new_xe_data = {
+                'bien_so_xe': bien_so.strip().upper(),
+                'nhan_hieu_xe': nhan_hieu.strip().upper(),
+                'tai_trong_thiet_ke': tai_trong,
+                'dung_tich_cbm': dung_tich,
+                'dinh_muc_bao_duong': num_dinh_muc_bd,
+                'loai_xe': loai_xe,
+                'tai_xe_co_dinh_id': tx_co_dinh,
+                'ghi_chu': gc_dat_moi
+            }
+            
+            is_ok, msg = save_vehicle_transaction(db.pool, new_xe_data, xe_id=None)
+            
+            if is_ok:
+                clear_master_cache()
+                st.success("✅ Đã thêm xe mới thành công!")
+                st.balloons()
+                st.session_state["xe_add_counter"] += 1
+                time.sleep(1)
+                st.rerun()
             else:
-                new_xe_data = {
-                    'bien_so_xe': bien_so.strip().upper(),
-                    'nhan_hieu_xe': nhan_hieu.strip().upper(),
-                    'tai_trong_thiet_ke': tai_trong,
-                    'dung_tich_cbm': dung_tich,
-                    'dinh_muc_bao_duong':num_dinh_muc_bd,
-                    'loai_xe': loai_xe,
-                    'tai_xe_co_dinh_id': tx_co_dinh,
-                    'ghi_chu': gc_dat_moi
-                }
-                
-                is_ok, msg = save_vehicle_transaction(db.pool, new_xe_data, xe_id=None)
-                
-                if is_ok:
-                    clear_master_cache()
-                    st.success("✅ Đã thêm xe mới thành công!")
-                    st.balloons()
-                    st.session_state["reset_tab2"] += 1
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error(f"❌ Lỗi thêm xe. Database trả về: {msg}")
+                st.error(f"❌ Lỗi thêm xe. Database trả về: {msg}")
 
-## Cập nhật xe 
+# ==========================================
+# TAB 3: CẬP NHẬT/XÓA XE (Dùng Dynamic Key)
+# ==========================================
 with tab3:
-    if "reset_tab3" not in st.session_state: st.session_state["reset_tab3"] = 0
+    ec = st.session_state['xe_edit_counter']
     # Sử dụng Cache
     df_xe_active = get_cached_master_data(db, "SELECT * FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'")
+    
     if isinstance(df_xe_active, pd.DataFrame) and not df_xe_active.empty:
         dict_xe = {row['id']: f"{row['bien_so_xe']} - {row['nhan_hieu_xe'] or ''}" for _, row in df_xe_active.iterrows()}
-        xe_id = st.selectbox("🔍 Chọn xe cần sửa:", options=list(dict_xe.keys()), index=None, format_func=lambda x: dict_xe[x])
+        xe_id = st.selectbox("🔍 Chọn xe cần sửa:", options=list(dict_xe.keys()), index=None, format_func=lambda x: dict_xe[x], key=f"sel_edit_xe_{ec}")
         
         if xe_id:
             xe_data = df_xe_active[df_xe_active['id'] == xe_id].iloc[0]
             
-            # [CẬP NHẬT]: Hàm trích xuất giá trị an toàn chống crash NaN
             def get_safe_val(key, default=""):
                 val = xe_data.get(key)
                 if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
@@ -189,70 +198,69 @@ with tab3:
                 try: return float(val)
                 except: return default
 
-            with st.form("form_update_xe"):
-                c_ed1, c_ed2, c_ed3, c_ed4, c_ed5, c_ed6 = st.columns(6)
-                upd_bs = c_ed1.text_input("Biển số", value=str(get_safe_val('bien_so_xe', '')))
-                upd_nh = c_ed2.text_input("Nhãn hiệu", value=str(get_safe_val('nhan_hieu_xe', '')))
-                upd_tt = c_ed3.number_input("Tải trọng TK(Tấn)", value=get_safe_float('tai_trong_thiet_ke', 0.0))
-                upd_dt = c_ed4.number_input("Dung tích (CBM)", value=get_safe_float('dung_tich_cbm', 0.0))
-                upd_dinhmuc_bd = c_ed5.number_input("Định mức BD (Km)", value=get_safe_float('dinh_muc_bao_duong', 0.0))
-                
-                ghi_chu_hien_thi = str(get_safe_val('ghi_chu', ''))
-                upd_ghi_chu = c_ed6.text_input("Ghi chú thêm", value=ghi_chu_hien_thi)
-                gc_update = upd_ghi_chu.strip()
-                
-                danh_sach_tx = [None] + list(tx_dict.keys())
-                current_tx_id = xe_data['tai_xe_co_dinh_id']
-                default_index = danh_sach_tx.index(current_tx_id) if current_tx_id in danh_sach_tx else 0
-                
-                upd_tx = st.selectbox("Thay đổi Tài xế cố định", options=danh_sach_tx, index=default_index, format_func=lambda x: tx_dict[x] if x else "Chưa gán tài xế")
-                
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                st.markdown("##### ⚠️ Khu vực nguy hiểm")
-                xac_nhan_xoa = st.checkbox("Tôi chắc chắn muốn XÓA (Ngừng hoạt động) chiếc xe này.")
-                
-                btn1, btn2 = st.columns(2)
-                
-                if btn1.form_submit_button("🔄 Lưu Cập Nhật", type="primary"):
-                    if not upd_bs:
-                        st.error("Biển số xe không được để trống!")
+            c_ed1, c_ed2, c_ed3, c_ed4, c_ed5, c_ed6 = st.columns(6)
+            upd_bs = c_ed1.text_input("Biển số", value=str(get_safe_val('bien_so_xe', '')), key=f"upd_bs_{ec}")
+            upd_nh = c_ed2.text_input("Nhãn hiệu", value=str(get_safe_val('nhan_hieu_xe', '')), key=f"upd_nh_{ec}")
+            upd_tt = c_ed3.number_input("Tải trọng TK(Tấn)", value=get_safe_float('tai_trong_thiet_ke', 0.0), key=f"upd_tt_{ec}")
+            upd_dt = c_ed4.number_input("Dung tích (CBM)", value=get_safe_float('dung_tich_cbm', 0.0), key=f"upd_dt_{ec}")
+            upd_dinhmuc_bd = c_ed5.number_input("Định mức BD (Km)", value=get_safe_float('dinh_muc_bao_duong', 0.0), key=f"upd_dmbd_{ec}")
+            
+            ghi_chu_hien_thi = str(get_safe_val('ghi_chu', ''))
+            upd_ghi_chu = c_ed6.text_input("Ghi chú thêm", value=ghi_chu_hien_thi, key=f"upd_gc_{ec}")
+            gc_update = upd_ghi_chu.strip()
+            
+            danh_sach_tx = [None] + list(tx_dict.keys())
+            current_tx_id = xe_data['tai_xe_co_dinh_id']
+            default_index = danh_sach_tx.index(current_tx_id) if current_tx_id in danh_sach_tx else 0
+            
+            upd_tx = st.selectbox("Thay đổi Tài xế cố định", options=danh_sach_tx, index=default_index, format_func=lambda x: tx_dict[x] if x else "Chưa gán tài xế", key=f"upd_tx_{ec}")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("##### ⚠️ Khu vực nguy hiểm")
+            xac_nhan_xoa = st.checkbox("Tôi chắc chắn muốn XÓA (Ngừng hoạt động) chiếc xe này.", key=f"del_chk_{ec}")
+            
+            btn1, btn2 = st.columns(2)
+            
+            if btn1.button("🔄 Lưu Cập Nhật", type="primary", use_container_width=True, key=f"btn_upd_{ec}"):
+                if not upd_bs:
+                    st.error("Biển số xe không được để trống!")
+                else:
+                    update_xe_data = {
+                        'bien_so_xe': upd_bs.strip().upper(),
+                        'nhan_hieu_xe': upd_nh.strip().upper(),
+                        'tai_trong_thiet_ke': upd_tt,
+                        'dung_tich_cbm': upd_dt,
+                        'dinh_muc_bao_duong': upd_dinhmuc_bd,
+                        'tai_xe_co_dinh_id': upd_tx,
+                        'ghi_chu': gc_update
+                    }
+                    
+                    is_ok, msg = save_vehicle_transaction(db.pool, update_xe_data, xe_id=xe_id)
+                    
+                    if is_ok:
+                        clear_master_cache()
+                        st.success("✅ Đã cập nhật thông tin xe thành công!")
+                        st.balloons()
+                        st.session_state["xe_edit_counter"] += 1
+                        time.sleep(1)
+                        st.rerun()
                     else:
-                        update_xe_data = {
-                            'bien_so_xe': upd_bs.strip().upper(),
-                            'nhan_hieu_xe': upd_nh.strip().upper(),
-                            'tai_trong_thiet_ke': upd_tt,
-                            'dung_tich_cbm': upd_dt,
-                            'dinh_muc_bao_duong': upd_dinhmuc_bd,
-                            'tai_xe_co_dinh_id': upd_tx,
-                            'ghi_chu':gc_update
-                        }
+                        st.error(f"❌ Lỗi cập nhật. Database trả về: {msg}")
                         
-                        is_ok, msg = save_vehicle_transaction(db.pool, update_xe_data, xe_id=xe_id)
-                        
-                        if is_ok:
-                            clear_master_cache()
-                            st.success("✅ Đã cập nhật thông tin xe thành công!")
-                            st.balloons()
-                            st.session_state["reset_tab3"] += 1
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error(f"❌ Lỗi cập nhật. Database trả về: {msg}")
-                            
-                if btn2.form_submit_button("🗑️ Xóa phương tiện xe"):
-                    if not xac_nhan_xoa:
-                        st.error("✋ HỆ THỐNG ĐÃ CHẶN: Vui lòng tick vào ô xác nhận trước khi thực hiện xóa xe!")
+            if btn2.button("🗑️ Xóa phương tiện xe", use_container_width=True, key=f"btn_del_{ec}"):
+                if not xac_nhan_xoa:
+                    st.error("✋ HỆ THỐNG ĐÃ CHẶN: Vui lòng tick vào ô xác nhận trước khi thực hiện xóa xe!")
+                else:
+                    is_ok, msg = delete_vehicle_transaction(db.pool, xe_id=xe_id)
+                    if is_ok:
+                        clear_master_cache()
+                        st.success("✅ " + msg)
+                        st.balloons()
+                        st.session_state["xe_edit_counter"] += 1
+                        time.sleep(1)
+                        st.rerun()
                     else:
-                        is_ok, msg = delete_vehicle_transaction(db.pool, xe_id=xe_id)
-                        if is_ok:
-                            clear_master_cache()
-                            st.success("✅ " + msg)
-                            st.balloons()
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error(f"❌ Lỗi xóa xe: {msg}")
+                        st.error(f"❌ Lỗi xóa xe: {msg}")
 
 # ==========================================
 # TAB 4: TRUNG TÂM CẢNH BÁO PHÁP LÝ TOÀN DIỆN
@@ -274,7 +282,6 @@ with tab4:
 
     # --- KHU VỰC 1: CẢNH BÁO XE ---
     st.markdown("#### 🚛 1. Pháp lý phương tiện (Đăng kiểm, Bảo hiểm, Phù hiệu)")
-    # Sử dụng Cache
     df_xe = get_cached_master_data(db, "SELECT bien_so_xe AS 'Biển Số', han_dang_kiem, han_bao_hiem_ds, han_phu_hieu FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'")
     
     if isinstance(df_xe, pd.DataFrame) and not df_xe.empty:
@@ -300,7 +307,6 @@ with tab4:
                 'Trạng thái Phù Hiệu', 'Hạn Phù Hiệu'
             ]
             df_xe_display = df_xe_danger[cols_xe_hien_thi]
-            
             st.dataframe(df_xe_display, use_container_width=True, hide_index=True)
             
             excel_buffer_xe = io.BytesIO()
@@ -329,13 +335,8 @@ with tab4:
                 )
             with col_btn2:
                 if st.button("🚀 Gửi File lên Telegram", key='btn_gui_telegram_xe', type="primary", use_container_width=True):
-                    
                     with st.spinner("Đang kiểm tra và gửi..."):
-                        success, message = kiem_tra_va_gui_bao_cao_telegram(
-                        df_xe_danger, 
-                          "XE", 
-                          excel_buffer_xe
-                        )
+                        success, message = kiem_tra_va_gui_bao_cao_telegram(df_xe_danger, "XE", excel_buffer_xe)
                         if success:
                             st.success("✅ Đã gửi danh sách tới hạn lên Telegram!")
                         else:
@@ -347,7 +348,6 @@ with tab4:
 
     # --- KHU VỰC 2: CẢNH BÁO TÀI XẾ ---
     st.markdown("#### 🧑‍✈️ 2. Pháp lý nhân sự (GPLX & Thẻ tập huấn)")
-    # Sử dụng Cache
     df_tx = get_cached_master_data(db, "SELECT ho_ten AS 'Tài Xế', so_dien_thoai AS 'SĐT', han_gplx, han_the_tap_huan FROM nhan_vien WHERE trang_thai = 'Dang_Lam_Viec' AND loai_nhan_vien IN ('Tai_Chinh', 'Tai_Phu')")
     
     if isinstance(df_tx, pd.DataFrame) and not df_tx.empty:
@@ -369,7 +369,6 @@ with tab4:
                 'Trạng thái Tập Huấn', 'Hạn Tập Huấn'
             ]
             df_tx_display = df_tx_danger[cols_tx_hien_thi]
-            
             st.dataframe(df_tx_display, use_container_width=True, hide_index=True)
             
             excel_buffer_tx = io.BytesIO()
@@ -401,11 +400,7 @@ with tab4:
             with col_btn5:
                     if st.button("🚀 GỬI FILE LÊN TELEGRAM", key='btn_gui_telegram_tx', type="primary", use_container_width=True):
                         with st.spinner("Đang kiểm tra và gửi..."):
-                            success, message = kiem_tra_va_gui_bao_cao_telegram(
-                                df_tx_danger, 
-                                "TAIXE", 
-                                excel_buffer_tx 
-                            )
+                            success, message = kiem_tra_va_gui_bao_cao_telegram(df_tx_danger, "TAIXE", excel_buffer_tx)
                             if success:
                                 st.success("✅ Đã gửi danh sách tới hạn lên Telegram!")
                             else:
@@ -414,169 +409,166 @@ with tab4:
         else:
             st.success("✅ Toàn bộ tài xế đều đầy đủ giấy phép hợp lệ.")
 
-###############################
+# ==========================================
+# TAB 5: BẢO DƯỠNG XE (Dùng Dynamic Key)
+# ==========================================
 with tab5:
     try:
-            st.markdown("### 🛠️ Hệ thống Cảnh báo Bảo dưỡng Phương tiện")
+        st.markdown("### 🛠️ Hệ thống Cảnh báo Bảo dưỡng Phương tiện")
 
-            # Không dùng cache ở đây vì dữ liệu phụ thuộc Odometer thường xuyên thay đổi
-            df_bao_duong = get_canh_bao_bao_duong(db.pool)
+        df_bao_duong = get_canh_bao_bao_duong(db.pool)
 
-            if df_bao_duong is not None and not df_bao_duong.empty:
-                df_bao_duong['km_da_chay'] = pd.to_numeric(df_bao_duong['km_da_chay'], errors='coerce').fillna(0.0)
-                df_bao_duong['dinh_muc_km'] = pd.to_numeric(df_bao_duong['dinh_muc_km'], errors='coerce').fillna(5000.0)
-                
-                df_bao_duong['dinh_muc_km'] = df_bao_duong['dinh_muc_km'].replace(0, 5000)
-                df_bao_duong['ty_le'] = (df_bao_duong['km_da_chay'] / df_bao_duong['dinh_muc_km']) * 100
-                
-                xe_qua_han = df_bao_duong[df_bao_duong['ty_le'] >= 100]
-                xe_sap_den_han = df_bao_duong[(df_bao_duong['ty_le'] >= 85) & (df_bao_duong['ty_le'] < 100)]
-                
-                col1, col2, col3 = st.columns(3)
-                col1.metric("🚨 CẦN BẢO DƯỠNG GẤP", len(xe_qua_han))
-                col2.metric("⚠️ SẮP ĐẾN HẠN (Trên 85%)", len(xe_sap_den_han))
-                col3.metric("✅ HOẠT ĐỘNG ỔN ĐỊNH", len(df_bao_duong) - len(xe_qua_han) - len(xe_sap_den_han))
-                
-                st.divider()
-                
-                df_hien_thi = df_bao_duong[['bien_so_xe', 'ngay_bd_cuoi', 'km_da_chay', 'dinh_muc_km', 'ty_le']].copy()
-                df_hien_thi.columns = ['Biển Số Xe', 'Ngày BD Gần Nhất', 'KM Đã Chạy', 'Định Mức KM', 'Tỷ Lệ (%)']
-                df_hien_thi['Ngày BD Gần Nhất'] = df_hien_thi['Ngày BD Gần Nhất'].fillna("Chưa từng BD")
-                
-                def color_status(val):
-                    try:
-                        v = float(val)
-                        if v >= 100: return 'color: red; font-weight: bold'
-                        if v >= 85: return 'color: orange; font-weight: bold'
-                        return 'color: green; font-weight: bold'
-                    except:
-                        return 'color: green; font-weight: bold'
-                    
-                def format_status(val):
-                    try:
-                        v = float(val)
-                        if v >= 100: return "Quá hạn 🔴"
-                        if v >= 85: return "Sắp đến hạn 🟡"
-                        return "Tốt 🟢"
-                    except:
-                        return "Tốt 🟢"
-
-                df_hien_thi['Đánh Giá Cảnh Báo'] = df_hien_thi['Tỷ Lệ (%)'].apply(format_status)
-                
-                st.dataframe(
-                    df_hien_thi.style.map(color_status, subset=['Đánh Giá Cảnh Báo'])\
-                                    .format({"KM Đã Chạy": "{:,.1f} km", "Định Mức KM": "{:,.0f} km", "Tỷ Lệ (%)": "{:.1f}%"}),
-                    use_container_width=True,
-                    hide_index=True
-                )
-                
-                st.markdown("<br>", unsafe_allow_html=True)
-                buffer_export_bd = io.BytesIO()
-                with pd.ExcelWriter(buffer_export_bd, engine='xlsxwriter') as writer:
-                    df_export = df_hien_thi.copy()
-                    df_export.to_excel(writer, index=False, sheet_name="Bao_Duong")
-                    worksheet = writer.sheets['Bao_Duong']
-                    
-                    header_format = writer.book.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#d9534f', 'border': 1})
-                    for col_num, col_name in enumerate(df_export.columns):
-                        worksheet.write(0, col_num, col_name, header_format)
-                        
-                    for idx, col in enumerate(df_export.columns):
-                        series_str = df_export[col].fillna("").astype(str)
-                        max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
-                        worksheet.set_column(idx, idx, min(max_len, 50))
-
-                col_dl1, col_dl2 = st.columns([1, 2])
-                with col_dl1:
-                    st.download_button(
-                        label="📥 TẢI FILE EXCEL CẢNH BÁO",
-                        data=buffer_export_bd.getvalue(),
-                        file_name=f"Canh_Bao_Bao_Duong_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        type="primary",
-                        use_container_width=True
-                    )
-            else:
-                st.info("Chưa có dữ liệu xe để hiển thị.")
-
+        if df_bao_duong is not None and not df_bao_duong.empty:
+            df_bao_duong['km_da_chay'] = pd.to_numeric(df_bao_duong['km_da_chay'], errors='coerce').fillna(0.0)
+            df_bao_duong['dinh_muc_km'] = pd.to_numeric(df_bao_duong['dinh_muc_km'], errors='coerce').fillna(5000.0)
+            
+            df_bao_duong['dinh_muc_km'] = df_bao_duong['dinh_muc_km'].replace(0, 5000)
+            df_bao_duong['ty_le'] = (df_bao_duong['km_da_chay'] / df_bao_duong['dinh_muc_km']) * 100
+            
+            xe_qua_han = df_bao_duong[df_bao_duong['ty_le'] >= 100]
+            xe_sap_den_han = df_bao_duong[(df_bao_duong['ty_le'] >= 85) & (df_bao_duong['ty_le'] < 100)]
+            
+            col1, col2, col3 = st.columns(3)
+            col1.metric("🚨 CẦN BẢO DƯỠNG GẤP", len(xe_qua_han))
+            col2.metric("⚠️ SẮP ĐẾN HẠN (Trên 85%)", len(xe_sap_den_han))
+            col3.metric("✅ HOẠT ĐỘNG ỔN ĐỊNH", len(df_bao_duong) - len(xe_qua_han) - len(xe_sap_den_han))
+            
             st.divider()
-
-            # ==========================================
-            # FORM NHẬP LỊCH SỬ BẢO DƯỠNG
-            # ==========================================
-            st.markdown("### 📝 Lập Phiếu Ghi Nhận Bảo Dưỡng / Sửa Chữa")
-
-            # Dùng cache lấy dữ liệu phương tiện để đổ vào form
-            sql_get_xe = "SELECT id, bien_so_xe FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'"
-            df_xe = get_cached_master_data(db, sql_get_xe)
-
-            if df_xe is not None and not df_xe.empty:
-                xe_dict = dict(zip(df_xe['id'], df_xe['bien_so_xe']))
+            
+            df_hien_thi = df_bao_duong[['bien_so_xe', 'ngay_bd_cuoi', 'km_da_chay', 'dinh_muc_km', 'ty_le']].copy()
+            df_hien_thi.columns = ['Biển Số Xe', 'Ngày BD Gần Nhất', 'KM Đã Chạy', 'Định Mức KM', 'Tỷ Lệ (%)']
+            df_hien_thi['Ngày BD Gần Nhất'] = df_hien_thi['Ngày BD Gần Nhất'].fillna("Chưa từng BD")
+            
+            def color_status(val):
+                try:
+                    v = float(val)
+                    if v >= 100: return 'color: red; font-weight: bold'
+                    if v >= 85: return 'color: orange; font-weight: bold'
+                    return 'color: green; font-weight: bold'
+                except: return 'color: green; font-weight: bold'
                 
-                with st.form("form_nhap_bao_duong", clear_on_submit=True):
-                    c1, c2, c3 = st.columns(3)
-                    xe_duoc_chon = c1.selectbox("🚛 Chọn xe", options=list(xe_dict.keys()), format_func=lambda x: xe_dict[x])
-                    ngay_bd = c2.date_input("📅 Ngày thực hiện", format="DD/MM/YYYY")
-                    loai_bd = c3.selectbox("Loại sửa chữa", options=['Dinh_Ky', 'Sua_Chua_Dot_Xuat', 'Thay_Lop', 'Khac'], 
-                                        format_func=lambda x: "Bảo dưỡng định kỳ" if x == 'Dinh_Ky' else ("Sửa chữa đột xuất" if x == 'Sua_Chua_Dot_Xuat' else ("Thay lốp" if x == 'Thay_Lop' else "Khác")))
+            def format_status(val):
+                try:
+                    v = float(val)
+                    if v >= 100: return "Quá hạn 🔴"
+                    if v >= 85: return "Sắp đến hạn 🟡"
+                    return "Tốt 🟢"
+                except: return "Tốt 🟢"
+
+            df_hien_thi['Đánh Giá Cảnh Báo'] = df_hien_thi['Tỷ Lệ (%)'].apply(format_status)
+            
+            st.dataframe(
+                df_hien_thi.style.map(color_status, subset=['Đánh Giá Cảnh Báo'])\
+                                .format({"KM Đã Chạy": "{:,.1f} km", "Định Mức KM": "{:,.0f} km", "Tỷ Lệ (%)": "{:.1f}%"}),
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            buffer_export_bd = io.BytesIO()
+            with pd.ExcelWriter(buffer_export_bd, engine='xlsxwriter') as writer:
+                df_export = df_hien_thi.copy()
+                df_export.to_excel(writer, index=False, sheet_name="Bao_Duong")
+                worksheet = writer.sheets['Bao_Duong']
+                
+                header_format = writer.book.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#d9534f', 'border': 1})
+                for col_num, col_name in enumerate(df_export.columns):
+                    worksheet.write(0, col_num, col_name, header_format)
                     
-                    c4, c5 = st.columns(2)
-                    km_luc_bd = c4.number_input("Tốc độ kế (Số KM trên đồng hồ xe hiện tại)", min_value=0.0, step=10.0, 
-                                                help="Đồng hồ phần mềm sẽ được đồng bộ lại với con số này (nếu chọn Bảo dưỡng định kỳ).")
-                    chi_phi_bd = c5.text_input("Tổng chi phí (VNĐ)", placeholder="VD: 5,500,000")
+                for idx, col in enumerate(df_export.columns):
+                    series_str = df_export[col].fillna("").astype(str)
+                    max_len = max(series_str.map(len).max() if not series_str.empty else 0, len(str(col))) + 2
+                    worksheet.set_column(idx, idx, min(max_len, 50))
+
+            col_dl1, col_dl2 = st.columns([1, 2])
+            with col_dl1:
+                st.download_button(
+                    label="📥 TẢI FILE EXCEL CẢNH BÁO",
+                    data=buffer_export_bd.getvalue(),
+                    file_name=f"Canh_Bao_Bao_Duong_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                    use_container_width=True
+                )
+        else:
+            st.info("Chưa có dữ liệu xe để hiển thị.")
+
+        st.divider()
+
+        # ==========================================
+        # FORM NHẬP LỊCH SỬ BẢO DƯỠNG
+        # ==========================================
+        st.markdown("### 📝 Lập Phiếu Ghi Nhận Bảo Dưỡng / Sửa Chữa")
+
+        sql_get_xe = "SELECT id, bien_so_xe FROM xe WHERE trang_thai = 'Dang_Hoat_Dong'"
+        df_xe_bd = get_cached_master_data(db, sql_get_xe)
+
+        if df_xe_bd is not None and not df_xe_bd.empty:
+            xe_dict_bd = dict(zip(df_xe_bd['id'], df_xe_bd['bien_so_xe']))
+            bc = st.session_state['bd_add_counter']
+            
+            c1, c2, c3 = st.columns(3)
+            xe_duoc_chon = c1.selectbox("🚛 Chọn xe", options=list(xe_dict_bd.keys()), format_func=lambda x: xe_dict_bd[x], key=f"bd_xe_{bc}")
+            ngay_bd = c2.date_input("📅 Ngày thực hiện", format="DD/MM/YYYY", key=f"bd_ngay_{bc}")
+            loai_bd = c3.selectbox("Loại sửa chữa", options=['Dinh_Ky', 'Sua_Chua_Dot_Xuat', 'Thay_Lop', 'Khac'], 
+                                format_func=lambda x: "Bảo dưỡng định kỳ" if x == 'Dinh_Ky' else ("Sửa chữa đột xuất" if x == 'Sua_Chua_Dot_Xuat' else ("Thay lốp" if x == 'Thay_Lop' else "Khác")), key=f"bd_loai_{bc}")
+            
+            c4, c5 = st.columns(2)
+            km_luc_bd = c4.number_input("Tốc độ kế (Số KM trên đồng hồ xe hiện tại)", min_value=0.0, step=10.0, 
+                                        help="Đồng hồ phần mềm sẽ được đồng bộ lại với con số này (nếu chọn Bảo dưỡng định kỳ).", key=f"bd_km_{bc}")
+            chi_phi_bd = c5.text_input("Tổng chi phí (VNĐ)", placeholder="VD: 5,500,000", key=f"bd_tien_{bc}")
+            
+            hang_muc = st.text_area("🔧 Hạng mục thực hiện", placeholder="VD: Thay nhớt máy, lọc gió, đảo lốp...", key=f"bd_hangmuc_{bc}")
+            
+            c6, c7 = st.columns(2)
+            don_vi = c6.text_input("🏭 Đơn vị Garage", placeholder="Tên Garage", key=f"bd_dv_{bc}")
+            ghi_chu = c7.text_input("Ghi chú thêm", key=f"bd_gc_{bc}")
+            
+            if st.button("💾 Lưu Phiếu", type="primary", use_container_width=True, key=f"btn_bd_{bc}"):
+                try:
+                    tien_clean = float(chi_phi_bd.replace(",", "").replace(".", "").strip()) if chi_phi_bd else 0.0
+                except:
+                    tien_clean = 0.0
                     
-                    hang_muc = st.text_area("🔧 Hạng mục thực hiện", placeholder="VD: Thay nhớt máy, lọc gió, đảo lốp...")
+                if not hang_muc.strip():
+                    st.error("⚠️ Vui lòng nhập chi tiết hạng mục!")
+                else:
+                    data_bd = {
+                        'xe_id': xe_duoc_chon,
+                        'ngay_bao_duong': ngay_bd.strftime('%Y-%m-%d'),
+                        'km_thuc_te': km_luc_bd,
+                        'loai_bao_duong': loai_bd,
+                        'hang_muc_sua_chua': hang_muc.strip(),
+                        'chi_phi': tien_clean,
+                        'don_vi_thuc_hien': don_vi.strip(),
+                        'ghi_chu': ghi_chu.strip()
+                    }
                     
-                    c6, c7 = st.columns(2)
-                    don_vi = c6.text_input("🏭 Đơn vị Garage", placeholder="Tên Garage")
-                    ghi_chu = c7.text_input("Ghi chú thêm")
+                    with st.spinner("Đang lưu dữ liệu..."):
+                        is_ok, msg = save_lich_su_bao_duong(db.pool, data_bd)
                     
-                    if st.form_submit_button("💾 Lưu Phiếu", type="primary"):
-                        try:
-                            tien_clean = float(chi_phi_bd.replace(",", "").replace(".", "").strip()) if chi_phi_bd else 0.0
-                        except:
-                            tien_clean = 0.0
-                            
-                        if not hang_muc.strip():
-                            st.error("⚠️ Vui lòng nhập chi tiết hạng mục!")
-                        else:
-                            data_bd = {
-                                'xe_id': xe_duoc_chon,
-                                'ngay_bao_duong': ngay_bd.strftime('%Y-%m-%d'),
-                                'km_thuc_te': km_luc_bd,
-                                'loai_bao_duong': loai_bd,
-                                'hang_muc_sua_chua': hang_muc.strip(),
-                                'chi_phi': tien_clean,
-                                'don_vi_thuc_hien': don_vi.strip(),
-                                'ghi_chu': ghi_chu.strip()
-                            }
-                            
-                            with st.spinner("Đang lưu dữ liệu..."):
-                                is_ok, msg = save_lich_su_bao_duong(db.pool, data_bd)
-                            
-                            if is_ok:
-                                clear_master_cache() # Làm mới cache vì dữ liệu bảo dưỡng có cập nhật lại thông tin trong bảng xe
-                                st.success(msg)
-                                import time; time.sleep(1)
-                                st.rerun() 
-                            else:
-                                st.error(msg)
+                    if is_ok:
+                        clear_master_cache() 
+                        st.success(msg)
+                        st.session_state['bd_add_counter'] += 1
+                        time.sleep(1)
+                        st.rerun() 
+                    else:
+                        st.error(msg)
     except Exception as e: st.error(f"Lỗi: {e}")
 
-################## Tab báo cáo hiệu năng của xe ################################ 
-# #############################################    
+# ==========================================
+# TAB 6: BÁO CÁO HIỆU NĂNG CỦA XE
+# ==========================================
 with tab6:
     try:
         st.markdown("## 📊 DASHBOARD PHÂN TÍCH HIỆU NĂNG & TUỔI THỌ PHƯƠNG TIỆN")
         st.caption("Tra cứu lịch sử vận hành, mức tiêu hao nhiên liệu và chi phí bảo trì của toàn đội xe hoặc từng đầu xe.")
 
-        # --- 1. BỘ LỌC TÌM KIẾM ---
         with st.container(border=True):
             c_loc1, c_loc2, c_loc3 = st.columns([2, 1, 1])
             
-            # Sử dụng Cache cho danh sách xe làm bộ lọc
             df_all_xe = get_cached_master_data(db, "SELECT id, bien_so_xe, tong_km_hien_tai FROM xe")
-            
             xe_dict = {0: "🌟 TẤT CẢ PHƯƠNG TIỆN"}
             km_dict = {}
             
@@ -594,9 +586,7 @@ with tab6:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # --- 2. XỬ LÝ VÀ HIỂN THỊ SỐ LIỆU (KPIs) ---
         if xe_duoc_chon is not None:
-            # Các hàm báo cáo giữ nguyên không dùng cache do phụ thuộc thời gian và cập nhật realtime
             stats_hoat_dong = get_thong_ke_hoat_dong_xe(db.pool, xe_duoc_chon, tu_ngay.strftime('%Y-%m-%d'), den_ngay.strftime('%Y-%m-%d'))
             df_bao_duong = get_chi_tiet_bao_duong_xe(db.pool, xe_duoc_chon, tu_ngay.strftime('%Y-%m-%d'), den_ngay.strftime('%Y-%m-%d'))
             df_bieu_do = get_bieu_do_hoat_dong(db.pool, xe_duoc_chon, tu_ngay.strftime('%Y-%m-%d'), den_ngay.strftime('%Y-%m-%d'))
@@ -672,8 +662,6 @@ with tab6:
 
             st.divider()
 
-            
-            # --- 3. BẢNG CHI TIẾT & XUẤT EXCEL ---
             st.markdown(f"#### 🛠️ Bảng kê chi tiết lịch sử bảo dưỡng")
                 
             if not df_bao_duong.empty:
@@ -690,7 +678,6 @@ with tab6:
                     loai_map = {'Dinh_Ky': 'Định kỳ', 'Sua_Chua_Dot_Xuat': 'Đột xuất', 'Thay_Lop': 'Thay lốp', 'Khac': 'Khác'}
                     df_hien_thi['Loại'] = df_hien_thi['Loại'].map(loai_map).fillna(df_hien_thi['Loại'])
                     
-                    # [CẬP NHẬT]: Ép kiểu số an toàn và format chống lỗi NaN trên giao diện
                     df_hien_thi['Chi Phí (VNĐ)'] = pd.to_numeric(df_hien_thi['Chi Phí (VNĐ)'], errors='coerce').fillna(0)
                     df_hien_thi['KM Lúc Sửa (Odo)'] = pd.to_numeric(df_hien_thi['KM Lúc Sửa (Odo)'], errors='coerce').fillna(0)
                     df_hien_thi['Dầu Tiêu Thụ (Lít)'] = pd.to_numeric(df_hien_thi['Dầu Tiêu Thụ (Lít)'], errors='coerce').fillna(0)
@@ -739,9 +726,7 @@ with tab6:
             st.markdown("<br><br>", unsafe_allow_html=True)
             st.divider()
 
-            # --- 4. BẢNG KÊ TỔNG HỢP VẬN HÀNH ---
             st.markdown(f"#### 🚛 Bảng thống kê hiệu suất vận hành (Theo thời gian lọc)")
-            
             df_tong_hop = get_bang_ke_tong_hop_xe(db.pool, xe_duoc_chon, tu_ngay.strftime('%Y-%m-%d'), den_ngay.strftime('%Y-%m-%d'))
             
             if not df_tong_hop.empty:
