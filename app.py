@@ -21,7 +21,7 @@ def show_page():
         """
         st.markdown(custom_css, unsafe_allow_html=True)
         
-    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar
+    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar (Tối ưu cho cả PC và Mobile)
     st.markdown("""
         <style>
             .block-container {
@@ -32,18 +32,24 @@ def show_page():
                 max-width: 98% !important;
             }
             [data-testid="stAppViewBlockContainer"] { padding-top: 1rem !important; }
-            header[data-testid="stHeader"] { display: none !important; }
-            [data-testid="collapsedControl"] { display: none !important; }
-            button[kind="header"] { display: none !important; }
+            
+            /* TỐI ƯU HEADER & NÚT MỞ MENU TRÊN MOBILE */
+            /* Thay vì ẩn hoàn toàn, ta làm nó trong suốt và chỉ hiện nút Hamburger ở góc trái */
+            header[data-testid="stHeader"] { 
+                background-color: transparent !important; 
+            }
+            
+            /* Giữ lại nút Hamburger (collapsedControl) trên Mobile để có thể bấm vào mở menu */
+            @media (min-width: 768px) {
+                /* Trên màn hình máy tính: Vẫn ẩn hoàn toàn Header để tiết kiệm diện tích */
+                header[data-testid="stHeader"] { display: none !important; }
+            }
 
             section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
                 border-right: 2px solid #e2e8f0 !important;
                 min-width: 330px !important; 
                 max-width: 330px !important;
-                display: flex !important; 
-                transform: none !important; 
-                visibility: visible !important;
             }
 
             section[data-testid="stSidebar"] > div { padding-top: 0rem !important; }
