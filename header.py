@@ -15,144 +15,53 @@ def render_header(current_page="home"):
         
     logo_b64 = get_base64_image(logo_path)
 
-    # Đưa khối HTML ra ngoài biên an toàn bằng chuỗi nhiều dòng
-    header_html = f"""
-    <style>
-    html, body, [class*="css"], .stApp, p, span, div, label, input, button {{
-        font-family: "Times New Roman", Times, serif !important;
-    }}
+    # Sử dụng layout chuẩn của Streamlit cho phần Logo & Tiêu đề
+    cols = st.columns([0.15, 0.85])
+    with cols[0]:
+        if logo_b64:
+            st.markdown(f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 60px; height: 60px; border-radius: 8px; object-fit: cover;">', unsafe_allow_html=True)
+        else:
+            st.write("🚚")
+    with cols[1]:
+        st.markdown("<h3 style='margin: 0; color: #0B2E9E;'>BẢO TÍN LOGISTICS</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='margin: 0; color: #FF6B00; font-weight: bold; font-size: 14px;'>TRUCKINGBAOTIN.COM</p>", unsafe_allow_html=True)
 
-    .nav-item, a, a:link, a:visited, a:hover, a:active {{
-        text-decoration: none !important;
-        border-bottom: none !important;
-    }}
+    st.divider()
 
-    .stApp {{ background-color: #f8fafc; }}
+    # Dùng st.radio theo dạng horizontal (thanh ngang) để thay thế cho các thẻ link HTML trên mobile
+    pages_map = {
+        "🏠 Trang chủ": "home",
+        "📦 Dịch vụ": "dich_vu",
+        "🚚 Đội xe": "doi_xe",
+        "🌏 Tuyến Cambodia": "tuyen_cambodia",
+        "📞 Liên hệ": "lien_he",
+        "⚙️ Điều hành nội bộ": "app"
+    }
 
-    .block-container {{
-        max-width: 100% !important;
-        padding-top: 0rem !important;
-        padding-bottom: 1rem !important;
-        padding-left: 2.5rem !important;
-        padding-right: 2.5rem !important;
-    }}
+    # Xác định index hiện tại dựa vào current_page truyền vào
+    reverse_map = {v: k for k, v in pages_map.items()}
+    current_label = reverse_map.get(current_page, "🏠 Trang chủ")
+    all_labels = list(pages_map.keys())
+    
+    selected_label = st.radio(
+        "Điều hướng hệ thống",
+        options=all_labels,
+        index=all_labels.index(current_label) if current_label in all_labels else 0,
+        horizontal=True,
+        label_visibility="collapsed"
+    )
 
-    header {{ visibility: hidden; }}
+    # Chuyển trang ngay lập tức khi user chọn menu mới trên điện thoại
+    chosen_page_key = pages_map[selected_label]
+    if chosen_page_key != current_page:
+        st.query_params["page"] = chosen_page_key
+        st.rerun()
 
-    /* Khung chứa NavBar */
-    .navbar-container {{
-        display: flex;
-        align-items: center;
-        background-color: #0B2E9E;
-        padding: 15px 20px;
-        margin-top: 15px;
-        margin-left: -2.5rem !important;
-        margin-right: -2.5rem !important;
-        width: calc(100% + 5rem) !important;
-        box-sizing: border-box;
-        position: relative;
-        flex-wrap: wrap;
-        gap: 15px;
-    }}
-
-    .brand-group {{ 
-        display: flex; 
-        align-items: center; 
-        gap: 15px; 
-        text-align: left; 
-        z-index: 10;
-        min-width: max-content;
-    }}
-
-    /* Menu cuộn ngang mượt mà trên iPhone/Mobile */
-    .nav-links-group {{ 
-        display: flex; 
-        gap: 15px; 
-        align-items: center;
-        flex: 1;
-        justify-content: flex-end;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        white-space: nowrap;
-        padding-bottom: 5px;
-    }}
-
-    .nav-links-group::-webkit-scrollbar {{
-        display: none; 
-    }}
-
-    .nav-item {{
-        font-size: 16px;
-        font-weight: 600;
-        transition: opacity 0.2s;
-        color: #ffffff !important;
-        padding: 8px 12px;
-        background-color: rgba(255, 255, 255, 0.1);
-        border-radius: 6px;
-    }}
-
-    .nav-item:hover, .nav-item.active {{
-        opacity: 1;
-        background-color: rgba(255, 255, 255, 0.25);
-    }}
-
-    .bottom-bar-3d {{
-        background: linear-gradient(180deg, #1342c4 0%, #0B2E9E 50%, #061c63 100%); 
-        color: white; 
-        text-align: center; 
-        padding: 8px 15px; 
-        font-size: 14px; 
-        font-weight: bold; 
-        letter-spacing: 1px; 
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3); 
-        border-bottom: 2px solid #FF6B00; 
-        margin-bottom: 15px; 
-        margin-left: -2.5rem !important;
-        margin-right: -2.5rem !important;
-        width: calc(100% + 5rem) !important;
-        box-sizing: border-box;
-    }}
-
-    @media (max-width: 900px) {{
-        .navbar-container {{ 
-            flex-direction: column;
-            align-items: flex-start;
-            padding: 15px;
-        }}
-        
-        .nav-links-group {{ 
-            width: 100%;
-            justify-content: flex-start;
-            padding-bottom: 10px;
-        }}
-        
-        .nav-item {{
-            font-size: 15px;
-        }}
-    }}
-    </style>
-
-    <div class="navbar-container">
-        <div class="brand-group">
-            {f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover; border: 1px solid rgba(255,255,255,0.2);">' if logo_b64 else '<div style="width:50px;height:50px;background:#ddd;border-radius:8px;"></div>'}
-            <div style="line-height: 1.2;">
-                <span style="color: #ffffff; font-size: 17px; font-weight: 900; display: block; letter-spacing: 1px;">BẢO TÍN LOGISTICS</span>
-                <span style="color: #FF6B00; font-size: 13px; font-weight: bold;">TRUCKINGBAOTIN.COM</span>
-            </div>
-        </div>
-        
-        <div class="nav-links-group">
-            <a href="?page=home" target="_self" class="nav-item {'active' if current_page == 'home' else ''}">Trang chủ</a>
-            <a href="?page=dich_vu" target="_self" class="nav-item {'active' if current_page == 'dich_vu' else ''}">Dịch vụ</a>
-            <a href="?page=doi_xe" target="_self" class="nav-item {'active' if current_page == 'doi_xe' else ''}">Đội xe</a>
-            <a href="?page=tuyen_cambodia" target="_self" class="nav-item {'active' if current_page == 'tuyen_cambodia' else ''}">Tuyến Cambodia</a>
-            <a href="?page=lien_he" target="_self" class="nav-item {'active' if current_page == 'lien_he' else ''}">Liên hệ</a>
-            <a href="?page=app" target="_self" class="nav-item {'active' if current_page == 'app' else ''}">Điều hành nội bộ</a>
-        </div>
+    # Thanh thông tin nhận diện 3D phía dưới
+    st.markdown("""
+    <div style="background: linear-gradient(180deg, #1342c4 0%, #0B2E9E 50%, #061c63 100%); 
+    color: white; text-align: center; padding: 8px; font-size: 13px; font-weight: bold; 
+    border-bottom: 2px solid #FF6B00; border-radius: 6px; margin: 15px 0;">
+    VPDD CÔNG TY TNHH BẢO TÍN LOGISTICS | 宝信物流公司 | We truck your trust
     </div>
-
-    <div class="bottom-bar-3d">
-        VPDD CÔNG TY TNHH BẢO TÍN LOGISTICS | 宝信物流公司 | We truck your trust
-    </div>
-    """
-    st.markdown(header_html, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
