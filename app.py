@@ -21,7 +21,7 @@ def show_page():
         """
         st.markdown(custom_css, unsafe_allow_html=True)
         
-    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar (XÓA TOÀN BỘ CODE CAN THIỆP HEADER)
+    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar (ĐÓNG ĐINH NÚT MENU TRÊN ĐIỆN THOẠI)
     st.markdown("""
         <style>
             .block-container {
@@ -32,6 +32,33 @@ def show_page():
                 max-width: 98% !important;
             }
             
+            /* LÀM TRONG SUỐT THANH HEADER NHƯNG VẪN CHO NÓ TỒN TẠI */
+            header[data-testid="stHeader"] { 
+                background-color: transparent !important; 
+                box-shadow: none !important;
+                visibility: visible !important;
+            }
+
+            /* --- ÉP CỨNG MŨI TÊN/NÚT HAMBURGER TRÊN ĐIỆN THOẠI KHÔNG ĐƯỢC BIẾN MẤT --- */
+            [data-testid="collapsedControl"] {
+                display: flex !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                z-index: 999999 !important; /* Đẩy lên lớp ngoài cùng, không ai che được */
+                background-color: #0b5394 !important; /* Đổ nền xanh đậm cho mũi tên */
+                border-radius: 6px !important;
+                padding: 2px !important;
+                margin: 10px !important;
+                color: white !important; /* Đổi màu mũi tên thành trắng để nổi bật */
+                transition: none !important; /* Tắt mọi hiệu ứng mờ đi của Streamlit */
+            }
+
+            /* Đổi màu icon mũi tên bên trong thành màu trắng */
+            [data-testid="collapsedControl"] svg {
+                fill: white !important;
+                color: white !important;
+            }
+
             /* TRANG TRÍ MÀU SẮC CHO SIDEBAR */
             section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
@@ -86,12 +113,15 @@ def show_page():
                 font-weight: 800 !important;
             }
 
+            /* Nút Đăng xuất */
             section[data-testid="stSidebar"] .stButton button {
                 width: 100%;
                 font-size: 15px !important;
                 font-weight: bold !important;
                 border-radius: 6px !important;
             }
+            
+            /* Xóa dòng hướng dẫn nhập text dư thừa của Streamlit */
             div[data-testid="InputInstructions"] { display: none !important; }
         </style>
     """, unsafe_allow_html=True)
