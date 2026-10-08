@@ -38,18 +38,20 @@ html, body, [class*="css"], .stApp, p, span, div, label, input, button {{
 
 header {{ visibility: hidden; }}
 
+/* Khung chứa NavBar */
 .navbar-container {{
     display: flex;
     align-items: center;
     background-color: #0B2E9E;
-    padding: 15px 40px;
+    padding: 15px 20px; /* Thu gọn padding cho Mobile */
     margin-top: 15px;
     margin-left: -2.5rem !important;
     margin-right: -2.5rem !important;
     width: calc(100% + 5rem) !important;
     box-sizing: border-box;
-    border-radius: 0px !important;
     position: relative;
+    flex-wrap: wrap; /* Cho phép rớt dòng trên Mobile */
+    gap: 15px;
 }}
 
 .brand-group {{ 
@@ -57,27 +59,41 @@ header {{ visibility: hidden; }}
     align-items: center; 
     gap: 15px; 
     text-align: left; 
-    z-index: 10; 
+    z-index: 10;
+    min-width: max-content;
 }}
 
+/* Menu cuộn ngang trên điện thoại */
 .nav-links-group {{ 
     display: flex; 
-    gap: 30px; 
+    gap: 15px; 
     align-items: center;
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
+    flex: 1; /* Chiếm phần không gian còn lại */
+    justify-content: flex-end; /* Mặc định canh phải trên PC */
+    overflow-x: auto; /* Kích hoạt cuộn ngang */
+    -webkit-overflow-scrolling: touch; /* Mượt mà trên iOS */
+    white-space: nowrap; /* Không rớt dòng các nút menu */
+    padding-bottom: 5px; /* Chừa không gian cho Scrollbar nếu có */
+}}
+
+/* Giấu thanh cuộn ngang để giao diện đẹp như App */
+.nav-links-group::-webkit-scrollbar {{
+    display: none; 
 }}
 
 .nav-item {{
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
     transition: opacity 0.2s;
-    color: #ffffff !important; 
+    color: #ffffff !important;
+    padding: 8px 12px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
 }}
 
-.nav-item:hover {{
-    opacity: 0.7;
+.nav-item:hover, .nav-item.active {{
+    opacity: 1;
+    background-color: rgba(255, 255, 255, 0.25);
 }}
 
 .bottom-bar-3d {{
@@ -97,32 +113,47 @@ header {{ visibility: hidden; }}
     box-sizing: border-box;
 }}
 
-@media (max-width: 1050px) {{
-    .navbar-container {{ justify-content: space-between; }}
-    .nav-links-group {{ position: static; transform: none; }}
+/* RESPONSIVE CHO ĐIỆN THOẠI / TABLET MÀN HÌNH NHỎ */
+@media (max-width: 900px) {{
+    .navbar-container {{ 
+        flex-direction: column; /* Đẩy Menu xuống dòng dưới Logo */
+        align-items: flex-start;
+        padding: 15px;
+    }}
+    
+    .nav-links-group {{ 
+        width: 100%; /* Trải dài 100% chiều ngang */
+        justify-content: flex-start; /* Canh trái để dễ vuốt */
+        padding-bottom: 10px;
+    }}
+    
+    .nav-item {{
+        font-size: 15px;
+    }}
 }}
 </style>
 
 <div class="navbar-container">
-<div class="brand-group">
-{f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover; border: 1px solid rgba(255,255,255,0.2);">' if logo_b64 else '<div style="width:50px;height:50px;background:#ddd;border-radius:8px;"></div>'}
-<div style="line-height: 1.2;">
-<span style="color: #ffffff; font-size: 17px; font-weight: 900; display: block; letter-spacing: 1px;">BẢO TÍN LOGISTICS</span>
-<span style="color: #FF6B00; font-size: 13px; font-weight: bold;">TRUCKINGBAOTIN.COM</span>
-</div>
-</div>
-<div class="nav-links-group">
-<a href="?page=home" target="_self" class="nav-item">Trang chủ</a>
-<a href="?page=dich_vu" target="_self" class="nav-item">Dịch vụ</a>
-<a href="?page=doi_xe" target="_self" class="nav-item">Đội xe</a>
-<a href="?page=tuyen_cambodia" target="_self" class="nav-item">Tuyến Cambodia</a>
-<a href="?page=lien_he" target="_self" class="nav-item">Liên hệ</a>
-<a href="?page=app" target="_blank" class="nav-item">Điều hành nội bộ</a>
-</div>
+    <div class="brand-group">
+        {f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover; border: 1px solid rgba(255,255,255,0.2);">' if logo_b64 else '<div style="width:50px;height:50px;background:#ddd;border-radius:8px;"></div>'}
+        <div style="line-height: 1.2;">
+            <span style="color: #ffffff; font-size: 17px; font-weight: 900; display: block; letter-spacing: 1px;">BẢO TÍN LOGISTICS</span>
+            <span style="color: #FF6B00; font-size: 13px; font-weight: bold;">TRUCKINGBAOTIN.COM</span>
+        </div>
+    </div>
+    
+    <div class="nav-links-group">
+        <a href="?page=home" target="_self" class="nav-item {'active' if current_page == 'home' else ''}">Trang chủ</a>
+        <a href="?page=dich_vu" target="_self" class="nav-item {'active' if current_page == 'dich_vu' else ''}">Dịch vụ</a>
+        <a href="?page=doi_xe" target="_self" class="nav-item {'active' if current_page == 'doi_xe' else ''}">Đội xe</a>
+        <a href="?page=tuyen_cambodia" target="_self" class="nav-item {'active' if current_page == 'tuyen_cambodia' else ''}">Tuyến Cambodia</a>
+        <a href="?page=lien_he" target="_self" class="nav-item {'active' if current_page == 'lien_he' else ''}">Liên hệ</a>
+        <a href="?page=app" target="_self" class="nav-item {'active' if current_page == 'app' else ''}">Điều hành nội bộ</a>
+    </div>
 </div>
 
 <div class="bottom-bar-3d">
-VPDD CÔNG TY TNHH BẢO TÍN LOGISTICS | 宝信物流公司 | We truck your trust
+    VPDD CÔNG TY TNHH BẢO TÍN LOGISTICS | 宝信物流公司 | We truck your trust
 </div>
 """
     st.markdown(header_html, unsafe_allow_html=True)
