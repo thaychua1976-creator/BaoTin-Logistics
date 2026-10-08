@@ -14,14 +14,10 @@ def render_header(current_page="home"):
         return None
         
     logo_b64 = get_base64_image(logo_path)
-    
-    # Nếu không có ảnh, dùng icon mặc định để không bị vỡ giao diện
     img_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" class="logo-img">' if logo_b64 else '<div class="logo-placeholder">🚚</div>'
 
-    # Đóng gói toàn bộ CSS và HTML vào chung 1 chuỗi an toàn
     header_html = f"""
     <style>
-    /* Reset font */
     html, body, [class*="css"], .stApp, p, span, div, label, input, button {{
         font-family: "Times New Roman", Times, serif !important;
     }}
@@ -36,16 +32,6 @@ def render_header(current_page="home"):
         padding-right: 2.5rem !important;
     }}
     
-    /* --- BẢN VÁ LỖI MẤT MENU TRÊN ĐIỆN THOẠI --- */
-    /* Tuyệt đối KHÔNG DÙNG "visibility: hidden" hoặc "display: none" cho header */
-    /* Thay vào đó, ta làm nó trong suốt để không bị lộ, nhưng vẫn tồn tại để nút Menu ERP hoạt động */
-    header[data-testid="stHeader"] {{ 
-        background-color: transparent !important; 
-        box-shadow: none !important;
-    }}
-    
-
-    /* Khung bảo vệ toàn bộ Header tránh vỡ HTML */
     .main-header-wrapper {{
         background-color: #0B2E9E;
         padding: 12px 15px;
@@ -56,11 +42,10 @@ def render_header(current_page="home"):
         box-sizing: border-box;
         display: flex;
         align-items: center;
-        flex-wrap: wrap; /* Cho phép rớt dòng trên Mobile */
+        flex-wrap: wrap; 
         gap: 15px;
     }}
 
-    /* Khu vực Logo */
     .brand-group {{ 
         display: flex; 
         align-items: center; 
@@ -73,16 +58,15 @@ def render_header(current_page="home"):
     .brand-title {{ color: #ffffff; font-size: 16px; font-weight: 900; letter-spacing: 1px; margin: 0; }}
     .brand-sub {{ color: #FF6B00; font-size: 12px; font-weight: bold; margin: 0; }}
 
-    /* Khu vực Menu - Tính năng Swipe vuốt ngang trên Mobile */
     .nav-links-group {{ 
         display: flex; 
         gap: 10px; 
         flex: 1; 
         justify-content: flex-end; 
-        overflow-x: auto; /* Bật vuốt ngang */
-        -webkit-overflow-scrolling: touch; /* Mượt mà trên iOS */
-        white-space: nowrap; /* Không cho rớt dòng các nút */
-        padding-bottom: 5px; /* Tránh cấn thanh cuộn */
+        overflow-x: auto; 
+        -webkit-overflow-scrolling: touch; 
+        white-space: nowrap; 
+        padding-bottom: 5px; 
     }}
     .nav-links-group::-webkit-scrollbar {{ display: none; }}
 
@@ -100,7 +84,6 @@ def render_header(current_page="home"):
         background-color: rgba(255, 255, 255, 0.25);
     }}
 
-    /* Thanh chân trang 3D */
     .bottom-bar-3d {{
         background: linear-gradient(180deg, #1342c4 0%, #0B2E9E 50%, #061c63 100%); 
         color: white; text-align: center; padding: 8px 10px; font-size: 13px; font-weight: bold; 
@@ -109,7 +92,6 @@ def render_header(current_page="home"):
         width: calc(100% + 5rem) !important; box-sizing: border-box;
     }}
 
-    /* Tối ưu riêng cho màn hình điện thoại (Dưới 900px) */
     @media (max-width: 900px) {{
         .main-header-wrapper {{ 
             flex-direction: column; 
@@ -118,7 +100,7 @@ def render_header(current_page="home"):
         }}
         .nav-links-group {{ 
             width: 100%; 
-            justify-content: flex-start; /* Ép menu sát lề trái để dễ vuốt */
+            justify-content: flex-start; 
         }}
     }}
     </style>
@@ -146,5 +128,4 @@ def render_header(current_page="home"):
     </div>
     """
     
-    # Lệnh duy nhất render HTML, đảm bảo không có tag đóng/mở bị dư thừa
     st.markdown(header_html, unsafe_allow_html=True)
