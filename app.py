@@ -21,54 +21,31 @@ def show_page():
         """
         st.markdown(custom_css, unsafe_allow_html=True)
         
-    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar
+    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar (An toàn - Không can thiệp sâu vào Core Streamlit)
     st.markdown("""
         <style>
             .block-container {
-                padding-top: 1rem !important;
+                padding-top: 1.5rem !important;
                 padding-bottom: 1rem !important;
                 padding-left: 1rem !important;
                 padding-right: 1rem !important;
                 max-width: 98% !important;
             }
-            [data-testid="stAppViewBlockContainer"] { padding-top: 1rem !important; }
             
-            /* TÙY CHỈNH HEADER DỰA TRÊN THIẾT BỊ */
-            /* 1. Trên máy tính: Ẩn thanh header và nút menu đi vì sidebar đã mở sẵn */
-            @media screen and (min-width: 768px) {
-                header[data-testid="stHeader"] { display: none !important; }
-                [data-testid="collapsedControl"] { display: none !important; }
-            }
-            
-            /* 2. Trên điện thoại/thiết bị nhỏ: GIỮ LẠI NÚT MENU (Hamburger) nhưng làm nền header trong suốt */
-            @media screen and (max-width: 767px) {
-                header[data-testid="stHeader"] { 
-                    background-color: transparent !important; 
-                }
-                [data-testid="collapsedControl"] { 
-                    display: block !important; 
-                }
+            /* LÀM TRONG SUỐT HEADER THAY VÌ ẨN HOÀN TOÀN */
+            /* Điều này giúp giữ lại nút Hamburger (3 gạch) an toàn trên mọi thiết bị */
+            header[data-testid="stHeader"] { 
+                background-color: transparent !important; 
+                box-shadow: none !important;
             }
 
+            /* TRANG TRÍ MÀU SẮC CHO SIDEBAR (KHÔNG ÉP VỊ TRÍ) */
             section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
                 border-right: 2px solid #e2e8f0 !important;
-                /* BỎ ĐI CÁC LỆNH ÉP CỨNG GIAO DIỆN (display: flex !important, transform: none !important) 
-                   ĐỂ STREAMLIT TỰ DO ẨN/HIỆN TRÊN ĐIỆN THOẠI */
             }
 
-            /* CHỈ ÉP CHIỀU RỘNG TRÊN MÁY TÍNH */
-            @media screen and (min-width: 768px) {
-                section[data-testid="stSidebar"] {
-                    min-width: 330px !important; 
-                    max-width: 330px !important;
-                }
-            }
-
-            section[data-testid="stSidebar"] > div { padding-top: 0rem !important; }
-            [data-testid="stSidebarNav"] { padding-top: 0rem !important; }
-            div[data-testid="InputInstructions"] { display: none !important; visibility: hidden !important; }
-
+            /* Định dạng Font chữ Menu */
             [data-testid="stSidebarNav"] ul li div {
                 font-size: 16px !important;
                 font-weight: 800 !important;
@@ -79,6 +56,7 @@ def show_page():
                 border-bottom: 2px solid #cbd5e1;
             }
             
+            /* Bôi đỏ mục số 2 trong Menu (Kế toán / Quyết toán) */
             [data-testid="stSidebarNav"] > ul > li:nth-child(2) > div {
                 color: #d32f2f !important; 
                 font-size: 17px !important;
@@ -100,12 +78,14 @@ def show_page():
                 border-bottom: none !important;
             }
 
+            /* Hiệu ứng khi Hover */
             [data-testid="stSidebarNav"] ul li ul li:hover {
                 background-color: #e2e8f0 !important; 
                 border-left: 3px solid #0b5394 !important;
                 border-radius: 0 6px 6px 0;
             }
             
+            /* Hiệu ứng khi Đang chọn (Active) */
             [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] {
                 background-color: #dbeafe !important;
                 border-left: 3px solid #0b5394 !important;
@@ -115,12 +95,16 @@ def show_page():
                 font-weight: 800 !important;
             }
 
+            /* Nút Đăng xuất */
             section[data-testid="stSidebar"] .stButton button {
                 width: 100%;
                 font-size: 15px !important;
                 font-weight: bold !important;
                 border-radius: 6px !important;
             }
+            
+            /* Xóa dòng hướng dẫn nhập text dư thừa của Streamlit */
+            div[data-testid="InputInstructions"] { display: none !important; }
         </style>
     """, unsafe_allow_html=True)
 
