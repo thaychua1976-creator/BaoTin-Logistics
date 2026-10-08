@@ -432,7 +432,10 @@ with tab_ocr_co:
         st.write("Đại lý vẽ chữ ký xác nhận vào khung bên dưới:")
         canvas_result = st_canvas(
             fill_color="rgba(255, 165, 0, 0.3)", stroke_width=2.5, stroke_color="#000080",
-            background_color="#f0f2f6", height=150, width=450, drawing_mode="freedraw",
+            background_color="#f0f2f6", 
+            height=150, 
+            width=350, # Đã thu gọn từ 450 xuống 350 để vừa khít mọi màn hình điện thoại
+            drawing_mode="freedraw",
             return_image_data=True, key="canvas_ky_ten_2"
         )
         
@@ -451,12 +454,21 @@ with tab_ocr_co:
                     except Exception as log_err:
                         pass
                     
-                    # --- Xử lý chèn chữ ký vào Excel ---
+                    # --- BẢN VÁ LỖI CHO MOBILE: Xử lý nền trắng cho chữ ký ---
                     img_data = canvas_result.image_data
-                    img = Image.fromarray(img_data.astype('uint8'), 'RGBA')
-                    img_buffer = io.BytesIO()
-                    img.save(img_buffer, format="PNG")
+                    img_rgba = Image.fromarray(img_data.astype('uint8'), 'RGBA')
                     
+                    # Tạo một khung ảnh nền trắng hoàn toàn (WHITE)
+                    img_bg = Image.new("RGBA", img_rgba.size, "WHITE")
+                    # Dán chữ ký nét xanh đè lên cái nền trắng đó
+                    img_bg.paste(img_rgba, mask=img_rgba)
+                    # Ép định dạng về RGB chuẩn (Loại bỏ hoàn toàn lớp trong suốt gây lỗi trên điện thoại)
+                    img_rgb = img_bg.convert('RGB')
+                    
+                    img_buffer = io.BytesIO()
+                    img_rgb.save(img_buffer, format="PNG")
+                    
+                    # --- Xử lý file Excel (Đoạn này giữ nguyên như cũ) ---
                     excel_buffer = io.BytesIO()
                     with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
                         # Cập nhật thông tin vào DF
