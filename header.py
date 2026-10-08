@@ -43,10 +43,7 @@ def render_header(current_page="home"):
         background-color: transparent !important; 
         box-shadow: none !important;
     }}
-    /* Tắt cái nút 3 gạch ở riêng trang chủ để khách hàng không bị rối (Nút này sẽ tự hiện lại ở ERP) */
-    [data-testid="collapsedControl"] {{
-        display: none; 
-    }}
+    
 
     /* Khung bảo vệ toàn bộ Header tránh vỡ HTML */
     .main-header-wrapper {{
