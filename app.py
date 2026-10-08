@@ -21,7 +21,7 @@ def show_page():
         """
         st.markdown(custom_css, unsafe_allow_html=True)
         
-    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar (THUẦN GỐC - ĐÃ PHÁ GIÁP CỦA TRANG CHỦ)
+    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar (XÓA TOÀN BỘ CODE CAN THIỆP HEADER)
     st.markdown("""
         <style>
             .block-container {
@@ -32,15 +32,6 @@ def show_page():
                 max-width: 98% !important;
             }
             
-            /* --- BẢN VÁ LỖI CỰC MẠNH: PHÁ VỠ LỆNH ẨN TỪ TRANG CHỦ --- */
-            header { visibility: visible !important; }
-            header[data-testid="stHeader"] { 
-                visibility: visible !important; 
-                display: block !important;
-                background-color: transparent !important; 
-            }
-            /* --------------------------------------------------------- */
-
             /* TRANG TRÍ MÀU SẮC CHO SIDEBAR */
             section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
@@ -80,14 +71,12 @@ def show_page():
                 border-bottom: none !important;
             }
 
-            /* Hiệu ứng khi Hover */
+            /* Hiệu ứng khi Hover & Active */
             [data-testid="stSidebarNav"] ul li ul li:hover {
                 background-color: #e2e8f0 !important; 
                 border-left: 3px solid #0b5394 !important;
                 border-radius: 0 6px 6px 0;
             }
-            
-            /* Hiệu ứng khi Đang chọn (Active) */
             [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] {
                 background-color: #dbeafe !important;
                 border-left: 3px solid #0b5394 !important;
@@ -97,15 +86,12 @@ def show_page():
                 font-weight: 800 !important;
             }
 
-            /* Nút Đăng xuất */
             section[data-testid="stSidebar"] .stButton button {
                 width: 100%;
                 font-size: 15px !important;
                 font-weight: bold !important;
                 border-radius: 6px !important;
             }
-            
-            /* Xóa dòng hướng dẫn nhập text dư thừa của Streamlit */
             div[data-testid="InputInstructions"] { display: none !important; }
         </style>
     """, unsafe_allow_html=True)
