@@ -21,25 +21,18 @@ def show_page():
         """
         st.markdown(custom_css, unsafe_allow_html=True)
         
-    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar (An toàn - Không can thiệp sâu vào Core Streamlit)
+    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar (THUẦN GỐC - KHÔNG BAO GIỜ LỖI MENU)
     st.markdown("""
         <style>
             .block-container {
-                padding-top: 1.5rem !important;
+                padding-top: 2rem !important;
                 padding-bottom: 1rem !important;
                 padding-left: 1rem !important;
                 padding-right: 1rem !important;
                 max-width: 98% !important;
             }
             
-            /* LÀM TRONG SUỐT HEADER THAY VÌ ẨN HOÀN TOÀN */
-            /* Điều này giúp giữ lại nút Hamburger (3 gạch) an toàn trên mọi thiết bị */
-            header[data-testid="stHeader"] { 
-                background-color: transparent !important; 
-                box-shadow: none !important;
-            }
-
-            /* TRANG TRÍ MÀU SẮC CHO SIDEBAR (KHÔNG ÉP VỊ TRÍ) */
+            /* TRANG TRÍ MÀU SẮC CHO SIDEBAR (Giữ nguyên cấu trúc ẩn hiện của Streamlit) */
             section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
                 border-right: 2px solid #e2e8f0 !important;
