@@ -21,7 +21,7 @@ def show_page():
         """
         st.markdown(custom_css, unsafe_allow_html=True)
         
-    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar (THUẦN GỐC - KHÔNG BAO GIỜ LỖI MENU)
+    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar (THUẦN GỐC - ĐÃ PHÁ GIÁP CỦA TRANG CHỦ)
     st.markdown("""
         <style>
             .block-container {
@@ -32,7 +32,16 @@ def show_page():
                 max-width: 98% !important;
             }
             
-            /* TRANG TRÍ MÀU SẮC CHO SIDEBAR (Giữ nguyên cấu trúc ẩn hiện của Streamlit) */
+            /* --- BẢN VÁ LỖI CỰC MẠNH: PHÁ VỠ LỆNH ẨN TỪ TRANG CHỦ --- */
+            header { visibility: visible !important; }
+            header[data-testid="stHeader"] { 
+                visibility: visible !important; 
+                display: block !important;
+                background-color: transparent !important; 
+            }
+            /* --------------------------------------------------------- */
+
+            /* TRANG TRÍ MÀU SẮC CHO SIDEBAR */
             section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
                 border-right: 2px solid #e2e8f0 !important;
