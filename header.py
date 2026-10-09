@@ -36,7 +36,6 @@ html, body, [class*="css"], .stApp, p, span, div, label, input, button {{
     padding-right: 2.5rem !important;
 }}
 
-header {{ visibility: hidden; }}
 
 .navbar-container {{
     display: flex;
