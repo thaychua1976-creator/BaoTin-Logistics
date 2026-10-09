@@ -23,7 +23,7 @@ def show_page():
         """
         st.markdown(custom_css, unsafe_allow_html=True)
         
-    # 2. CSS Tùy chỉnh Sidebar - THUẦN GỐC, KHÔNG ẨN HEADER HAY NÚT
+    # 2. CSS TỐI GIẢN - TRẢ LẠI MENU GỐC CỦA STREAMLIT ĐỂ KHÔNG BỊ MẤT CHỮ
     st.markdown("""
         <style>
             .block-container {
@@ -39,37 +39,13 @@ def show_page():
                 border-right: 2px solid #e2e8f0 !important;
             }
 
-            [data-testid="stSidebarNav"] ul li div {
-                font-size: 16px !important; font-weight: 800 !important;
-                color: #0b5394 !important; text-transform: uppercase !important;
-                padding-bottom: 5px; margin-top: 5px !important; 
-                border-bottom: 2px solid #cbd5e1;
-            }
-            [data-testid="stSidebarNav"] > ul > li:nth-child(2) > div {
-                color: #d32f2f !important; font-size: 17px !important;
-                border-bottom: 2px solid #d32f2f !important;
-                padding-bottom: 8px !important; margin-top: 15px !important; 
-            }
-            [data-testid="stSidebarNav"] ul li ul li {
-                margin-left: 25px !important; border-left: 2px solid #e2e8f0;
-            }
-            [data-testid="stSidebarNav"] ul li ul li a span {
-                font-size: 16px !important; font-weight: 600 !important;  
-                color: #334155 !important; text-transform: none !important; border-bottom: none !important;
-            }
-            [data-testid="stSidebarNav"] ul li ul li:hover {
-                background-color: #e2e8f0 !important; border-left: 3px solid #0b5394 !important; border-radius: 0 6px 6px 0;
-            }
-            [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] {
-                background-color: #dbeafe !important; border-left: 3px solid #0b5394 !important;
-            }
-            [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] a span {
-                color: #0b5394 !important; font-weight: 800 !important;
-            }
+            /* Định dạng duy nhất cho nút Đăng xuất để không bị xấu */
             section[data-testid="stSidebar"] .stButton button {
                 width: 100%; font-size: 15px !important; font-weight: bold !important; border-radius: 6px !important;
             }
             div[data-testid="InputInstructions"] { display: none !important; }
+            
+            /* --- ĐÃ XÓA TOÀN BỘ CSS CAN THIỆP VÀO MÀU SẮC, FONT CHỮ CỦA MENU --- */
         </style>
     """, unsafe_allow_html=True)
 
