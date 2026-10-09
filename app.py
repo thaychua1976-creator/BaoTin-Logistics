@@ -23,7 +23,7 @@ def show_page():
         """
         st.markdown(custom_css, unsafe_allow_html=True)
         
-    # 2. CSS TỐI GIẢN - TRẢ LẠI MENU GỐC CỦA STREAMLIT ĐỂ KHÔNG BỊ MẤT CHỮ
+    # 2. CSS Tùy chỉnh Sidebar - THUẦN GỐC, KHÔNG ẨN HEADER HAY NÚT
     st.markdown("""
         <style>
             .block-container {
@@ -39,13 +39,37 @@ def show_page():
                 border-right: 2px solid #e2e8f0 !important;
             }
 
-            /* Định dạng duy nhất cho nút Đăng xuất để không bị xấu */
+            [data-testid="stSidebarNav"] ul li div {
+                font-size: 16px !important; font-weight: 800 !important;
+                color: #0b5394 !important; text-transform: uppercase !important;
+                padding-bottom: 5px; margin-top: 5px !important; 
+                border-bottom: 2px solid #cbd5e1;
+            }
+            [data-testid="stSidebarNav"] > ul > li:nth-child(2) > div {
+                color: #d32f2f !important; font-size: 17px !important;
+                border-bottom: 2px solid #d32f2f !important;
+                padding-bottom: 8px !important; margin-top: 15px !important; 
+            }
+            [data-testid="stSidebarNav"] ul li ul li {
+                margin-left: 25px !important; border-left: 2px solid #e2e8f0;
+            }
+            [data-testid="stSidebarNav"] ul li ul li a span {
+                font-size: 16px !important; font-weight: 600 !important;  
+                color: #334155 !important; text-transform: none !important; border-bottom: none !important;
+            }
+            [data-testid="stSidebarNav"] ul li ul li:hover {
+                background-color: #e2e8f0 !important; border-left: 3px solid #0b5394 !important; border-radius: 0 6px 6px 0;
+            }
+            [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] {
+                background-color: #dbeafe !important; border-left: 3px solid #0b5394 !important;
+            }
+            [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] a span {
+                color: #0b5394 !important; font-weight: 800 !important;
+            }
             section[data-testid="stSidebar"] .stButton button {
                 width: 100%; font-size: 15px !important; font-weight: bold !important; border-radius: 6px !important;
             }
             div[data-testid="InputInstructions"] { display: none !important; }
-            
-            /* --- ĐÃ XÓA TOÀN BỘ CSS CAN THIỆP VÀO MÀU SẮC, FONT CHỮ CỦA MENU --- */
         </style>
     """, unsafe_allow_html=True)
 
@@ -120,9 +144,9 @@ def show_page():
                         else: st.error("❌ Tài khoản không tồn tại!")
                     except Exception as e: st.error(f"❌ Lỗi xác thực: {e}")
 
-    # SỬA LỖI 3: Thiết lập các trang một cách chặt chẽ (CHỈ CÓ DUY NHẤT 1 TRANG DEFAULT)
-    page_login = st.Page(login_ui, title="Đăng nhập", icon="🔐", default=True, url_path="dang-nhap")
-    page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", default=True, url_path="quan-ly-chuyen-di") # ĐỂ DEFAULT CHO ADMIN
+    # XÓA BỎ TOÀN BỘ "default=True" ĐỂ STREAMLIT TỰ ĐỘNG CHỌN TRANG ĐẦU TIÊN LÀM TRANG CHỦ
+    page_login = st.Page(login_ui, title="Đăng nhập", icon="🔐", url_path="dang-nhap")
+    page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", url_path="quan-ly-chuyen-di")
     page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝", url_path="quyet-toan-chuyen-di")
     page_bao_cao   = st.Page("views/bao_cao.py", title="Thông kê lương & Công Nợ KH", icon="📊", url_path="thong-ke-luong")
     page_nhan_vien = st.Page("views/nhan_vien.py", title="Quản lý Nhân viên", icon="🧑‍✈️", url_path="quan-ly-nhan-vien")
@@ -134,7 +158,7 @@ def show_page():
     page_tai_khoan = st.Page("views/tai_khoan.py", title="Quản lý tài khoản user", icon="👤", url_path="quan-ly-tai-khoan")
     page_doi_mat_khau = st.Page("views/doi_mat_khau.py", title="Đổi mật khẩu", icon="🔑", url_path="doi-mat-khau") 
     page_kinh_doanh_result= st.Page("views/kinh_doanh_result.py", title="Kết quả Kinh doanh", icon="📈", url_path="ket-qua-kinh-doanh")
-    page_app_tai_xe = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", url_path="cap-nhat-lich-trinh") # KHÔNG ĐƯỢC ĐỂ DEFAULT Ở ĐÂY NỮA
+    page_app_tai_xe = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", url_path="cap-nhat-lich-trinh")
     page_tool_zalo= st.Page("views/zalo_local_processor.py", title="Lấy thông tin book từ Zalo", icon="🚛", url_path="lay-thong-tin-tu-zalo")
     page_tool_import_pricing= st.Page("views/import_pricing_ui_2.py", title="Thiết lập bảng giá", icon="📈", url_path="thiet-lap-bang-gia")
     page_tool_import_phu_cap= st.Page("views/config_phu_cap.py", title="Thiết lập phụ cấp", icon="📈", url_path="thiet-lap-phu-cap")

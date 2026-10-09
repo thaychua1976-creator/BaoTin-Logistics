@@ -64,10 +64,7 @@ hide_enter_submit_css = """
     /* Ẩn hướng dẫn Enter của Streamlit */
     div[data-testid='InputInstructions'] { display: none !important; visibility: hidden !important; }
     
-    /* 1. Ẩn hoàn toàn thanh Header mặc định chứa khoảng trắng đỉnh của Streamlit */
-    header[data-testid="stHeader"] { 
-        display: none !important; 
-    }
+    
 
     /* 2. Kéo tịnh tiến đều tất cả các Tiêu đề (h4, h5) trên toàn bộ App */
     h4, h5 { 
