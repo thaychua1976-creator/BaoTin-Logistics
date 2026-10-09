@@ -91,17 +91,7 @@ hide_enter_submit_css = """
         gap: 0.5rem !important; 
     }
     
-    /* 6. Triệt tiêu khoảng đệm và đẩy ngược toàn bộ khối giao diện lên trên */
-    .block-container {
-        gap: 0.5rem !important;
-        padding-top: 0rem !important; 
-        margin-top: -2.5rem !important; /* Lực đẩy âm kéo sát lề trên */
-    }
     
-    /* 7. Xóa bỏ khoảng padding thừa mặc định của thành phần hiển thị ứng dụng */
-    [data-testid="stAppViewBlockContainer"] {
-        padding-top: 0rem !important;
-    }
 </style>
 """
 st.markdown(hide_enter_submit_css, unsafe_allow_html=True)

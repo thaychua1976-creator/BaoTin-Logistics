@@ -66,6 +66,24 @@ def show_page():
             [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] a span {
                 color: #0b5394 !important; font-weight: 800 !important;
             }
+            /* --- ẨN CÁC THÀNH PHẦN MẶC ĐỊNH CỦA STREAMLIT --- */
+            /* 1. Ẩn biểu tượng người chạy (Running widget) góc trên bên phải */
+            [data-testid="stStatusWidget"] {
+                display: none !important;
+                visibility: hidden !important;
+            }
+            
+            /* 2. Ẩn thanh công cụ mặc định (Nút Deploy, dấu 3 chấm) */
+            [data-testid="stToolbar"] {
+                display: none !important;
+                visibility: hidden !important;
+            }
+            
+            /* 3. Ẩn dòng chữ Footer "Made with Streamlit" ở đáy trang */
+            footer {
+                display: none !important;
+                visibility: hidden !important;
+            }
             section[data-testid="stSidebar"] .stButton button {
                 width: 100%; font-size: 15px !important; font-weight: bold !important; border-radius: 6px !important;
             }
