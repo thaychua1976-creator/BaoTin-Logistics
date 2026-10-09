@@ -516,11 +516,23 @@ with tab_ocr_co:
                         
                         # Chèn chữ ký và Người đại diện (Dưới cùng)
                         dong_ky_ten = 5 + len(edited_df) + 1
+                        
+                        # 1. Nới rộng chiều cao dòng chữ Tên người nhận cho thoáng
+                        worksheet.set_row(dong_ky_ten, 30)
                         worksheet.write(dong_ky_ten, 1, "ĐẠI DIỆN BÀN GIAO", format_sign_header)
                         worksheet.write(dong_ky_ten, 2, f"ĐẠI LÝ NHẬN: {ten_dai_ly}", format_sign_header)
                         
-                        # Dùng hàm insert_image mạnh mẽ của xlsxwriter (x_scale/y_scale dùng để thu gọn tỷ lệ hình)
-                        worksheet.insert_image(dong_ky_ten + 1, 2, 'signature.png', {'image_data': img_buffer, 'x_scale': 0.6, 'y_scale': 0.6})
+                        # 2. BẮT BUỘC MỞ RỘNG CHIỀU CAO DÒNG CHỨA CHỮ KÝ (100 points) ĐỂ TRÁNH BỊ TRÀN TRÊN MOBILE
+                        worksheet.set_row(dong_ky_ten + 1, 100)
+                        
+                        # 3. Dùng insert_image kết hợp offset (đẩy tọa độ) để ép chữ ký lùi xuống dưới
+                        worksheet.insert_image(dong_ky_ten + 1, 2, 'signature.png', {
+                            'image_data': img_buffer, 
+                            'x_scale': 0.6, 
+                            'y_scale': 0.6,
+                            'x_offset': 20,  # Thụt lề phải 20 pixel để cân đối
+                            'y_offset': 15   # Ép chữ ký tụt xuống 15 pixel để cách xa tên người nhận
+                        })
                     
                     st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao đã sẵn sàng!")
                     st.download_button(
