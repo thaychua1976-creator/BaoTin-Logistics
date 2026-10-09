@@ -4,11 +4,12 @@ import pandas as pd
 import bcrypt
 
 def show_page():
-    st.set_page_config(layout="wide", initial_sidebar_state="expanded")
-    # 1. Hiệu ứng thông báo load chương trình toàn cục mượt mà cho UI
+    # SỬA LỖI 1: Đổi initial_sidebar_state từ "expanded" thành "auto" để điện thoại không bị lỗi giật khung hình
+    st.set_page_config(layout="wide", initial_sidebar_state="auto")
+    
     with st.spinner("🔄 Đang tải chương trình và đồng bộ dữ liệu hệ thống, vui lòng đợi trong giây lát..."):
-        time.sleep(0.3) # Giúp tạo độ trễ trực quan nhẹ nhàng tránh giật khung hình
-    # 1. Hàm tùy chỉnh CSS giao diện
+        time.sleep(0.3)
+        
     def apply_custom_appearance():
         custom_css = """
         <style>
@@ -21,51 +22,23 @@ def show_page():
         """
         st.markdown(custom_css, unsafe_allow_html=True)
         
-    # 2. CSS Tùy chỉnh giao diện ERP & Sidebar (ĐÓNG ĐINH NÚT MENU TRÊN ĐIỆN THOẠI)
+    # SỬA LỖI 2: Dọn sạch sẽ mọi CSS đụng chạm đến Header & Nút Hamburger
     st.markdown("""
         <style>
             .block-container {
-                padding-top: 2rem !important;
+                padding-top: 1rem !important;
                 padding-bottom: 1rem !important;
                 padding-left: 1rem !important;
                 padding-right: 1rem !important;
                 max-width: 98% !important;
             }
             
-            /* LÀM TRONG SUỐT THANH HEADER NHƯNG VẪN CHO NÓ TỒN TẠI */
-            header[data-testid="stHeader"] { 
-                background-color: transparent !important; 
-                box-shadow: none !important;
-                visibility: visible !important;
-            }
-
-            /* --- ÉP CỨNG MŨI TÊN/NÚT HAMBURGER TRÊN ĐIỆN THOẠI KHÔNG ĐƯỢC BIẾN MẤT --- */
-            [data-testid="collapsedControl"] {
-                display: flex !important;
-                visibility: visible !important;
-                opacity: 1 !important;
-                z-index: 999999 !important; /* Đẩy lên lớp ngoài cùng, không ai che được */
-                background-color: #0b5394 !important; /* Đổ nền xanh đậm cho mũi tên */
-                border-radius: 6px !important;
-                padding: 2px !important;
-                margin: 10px !important;
-                color: white !important; /* Đổi màu mũi tên thành trắng để nổi bật */
-                transition: none !important; /* Tắt mọi hiệu ứng mờ đi của Streamlit */
-            }
-
-            /* Đổi màu icon mũi tên bên trong thành màu trắng */
-            [data-testid="collapsedControl"] svg {
-                fill: white !important;
-                color: white !important;
-            }
-
-            /* TRANG TRÍ MÀU SẮC CHO SIDEBAR */
+            /* CHỈ TRANG TRÍ MÀU SẮC CHO BÊN TRONG SIDEBAR */
             section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
                 border-right: 2px solid #e2e8f0 !important;
             }
 
-            /* Định dạng Font chữ Menu */
             [data-testid="stSidebarNav"] ul li div {
                 font-size: 16px !important;
                 font-weight: 800 !important;
@@ -76,7 +49,6 @@ def show_page():
                 border-bottom: 2px solid #cbd5e1;
             }
             
-            /* Bôi đỏ mục số 2 trong Menu (Kế toán / Quyết toán) */
             [data-testid="stSidebarNav"] > ul > li:nth-child(2) > div {
                 color: #d32f2f !important; 
                 font-size: 17px !important;
@@ -98,12 +70,12 @@ def show_page():
                 border-bottom: none !important;
             }
 
-            /* Hiệu ứng khi Hover & Active */
             [data-testid="stSidebarNav"] ul li ul li:hover {
                 background-color: #e2e8f0 !important; 
                 border-left: 3px solid #0b5394 !important;
                 border-radius: 0 6px 6px 0;
             }
+            
             [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] {
                 background-color: #dbeafe !important;
                 border-left: 3px solid #0b5394 !important;
@@ -113,7 +85,6 @@ def show_page():
                 font-weight: 800 !important;
             }
 
-            /* Nút Đăng xuất */
             section[data-testid="stSidebar"] .stButton button {
                 width: 100%;
                 font-size: 15px !important;
@@ -121,7 +92,6 @@ def show_page():
                 border-radius: 6px !important;
             }
             
-            /* Xóa dòng hướng dẫn nhập text dư thừa của Streamlit */
             div[data-testid="InputInstructions"] { display: none !important; }
         </style>
     """, unsafe_allow_html=True)
