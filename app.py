@@ -5,7 +5,7 @@ import bcrypt
 
 def show_page():
     # 1. Cấu hình giao diện chuẩn cho Desktop & Mobile
-    st.set_page_config(layout="wide", initial_sidebar_state="auto")
+    #st.set_page_config(layout="wide", initial_sidebar_state="auto")
     
     with st.spinner("🔄 Đang tải chương trình và đồng bộ dữ liệu hệ thống, vui lòng đợi..."):
         time.sleep(0.3) 
