@@ -41,8 +41,13 @@ header[data-testid="stHeader"] {{
     background-color: transparent !important; 
     box-shadow: none !important;
 }}
-[data-testid="collapsedControl"] {{
+/* Ẩn TOÀN BỘ các thành phần thừa (Nút 3 gạch, Biểu tượng Running, Nút Deploy, Footer) */
+[data-testid="collapsedControl"], 
+[data-testid="stStatusWidget"], 
+[data-testid="stToolbar"], 
+footer {{
     display: none !important; 
+    visibility: hidden !important;
 }}
 
 /* CẤU TRÚC LẠI THANH NAVBAR CHÍNH */
