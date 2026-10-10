@@ -211,7 +211,10 @@ def show_page():
     # =========================================================================
     if not st.session_state['logged_in']:
         # Mẹo: Khởi tạo 2 trang ảo để Streamlit không bao giờ xóa thanh App-Bar trên điện thoại
-        page_dummy = st.Page(lambda: None, title=" ", icon="👉")
+        def trang_cho():
+            pass # Hàm rỗng hợp lệ thay cho lambda
+            
+        page_dummy = st.Page(trang_cho, title="Chưa đăng nhập", icon="👉", url_path="trang-cho")
         pg = st.navigation({"HỆ THỐNG ERP": [page_login, page_dummy]})
     else:
         role = st.session_state.get('role', 'User')
