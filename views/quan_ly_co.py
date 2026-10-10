@@ -502,20 +502,17 @@ with tab_ocr_co:
                         worksheet.write(dong_ky_ten, 1, "ĐẠI DIỆN BÀN GIAO", format_sign_header)
                         worksheet.write(dong_ky_ten, 2, f"ĐẠI LÝ NHẬN: {ten_dai_ly}", format_sign_header)
                         
-                        # 2. XÂY HÀNG RÀO ĐỆM: Dùng tới 2 dòng đệm (cao 30pt mỗi dòng) để ép ảnh phải tụt xuống
-                        worksheet.set_row(dong_ky_ten + 1, 30)
-                        worksheet.set_row(dong_ky_ten + 2, 30)
+                        # 2. Tạo vùng chứa ảnh chữ ký ở ngay bên dưới
+                        worksheet.set_row(dong_ky_ten + 1, 150) # Cố ý làm dòng thật cao
                         
-                        # 3. VÙNG NEO ẢNH (Dòng thứ 4 bên dưới tên người nhận)
-                        worksheet.set_row(dong_ky_ten + 3, 150) # Mở rộng không gian lên tới 150pt
-                        
-                        # 4. Chèn ảnh vào dòng siêu thấp, đồng thời thu nhỏ tỷ lệ (scale: 0.5) để không bị tràn
-                        worksheet.insert_image(dong_ky_ten + 3, 2, 'signature.png', {
+                        # 3. Chèn ảnh với TÍNH NĂNG ÉP KHUÔN ('positioning': 1)
+                        worksheet.insert_image(dong_ky_ten + 1, 2, 'signature.png', {
                             'image_data': img_buffer, 
                             'x_scale': 0.5, 
                             'y_scale': 0.5,
-                            'x_offset': 20, 
-                            'y_offset': 10  # Đẩy nhẹ thêm 10 pixel từ lề trên của dòng neo
+                            'x_offset': 15,
+                            'y_offset': 15,
+                            'positioning': 1  # QUAN TRỌNG NHẤT: Bắt ảnh phải co giãn theo ô (Move and size with cells), tuyệt đối không tràn lên trên khi mở bằng điện thoại
                         })
                     
                     st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao đã sẵn sàng!")
