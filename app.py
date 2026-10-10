@@ -64,37 +64,36 @@ def show_page():
                 width: 100%; font-size: 15px !important; font-weight: bold !important; border-radius: 6px !important;
             }
             
-           /* --- ĐẢM BẢO HIỂN THỊ NÚT 3 GẠCH TUYỆT ĐỐI BẰNG MỌI GIÁ --- */
-            #root header[data-testid="stHeader"] {
-                display: block !important;
-                visibility: visible !important;
-                background-color: rgba(255, 255, 255, 0.95) !important; /* Nền trắng đục để tách biệt với app */
-                z-index: 9999999 !important; /* Lực đẩy tuyệt đối: Luôn nổi trên cùng mọi trang con */
-                border-bottom: 2px solid #e2e8f0 !important;
-                height: 3.5rem !important; /* Cố định chiều cao thanh header */
-            }
-            
-            /* Tái tạo nút 3 gạch thành một nút bấm vật lý màu xanh đậm */
-            #root [data-testid="collapsedControl"] {
+           /* --- KHÔI PHỤC HEADER VÀ NÚT 3 GẠCH CHO BẢN CLOUD MỚI NHẤT --- */
+            header[data-testid="stHeader"] {
                 display: flex !important;
                 visibility: visible !important;
-                opacity: 1 !important;
-                z-index: 9999999 !important;
-                background-color: #0B2E9E !important; /* Đổ màu nền xanh đậm ERP */
-                border-radius: 6px !important; /* Bo góc đẹp mắt */
-                padding: 4px !important;
-                margin-left: 10px !important;
-                margin-top: 10px !important;
-                box-shadow: 0px 4px 6px rgba(0,0,0,0.2) !important; /* Đổ bóng cho nút nẩy lên */
+                background-color: #f8fafc !important; /* Đổ nền xám nhạt để tách biệt với App */
+                z-index: 999999 !important;
+                border-bottom: 2px solid #e2e8f0 !important;
             }
             
-            /* Ép biểu tượng 3 gạch (SVG) bên trong biến thành màu Trắng */
-            #root [data-testid="collapsedControl"] svg {
-                fill: white !important;
-                color: white !important;
-                width: 1.5rem !important;
-                height: 1.5rem !important;
+            /* Ép buộc mọi nút bấm trong Header (chắc chắn sẽ bắt được nút 3 gạch) phải hiện ra */
+            header[data-testid="stHeader"] button {
+                display: inline-flex !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                transform: scale(1.1); /* Phóng to nút 3 gạch lên một chút cho dễ bấm */
             }
+            
+            /* Đổ màu xanh đậm cho biểu tượng 3 gạch để không bị chìm vào nền trắng */
+            header[data-testid="stHeader"] svg {
+                fill: #0B2E9E !important; 
+                color: #0B2E9E !important;
+            }
+            
+            /* CHỈ ẨN CÁI ICON ĐANG CHẠY (Running...) VÀ FOOTER */
+            /* TUYỆT ĐỐI KHÔNG ẨN TOOLBAR ĐỂ TRÁNH LỖI SẬP HEADER TRÊN MOBILE */
+            [data-testid="stStatusWidget"], footer {
+                display: none !important;
+                visibility: hidden !important;
+            }
+            div[data-testid="InputInstructions"] { display: none !important; }
         </style>
     """, unsafe_allow_html=True)
 
