@@ -533,13 +533,12 @@ with tab_ocr_co:
                     if os.path.exists(img_temp_path):
                         os.remove(img_temp_path)
                     
-                    # 7. XUẤT RA GIAO DIỆN & XỬ LÝ TÊN FILE
+                    # 7. XUẤT RA GIAO DIỆN & ÉP ĐÚNG TÊN FILE CHO ĐIỆN THOẠI
                     pdf_bytes = pdf.output()
                     
-                    # Lấy lại tên file gốc (nếu có), nếu không có thì dùng tên mặc định
+                    # Xử lý Tên File Đầu Ra Thông Minh
                     ten_goc = st.session_state.get("ten_file_goc", "")
                     if ten_goc:
-                        # Bỏ đuôi .xlsx và thêm chữ _Da_Ky.pdf
                         import os
                         ten_file_xuat_ra = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.pdf"
                     else:
@@ -547,13 +546,19 @@ with tab_ocr_co:
                     
                     st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao (PDF) đã sẵn sàng!")
                     
-                    st.download_button(
-                        label="📥 TẢI PHIẾU BÀN GIAO ĐÃ KÝ VỀ MÁY",
-                        data=bytes(pdf_bytes),
-                        file_name=ten_file_xuat_ra, # Dùng tên file thông minh vừa tạo
-                        mime="application/octet-stream", # ÉP TRÌNH DUYỆT BẮT BUỘC TẢI VỀ MÁY, KHÔNG ĐƯỢC MỞ XEM TRƯỚC
-                        type="primary"
-                    )
+                    # TẠO NÚT TẢI BASE64 CHUYÊN TRỊ LỖI TÊN FILE TRÊN IPHONE/ANDROID
+                    import base64
+                    b64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+                    
+                    nui_tai_ve_html = f'''
+                    <a href="data:application/octet-stream;base64,{b64_pdf}" download="{ten_file_xuat_ra}" 
+                       style="display: block; padding: 12px 20px; background-color: #FF4B4B; color: white; 
+                              text-align: center; text-decoration: none; border-radius: 8px; font-weight: bold; 
+                              margin-top: 10px; font-family: sans-serif;">
+                        📥 BẤM VÀO ĐÂY ĐỂ TẢI PHIẾU BÀN GIAO ({ten_file_xuat_ra})
+                    </a>
+                    '''
+                    st.markdown(nui_tai_ve_html, unsafe_allow_html=True)
         
         if st.button("🔄 Tải Lại Phiên Mới (Xóa Trắng)"):
             st.session_state["ocr_data"] = []
