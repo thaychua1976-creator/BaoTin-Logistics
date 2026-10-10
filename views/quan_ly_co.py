@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import datetime, time, io, re
+import urllib.request
+import os
 from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 from co_manager import save_co_transaction, delete_co_transaction, get_don_gia_co_theo_khach_hang
 
@@ -450,78 +452,91 @@ with tab_ocr_co:
                     img_rgb.save(img_buffer, format="PNG")
                     img_buffer.seek(0)
                     
-                    # --- XUẤT FILE BẰNG XLSXWRITER ---
-                    excel_buffer = io.BytesIO()
-                    with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                        edited_df['KÝ NHẬN'] = ten_dai_ly
-                        edited_df['NGÀY NHẬN'] = ngay_nhan.strftime('%d/%m/%Y')
-                        edited_df.to_excel(writer, sheet_name='So_Giao_Nhan', startrow=3, index=False, header=False)
-                        
-                        workbook = writer.book
-                        worksheet = writer.sheets['So_Giao_Nhan']
-                        
-                        # Cấu hình in ấn
-                        worksheet.set_paper(9)
-                        worksheet.set_margins(left=0.45, right=0.45, top=0.75, bottom=0.75)
-                        
-                        # Khởi tạo các định dạng font & cell
-                        format_title = workbook.add_format({'font_name': 'Times New Roman', 'font_size': 18, 'bold': True, 'align': 'center', 'valign': 'vcenter'})
-                        format_header = workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'bold': True, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'bg_color': '#D9D9D9'})
-                        format_cell_center = workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'align': 'center', 'valign': 'vcenter', 'border': 1})
-                        format_cell_left = workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'align': 'left', 'valign': 'vcenter', 'border': 1})
-                        format_sign_header = workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'bold': True, 'align': 'center', 'valign': 'vcenter'})
-                        
-                        # Ghi tiêu đề công ty & Gởi
-                        worksheet.merge_range('A1:D1', "CÔNG TY FORTUNATE HONGKONG VIỆT NAM", format_title)
-                        worksheet.merge_range('A2:D2', "GỞI CÔNG TY: EXPEDITORS", format_title)
-                        
-                        # Ghi tiêu đề cột
-                        headers = ['STT', 'SỐ C/O BẢN GỐC', 'KÝ NHẬN', 'NGÀY NHẬN']
-                        for col_num, h_text in enumerate(headers):
-                            worksheet.write(3, col_num, h_text, format_header)
-                        
-                        # Căn lề & vẽ khung cho lưới dữ liệu
-                        for r_idx in range(len(edited_df)):
-                            row_excel = r_idx + 4
-                            worksheet.set_row(row_excel, 20)
-                            worksheet.write(row_excel, 0, edited_df.iloc[r_idx, 0], format_cell_center)
-                            worksheet.write(row_excel, 1, edited_df.iloc[r_idx, 1], format_cell_left)
-                            worksheet.write(row_excel, 2, edited_df.iloc[r_idx, 2], format_cell_left)
-                            worksheet.write(row_excel, 3, edited_df.iloc[r_idx, 3], format_cell_left)
-                        
-                        worksheet.set_column('A:A', 10)
-                        worksheet.set_column('B:B', 35)
-                        worksheet.set_column('C:C', 30)
-                        worksheet.set_column('D:D', 25)
-                        
-                        # --- GIẢI PHÁP TÁCH LÀN VĨNH VIỄN KHÔNG ĐÈ CHỮ TRÊN MOBILE ---
-                        dong_ky_ten = 5 + len(edited_df) + 1
-                        
-                        # 1. Mở rộng chiều cao của chính dòng này lên 120pt để làm không gian chứa ảnh
-                        worksheet.set_row(dong_ky_ten, 120)
-                        
-                        # 2. VĂN BẢN NẰM BÊN TRÁI (Cột B và Cột C)
-                        # Dùng align: 'center' và valign: 'vcenter' để chữ nằm giữa ô đẹp mắt
-                        worksheet.write(dong_ky_ten, 1, "ĐẠI DIỆN BÀN GIAO\n(Bên giao)", workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'bold': True, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True}))
-                        worksheet.write(dong_ky_ten, 2, f"ĐẠI LÝ NHẬN C/O\nÔng/Bà: {ten_dai_ly}", workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'bold': True, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True}))
-                        
-                        # 3. CHỮ KÝ NẰM HOÀN TOÀN BÊN PHẢI (Cột D)
-                        # Neo ảnh vào Cột số 3 (Tức là Cột D - Cột Ngày Nhận đang trống ở hàng này)
-                        worksheet.insert_image(dong_ky_ten, 3, 'signature.png', {
-                            'image_data': img_buffer, 
-                            'x_scale': 0.65, # Phóng to ảnh một chút cho rõ
-                            'y_scale': 0.65,
-                            'x_offset': 10,  # Đẩy ảnh lùi vào giữa cột D
-                            'y_offset': 15,
-                            'positioning': 1 # Khóa co giãn
-                        })
+                    # --- XUẤT FILE BẰNG PDF (GIẢI PHÁP ĐÓNG BĂNG 100% TRÊN MOBILE) ---
+                    try:
+                        from fpdf import FPDF
+                    except ImportError:
+                        st.error("⚠️ Thiếu thư viện PDF. Vui lòng thêm 'fpdf2' vào file requirements.txt")
+                        st.stop()
                     
-                    st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao đã sẵn sàng!")
+                    
+                    
+                    # 1. Tải Font chữ Tiếng Việt (Roboto) về bộ nhớ tạm của máy chủ (Nếu chưa có)
+                    font_path = "/tmp/Roboto-Regular.ttf"
+                    font_bold_path = "/tmp/Roboto-Bold.ttf"
+                    if not os.path.exists(font_path):
+                        urllib.request.urlretrieve("https://github.com/google/fonts/raw/main/ofl/roboto/Roboto-Regular.ttf", font_path)
+                    if not os.path.exists(font_bold_path):
+                        urllib.request.urlretrieve("https://github.com/google/fonts/raw/main/ofl/roboto/Roboto-Bold.ttf", font_bold_path)
+                        
+                    # 2. Khởi tạo tài liệu PDF (Khổ A4 ngang cho rộng rãi)
+                    pdf = FPDF(orientation="L", unit="mm", format="A4")
+                    pdf.add_page()
+                    
+                    # Nạp Font Tiếng Việt vào PDF
+                    pdf.add_font("Roboto", style="", fname=font_path)
+                    pdf.add_font("Roboto", style="B", fname=font_bold_path)
+                    
+                    # 3. GHI TIÊU ĐỀ
+                    pdf.set_font("Roboto", style="B", size=18)
+                    pdf.cell(0, 10, "CÔNG TY FORTUNATE HONGKONG VIỆT NAM", align="C", new_x="LMARGIN", new_y="NEXT")
+                    pdf.cell(0, 10, "GỞI CÔNG TY: EXPEDITORS", align="C", new_x="LMARGIN", new_y="NEXT")
+                    pdf.ln(5) # Cách dòng
+                    
+                    # 4. VẼ BẢNG DỮ LIỆU
+                    pdf.set_font("Roboto", style="B", size=12)
+                    pdf.set_fill_color(220, 220, 220) # Tô màu nền xám cho tiêu đề bảng
+                    
+                    # Tỷ lệ cột (Tổng = 277mm chiều ngang khổ A4)
+                    col_widths = [20, 100, 80, 50] 
+                    headers = ['STT', 'SỐ C/O BẢN GỐC', 'KÝ NHẬN', 'NGÀY NHẬN']
+                    
+                    for i, h in enumerate(headers):
+                        pdf.cell(col_widths[i], 12, h, border=1, align="C", fill=True)
+                    pdf.ln(12)
+                    
+                    # Ghi từng dòng dữ liệu
+                    pdf.set_font("Roboto", style="", size=12)
+                    edited_df['KÝ NHẬN'] = ten_dai_ly
+                    edited_df['NGÀY NHẬN'] = ngay_nhan.strftime('%d/%m/%Y')
+                    
+                    for r_idx in range(len(edited_df)):
+                        pdf.cell(col_widths[0], 12, str(edited_df.iloc[r_idx, 0]), border=1, align="C")
+                        pdf.cell(col_widths[1], 12, str(edited_df.iloc[r_idx, 1]), border=1, align="L")
+                        pdf.cell(col_widths[2], 12, str(edited_df.iloc[r_idx, 2]), border=1, align="L")
+                        pdf.cell(col_widths[3], 12, str(edited_df.iloc[r_idx, 3]), border=1, align="C")
+                        pdf.ln(12)
+                        
+                    # 5. KHU VỰC CHỮ KÝ BÀN GIAO (CHỐNG TRÔI)
+                    pdf.ln(15) # Cách bảng 15mm
+                    pdf.set_font("Roboto", style="B", size=13)
+                    
+                    # Chia đôi màn hình ngang
+                    pdf.cell(135, 10, "ĐẠI DIỆN BÀN GIAO (BÊN GIAO)", align="C")
+                    pdf.cell(135, 10, f"ĐẠI LÝ NHẬN: {ten_dai_ly}", align="C", new_x="LMARGIN", new_y="NEXT")
+                    
+                    # Chèn ảnh chữ ký
+                    img_temp_path = "/tmp/temp_signature.png"
+                    img_rgb.save(img_temp_path, format="PNG")
+                    
+                    # Xác định tọa độ chèn ảnh (Đóng băng tuyệt đối tọa độ X, Y trên trang PDF)
+                    current_y = pdf.get_y() + 5
+                    # Canh giữa ảnh cho phần bên phải (X = 135 + 135/2 - 25 = 177.5)
+                    pdf.image(img_temp_path, x=175, y=current_y, w=60) 
+                    
+                    # Xóa file tạm cho sạch server
+                    if os.path.exists(img_temp_path):
+                        os.remove(img_temp_path)
+                    
+                    # 6. XUẤT RA GIAO DIỆN MÀN HÌNH
+                    pdf_bytes = pdf.output()
+                    
+                    st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao (PDF) đã sẵn sàng!")
                     st.download_button(
-                        label="📥 TẢI PHIẾU BÀN GIAO ĐÃ KÝ (EXCEL)",
-                        data=excel_buffer.getvalue(),
-                        file_name=f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        label="📥 TẢI PHIẾU BÀN GIAO ĐÃ KÝ (BẢN PDF)",
+                        data=bytes(pdf_bytes),
+                        file_name=f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf",
+                        mime="application/pdf",
                         type="primary"
                     )
         
