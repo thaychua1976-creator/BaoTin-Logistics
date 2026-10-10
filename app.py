@@ -200,58 +200,102 @@ def show_page():
     page_tool_fuel_manager= st.Page("views/fuel_manager_ui.py", title="Quản lý nhiên liệu", icon="🚛", url_path="quan-ly-nhien-lieu")
     page_tool_backup_database= st.Page("views/backup_database.py", title="Backup Database", icon="🚛", url_path="backup-database")
 
-    # SỬA LỖI 4: Thiết lập điều hướng CHUẨN CỦA STREAMLIT
+    # =========================================================================
+    # SỬA LỖI 4: THIẾT LẬP MENU ĐIỀU HƯỚNG BÊN TRÊN (TOP NAVBAR DROPDOWN)
+    # =========================================================================
     if not st.session_state['logged_in']:
-        
-        pg = st.navigation([page_login])
+        # Chế độ chưa đăng nhập: Ẩn menu
+        pg = st.navigation([page_login], position="hidden")
     else:
+        # 1. Gom tất cả các trang vào một danh sách phẳng để làm Menu Dropdown
         role = st.session_state.get('role', 'User')
         
-        # Vì page_chuyen_di đã là default, nên tất cả các Role (trừ Tài xế) đều mở trang đó đầu tiên
+        danh_sach_trang = {}
         if role == 'Admin':
-            pages_structure = {
-                "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di, page_to_khai_hq, page_quan_ly_co, page_tool_fuel_manager, page_phap_ly_xe],
-                "📦 NGHIỆP VỤ KẾ TOÁN": [page_quyet_toan, page_bao_cao],
-                "📦 TOOL TIỆN ÍCH": [page_tool_import_pricing, page_tool_import_phu_cap, page_tool_import_pricing_haiquan, page_tool_backup_database, page_tool_zalo],
-                "⚙️ DANH MỤC QUẢN TRỊ": [page_nhan_vien, page_doi_xe, page_khach_hang, page_tai_khoan, page_kinh_doanh_result],
-                "👤 CÁ NHÂN": [page_doi_mat_khau] 
+            danh_sach_trang = {
+                "📝 Quản lý Chuyến đi": page_chuyen_di,
+                "🧑‍✈️ Khai báo Hải Quan": page_to_khai_hq,
+                "🧑‍✈️ Quản lý CO": page_quan_ly_co,
+                "🚛 Quản lý nhiên liệu": page_tool_fuel_manager,
+                "🚛 Quản lý pháp lý xe": page_phap_ly_xe,
+                "💰 Quyết toán chuyến đi": page_quyet_toan,
+                "📊 Thống kê lương & Công nợ": page_bao_cao,
+                "📈 Thiết lập bảng giá": page_tool_import_pricing,
+                "📈 Thiết lập phụ cấp": page_tool_import_phu_cap,
+                "📈 Thiết lập giá HQ": page_tool_import_pricing_haiquan,
+                "🚛 Zalo tự động": page_tool_zalo,
+                "🧑‍✈️ Quản lý Nhân viên": page_nhan_vien,
+                "🚛 Quản lý Đội xe": page_doi_xe,
+                "🧑 Quản lý Khách hàng": page_khach_hang,
+                "👤 Quản lý tài khoản": page_tai_khoan,
+                "📈 Kết quả Kinh doanh": page_kinh_doanh_result,
+                "🔑 Đổi mật khẩu": page_doi_mat_khau,
+                "🚛 Backup Database": page_tool_backup_database
             }
         elif role == 'Tai_Xe':
-            # Với Role Tài Xế, vì không xài page_chuyen_di, ta phải định nghĩa lại 1 trang default RIÊNG cho nhánh này
-            page_app_tai_xe_default = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", default=True, url_path="cap-nhat-lich-trinh")
-            pages_structure = {
-                "📱 ỨNG DỤNG TÀI XẾ": [page_app_tai_xe_default],
-                "👤 CÁ NHÂN": [page_doi_mat_khau] 
+            page_app_tai_xe_default = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", url_path="cap-nhat-lich-trinh")
+            danh_sach_trang = {
+                "📱 Cập nhật Lịch trình": page_app_tai_xe_default,
+                "🔑 Đổi mật khẩu": page_doi_mat_khau
             }
         elif role == 'Ke_Toan':
-            # Với Kế toán, ta phải mượn 1 trang làm default
-            page_quyet_toan_default = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝", default=True, url_path="quyet-toan-chuyen-di")
-            pages_structure = {
-                "📱 NGHIỆP VỤ KẾ TOÁN": [page_quyet_toan_default, page_bao_cao],
-                "👤 CÁ NHÂN": [page_doi_mat_khau] 
+            page_quyet_toan_default = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝", url_path="quyet-toan-chuyen-di")
+            danh_sach_trang = {
+                "💰 Quyết toán chuyến đi": page_quyet_toan_default,
+                "📊 Thống kê lương & Công nợ": page_bao_cao,
+                "🔑 Đổi mật khẩu": page_doi_mat_khau
             }
-        else:
-            pages_structure = {
-                "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di, page_to_khai_hq, page_quan_ly_co, page_tool_fuel_manager, page_phap_ly_xe],
-                "📦 TOOL TIỆN ÍCH": [page_tool_import_pricing, page_tool_import_phu_cap, page_tool_import_pricing_haiquan, page_tool_backup_database, page_tool_zalo],
-                "👤 CÁ NHÂN": [page_doi_mat_khau] 
-            }
-            
-        pg = st.navigation(pages_structure, position="sidebar")
+
+        # 2. ẨN SIDEBAR CŨ ĐI (Chuyển thành hidden)
+        pg = st.navigation(list(danh_sach_trang.values()), position="hidden")
+        
+        # 3. VẼ MENU TOP DROPDOWN NỔI BẬT LÊN TRÊN CÙNG
+        st.markdown("""
+            <style>
+                /* Trang trí cho Menu Dropdown đẹp mắt như App Mobile */
+                div[data-baseweb="select"] > div {
+                    background-color: #0B2E9E !important;
+                    color: white !important;
+                    border-radius: 8px !important;
+                    font-weight: bold !important;
+                    font-size: 16px !important;
+                    border: 2px solid #FF6B00 !important;
+                    cursor: pointer !important;
+                }
+                div[data-baseweb="select"] span, div[data-baseweb="select"] div { color: white !important; }
+                
+                /* Xóa khoảng trắng thừa trên cùng để Menu đẩy sát lên */
+                .block-container { padding-top: 1rem !important; }
+            </style>
+        """, unsafe_allow_html=True)
+
+        # Đảm bảo lưu vết trang hiện tại
+        if 'current_menu_page' not in st.session_state:
+            st.session_state['current_menu_page'] = list(danh_sach_trang.keys())[0]
         
         ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
-        st.sidebar.markdown(f"""
-            <div style='background-color: #f1f5f9; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 20px; border-left: 5px solid #0b5394; box-shadow: 0 1px 3px rgba(0,0,0,0.05);'>
-                <p style='margin: 0; font-size: 13px; color: #64748b; font-weight: bold; text-transform: uppercase;'>👋 Xin chào,</p>
-                <h4 style='margin: 5px 0 0 0; color: #0b5394; font-weight: 800; font-size: 17px;'>{ten_hien_thi}</h4>
-                <div style='margin-top: 5px; font-size: 11px; color: #22c55e; font-weight: bold;'>● Tài khoản đang hoạt động</div>
-            </div>
-        """, unsafe_allow_html=True)   
-
-        with st.sidebar:
-            if st.button("🚪 Đăng xuất hệ thống", type="secondary", use_container_width=True):
+        st.markdown(f"<span style='color: #0B2E9E; font-weight: 800; font-size: 14px;'>👋 Xin chào, {ten_hien_thi}</span>", unsafe_allow_html=True)
+        
+        col_menu, col_out = st.columns([7, 3])
+        with col_menu:
+            selected_menu = st.selectbox(
+                "📍 CHỌN CHỨC NĂNG:", 
+                options=list(danh_sach_trang.keys()), 
+                index=list(danh_sach_trang.keys()).index(st.session_state['current_menu_page']) if st.session_state['current_menu_page'] in danh_sach_trang else 0,
+                label_visibility="collapsed" # Ẩn chữ đi cho tiết kiệm diện tích điện thoại
+            )
+            
+            # Logic chuyển trang
+            if selected_menu != st.session_state['current_menu_page']:
+                st.session_state['current_menu_page'] = selected_menu
+                st.switch_page(danh_sach_trang[selected_menu].url_path)
+                
+        with col_out:
+            if st.button("🚪 Đăng xuất", use_container_width=True, type="secondary"):
                 st.session_state.clear()
                 st.rerun()
+                
+        st.divider()
 
     # HÀM RUN PHẢI NẰM NGOÀI CÙNG, ĐỂ STREAMLIT QUẢN LÝ
     pg.run()
