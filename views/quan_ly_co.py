@@ -49,10 +49,8 @@ with tab_khai_co:
     st.markdown("#### 📥 Nhập Liệu Chứng Từ C/O Mới")
     @st.fragment
     def vung_thao_tac_declare_co():
-        # Chia tỷ lệ: Khách hàng (2 phần) - Tờ khai (1 phần) - Phân loại (1 phần)
         col_a, col_b, col_c = st.columns([5, 3, 2])
         
-        # 1. Chọn khách hàng (Sử dụng Cache)
         sql_kh = "SELECT id, ten_khach_hang, ma_khach_hang FROM khach_hang ORDER BY ten_khach_hang ASC"
         df_kh = get_cached_master_data(db, sql_kh)
         dict_kh = {r['id']: f"[{r['ma_khach_hang']}] {r['ten_khach_hang']}" for _, r in df_kh.iterrows()} if not df_kh.empty else {}
@@ -62,7 +60,6 @@ with tab_khai_co:
             format_func=lambda x: dict_kh[x],
             index=0)
         
-        # 2. Chọn tờ khai xuất khẩu lọc theo khách hàng (Sử dụng Cache)
         dict_tk = {}
         if khach_hang_id:
             sql_tk_xuat = "SELECT id, so_to_khai, ngay_khai FROM to_khai_hai_quan WHERE loai_to_khai = 'Xuat_Khau' AND khach_hang_id = %s ORDER BY id DESC"
@@ -75,10 +72,8 @@ with tab_khai_co:
         if not to_khai_id and khach_hang_id:
             st.warning("⚠️ Khách hàng này chưa có tờ khai xuất khẩu nào trong hệ thống.")
 
-        # 3. Phân loại C/O để tự động nội suy giá
         phan_loai_co = col_c.selectbox("3. Phân Loại Làm C/O", ["Thường", "Gấp", "Ghép"])
         
-        # GỌI HÀM LẤY GIÁ TỪ DATABASE
         gia_co_tu_dong = 0.0
         if khach_hang_id:
             gia_co_tu_dong = get_don_gia_co_theo_khach_hang(db.pool, khach_hang_id, phan_loai_co)
@@ -282,7 +277,6 @@ with tab_ocr_co:
         st.error("⚠️ Server thiếu thư viện. Chạy lệnh: `pip install streamlit-drawable-canvas openpyxl pdfplumber easyocr`")
         st.stop()
 
-    # --- CHỌN CHẾ ĐỘ LÀM VIỆC ---
     che_do_tab3 = st.radio(
         "Lựa chọn luồng công việc:", 
         ["1️⃣ Quét PDF Mới & Chỉnh Sửa", "2️⃣ Tải File Excel Cũ Lên Để Ký Nhận (Làm tiếp)"],
@@ -291,7 +285,6 @@ with tab_ocr_co:
     
     st.divider()
     
-    # Khởi tạo Session State giữ dữ liệu
     if "ocr_data" not in st.session_state:
         st.session_state["ocr_data"] = []
     
@@ -319,11 +312,9 @@ with tab_ocr_co:
                                 for page in pdf.pages:
                                     co_number = "Không nhận diện được"
                                     
-                                    # Thử text chìm trước
                                     text_fast = (page.extract_text() or "").upper()
                                     match = re.search(pattern, text_fast)
                                     
-                                    # Nếu không có text chìm thì gọi OCR
                                     if not match:
                                         bounding_box = (page.width * 0.35, 0, page.width, page.height * 0.35)
                                         micro_crop = page.crop(bounding_box)
@@ -371,7 +362,6 @@ with tab_ocr_co:
         uploaded_excel = st.file_uploader("📂 Kéo thả file Excel (Bản chưa ký) vào đây", type=["xlsx", "xls"], key="upload_excel_to_sign")
         if uploaded_excel:
             try:
-                # Đọc Excel bỏ qua 3 dòng tiêu đề đầu, lấy từ dòng số 4 làm header
                 df_load = pd.read_excel(uploaded_excel, skiprows=3)
                 if 'SỐ C/O BẢN GỐC' in df_load.columns:
                     st.session_state["ocr_data"] = df_load.to_dict('records')
@@ -389,27 +379,23 @@ with tab_ocr_co:
         
         st.markdown(f"#### 📝 Danh sách {len(df_current)} mã C/O (Nhấp đúp chuột vào ô để sửa lỗi)")
         
-        # 1. TÍNH NĂNG CHỈNH SỬA TRỰC TIẾP (Data Editor)
         edited_df = st.data_editor(
             df_current, 
             use_container_width=True, 
             num_rows="dynamic",
-            disabled=["STT", "KÝ NHẬN", "NGÀY NHẬN"], # Khóa các cột không cần sửa
+            disabled=["STT", "KÝ NHẬN", "NGÀY NHẬN"],
             key="co_data_editor"
         )
         
-        # Đồng bộ lại dữ liệu đã sửa vào Session State
         st.session_state["ocr_data"] = edited_df.to_dict('records')
         
-        # OPTION 1: TẢI XUỐNG BẢN NHÁP CHƯA KÝ (Dùng pandas cơ bản cho nhanh)
+        # OPTION 1: TẢI XUỐNG BẢN NHÁP CHƯA KÝ
         excel_nhap_buffer = io.BytesIO()
         with pd.ExcelWriter(excel_nhap_buffer, engine='xlsxwriter') as writer:
-            # Ghi tiêu đề tĩnh (3 dòng đầu)
             workbook = writer.book
             worksheet = writer.sheets.setdefault('So_Giao_Nhan', workbook.add_worksheet('So_Giao_Nhan'))
             worksheet.write('A1', "CÔNG TY FORTUNATE HONGKONG VIỆT NAM")
             worksheet.write('A2', "GỞI CÔNG TY: EXPEDITORS")
-            # Ghi dữ liệu từ dòng 4
             edited_df.to_excel(writer, sheet_name='So_Giao_Nhan', index=False, startrow=3)
             worksheet.set_column('A:A', 10); worksheet.set_column('B:B', 35); worksheet.set_column('C:C', 30); worksheet.set_column('D:D', 25)
             
@@ -434,7 +420,7 @@ with tab_ocr_co:
             fill_color="rgba(255, 165, 0, 0.3)", stroke_width=2.5, stroke_color="#000080",
             background_color="#f0f2f6", 
             height=150, 
-            width=350, # Đã thu gọn từ 450 xuống 350 để vừa khít mọi màn hình điện thoại
+            width=350, # Vừa khít mọi màn hình điện thoại
             drawing_mode="freedraw",
             return_image_data=True, key="canvas_ky_ten_2"
         )
@@ -446,7 +432,6 @@ with tab_ocr_co:
                 st.error("Đại lý chưa ký xác nhận vào khung.")
             else:
                 with st.spinner("Đang chèn chữ ký và xử lý File..."):
-                    # --- Lưu Audit Log theo chuẩn dự án ---
                     try:
                         from audit_logger import ghi_log_he_thong
                         chi_tiet_log = f"Bàn giao {len(edited_df)} C/O gốc cho đại lý: {ten_dai_ly}"
@@ -454,12 +439,9 @@ with tab_ocr_co:
                     except Exception as log_err:
                         pass
                     
-                    # --- BẢN VÁ LỖI CHO MOBILE: Xử lý nền trắng cho chữ ký ---
+                    # --- Xử lý chữ ký trong suốt/alpha trên di động ---
                     img_data = canvas_result.image_data
-                    from PIL import Image
                     img_rgba = Image.fromarray(img_data.astype('uint8'), 'RGBA')
-                    
-                    # Tạo một khung ảnh nền trắng hoàn toàn (WHITE) để chặn lỗi Alpha Channel trên iOS
                     img_bg = Image.new("RGBA", img_rgba.size, "WHITE")
                     img_bg.paste(img_rgba, mask=img_rgba)
                     img_rgb = img_bg.convert('RGB')
@@ -468,10 +450,9 @@ with tab_ocr_co:
                     img_rgb.save(img_buffer, format="PNG")
                     img_buffer.seek(0)
                     
-                    # --- XUẤT FILE BẰNG XLSXWRITER (Tương thích 100% iOS/iPhone) ---
+                    # --- XUẤT FILE BẰNG XLSXWRITER ---
                     excel_buffer = io.BytesIO()
                     with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                        # Cập nhật thông tin vào DF
                         edited_df['KÝ NHẬN'] = ten_dai_ly
                         edited_df['NGÀY NHẬN'] = ngay_nhan.strftime('%d/%m/%Y')
                         edited_df.to_excel(writer, sheet_name='So_Giao_Nhan', startrow=3, index=False, header=False)
@@ -479,27 +460,27 @@ with tab_ocr_co:
                         workbook = writer.book
                         worksheet = writer.sheets['So_Giao_Nhan']
                         
-                        # Cấu hình in ấn A4
+                        # Cấu hình in ấn
                         worksheet.set_paper(9)
                         worksheet.set_margins(left=0.45, right=0.45, top=0.75, bottom=0.75)
                         
-                        # Khởi tạo các bộ định dạng (Format)
+                        # Khởi tạo các định dạng font & cell
                         format_title = workbook.add_format({'font_name': 'Times New Roman', 'font_size': 18, 'bold': True, 'align': 'center', 'valign': 'vcenter'})
                         format_header = workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'bold': True, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'bg_color': '#D9D9D9'})
                         format_cell_center = workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'align': 'center', 'valign': 'vcenter', 'border': 1})
                         format_cell_left = workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'align': 'left', 'valign': 'vcenter', 'border': 1})
                         format_sign_header = workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'bold': True, 'align': 'center', 'valign': 'vcenter'})
                         
-                        # Ghi Tiêu đề Công ty
+                        # Ghi tiêu đề công ty & Gởi
                         worksheet.merge_range('A1:D1', "CÔNG TY FORTUNATE HONGKONG VIỆT NAM", format_title)
                         worksheet.merge_range('A2:D2', "GỞI CÔNG TY: EXPEDITORS", format_title)
                         
-                        # Ghi Tiêu đề Cột
+                        # Ghi tiêu đề cột
                         headers = ['STT', 'SỐ C/O BẢN GỐC', 'KÝ NHẬN', 'NGÀY NHẬN']
                         for col_num, h_text in enumerate(headers):
                             worksheet.write(3, col_num, h_text, format_header)
                         
-                        # Căn lề, kẻ khung dữ liệu
+                        # Căn lề & vẽ khung cho lưới dữ liệu
                         for r_idx in range(len(edited_df)):
                             row_excel = r_idx + 4
                             worksheet.set_row(row_excel, 20)
@@ -508,30 +489,33 @@ with tab_ocr_co:
                             worksheet.write(row_excel, 2, edited_df.iloc[r_idx, 2], format_cell_left)
                             worksheet.write(row_excel, 3, edited_df.iloc[r_idx, 3], format_cell_left)
                         
-                        # Cài đặt độ rộng cột
                         worksheet.set_column('A:A', 10)
                         worksheet.set_column('B:B', 35)
                         worksheet.set_column('C:C', 30)
                         worksheet.set_column('D:D', 25)
                         
-                        # Chèn chữ ký và Người đại diện (Dưới cùng)
+                        # --- GIẢI PHÁP ĐÓNG BĂNG VỊ TRÍ CHỮ KÝ TRÊN MOBILE ---
+                        # Xác định hàng khởi tạo để ký tên (dưới bảng dữ liệu)
                         dong_ky_ten = 5 + len(edited_df) + 1
                         
-                        # 1. Nới rộng chiều cao dòng chữ Tên người nhận cho thoáng
+                        # Dòng `dong_ky_ten`: Tiêu đề & Vai trò (Cần nới rộng 30pt để không lướt vào chữ)
                         worksheet.set_row(dong_ky_ten, 30)
                         worksheet.write(dong_ky_ten, 1, "ĐẠI DIỆN BÀN GIAO", format_sign_header)
                         worksheet.write(dong_ky_ten, 2, f"ĐẠI LÝ NHẬN: {ten_dai_ly}", format_sign_header)
                         
-                        # 2. BẮT BUỘC MỞ RỘNG CHIỀU CAO DÒNG CHỨA CHỮ KÝ (100 points) ĐỂ TRÁNH BỊ TRÀN TRÊN MOBILE
-                        worksheet.set_row(dong_ky_ten + 1, 100)
+                        # Dòng `dong_ky_ten + 1`: ĐỂ TRỐNG HOÀN TOÀN (Làm vùng đệm chống trồi chữ ký)
+                        worksheet.set_row(dong_ky_ten + 1, 15)
                         
-                        # 3. Dùng insert_image kết hợp offset (đẩy tọa độ) để ép chữ ký lùi xuống dưới
-                        worksheet.insert_image(dong_ky_ten + 1, 2, 'signature.png', {
+                        # Dòng `dong_ky_ten + 2`: VÙNG CHỨA ẢNH CHỮ KÝ CHUYÊN BIỆT (Nới rộng 110pt)
+                        worksheet.set_row(dong_ky_ten + 2, 110)
+                        
+                        # Thực hiện chèn ảnh không dùng offset lớn/offset âm để tránh lỗi biến dạng khi mở bằng di động
+                        worksheet.insert_image(dong_ky_ten + 2, 2, 'signature.png', {
                             'image_data': img_buffer, 
                             'x_scale': 0.6, 
                             'y_scale': 0.6,
-                            'x_offset': 20,  # Thụt lề phải 20 pixel để cân đối
-                            'y_offset': 15   # Ép chữ ký tụt xuống 15 pixel để cách xa tên người nhận
+                            'x_offset': 15,  # Căn lề nhỏ tự nhiên
+                            'y_offset': 0    # Đưa về 0 để triệt tiêu việc xô dịch ảnh
                         })
                     
                     st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao đã sẵn sàng!")
@@ -544,16 +528,11 @@ with tab_ocr_co:
                     )
         
         if st.button("🔄 Tải Lại Phiên Mới (Xóa Trắng)"):
-            # 1. Làm rỗng lưới dữ liệu
             st.session_state["ocr_data"] = []
-            
-            # 2. Quét và xóa sạch toàn bộ cache của file upload, lưới editor và khung chữ ký
             keys_to_reset = ["upload_pdfs_ocr", "upload_excel_to_sign", "co_data_editor", "canvas_ky_ten_2"]
             for key in keys_to_reset:
                 if key in st.session_state:
                     del st.session_state[key]
-                    
-            # 3. Tải lại trang
             st.rerun()
 
 
@@ -564,7 +543,6 @@ with tab_quan_ly_co:
     tao_tieu_de_kem_nut_refresh("🔍 Danh sách Chứng từ C/O", "ref_tab_ds_co")
     @st.fragment
     def vung_thao_tac_edit_delete_co():
-    
         col_f1, col_f2 = st.columns(2)
         today = datetime.date.today()
         co_tu_ngay = col_f1.date_input("Từ ngày", value=today.replace(day=1), key="co_tu_ngay")
