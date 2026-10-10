@@ -40,18 +40,18 @@ def show_page():
                 visibility: visible !important;
                 opacity: 1 !important;
                 
-                /* Biến nó thành một nút nổi (Floating Button) màu Xanh đậm */
-                background-color: #0B2E9E !important; 
-                border-radius: 8px !important; /* Bo góc đẹp mắt */
+                /* ĐỔI MÀU NỀN TẠI ĐÂY: Xanh dương sáng (Light Blue) cho dễ nhìn */
+                background-color: #3b82f6 !important; 
+                border-radius: 8px !important;
                 padding: 6px !important;
                 margin-left: 10px !important;
                 margin-top: 10px !important;
-                box-shadow: 0px 4px 6px rgba(0,0,0,0.4) !important; /* Đổ bóng mạnh để nút nẩy lên */
+                box-shadow: 0px 4px 6px rgba(0,0,0,0.4) !important;
                 
-                /* Lôi nó lên trên cùng, đè lên mọi trang con (như chuyen_di.py) */
                 position: fixed !important; 
                 z-index: 9999999 !important; 
             }
+            
             
             /* Đổi màu biểu tượng >>> bên trong thành Trắng tinh */
             [data-testid="collapsedControl"] svg,
