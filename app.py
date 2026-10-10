@@ -10,12 +10,11 @@ def show_page():
     with st.spinner("🔄 Đang tải chương trình và đồng bộ dữ liệu hệ thống, vui lòng đợi..."):
         time.sleep(0.3) 
 
-    # 2. CSS TẠO THANH APP-BAR ĐỈNH CAO CHUẨN MOBILE APP
+    # 2. CSS ÉP BUỘC HIỂN THỊ NÚT >>> (MỞ SIDEBAR) TRÊN MOBILE
     st.markdown("""
         <style>
-            /* Đẩy nội dung form xuống dưới để không bị thanh Menu đè lên */
             .block-container {
-                padding-top: 4.5rem !important; 
+                padding-top: 3.5rem !important; 
                 padding-bottom: 1rem !important;
                 padding-left: 1rem !important;
                 padding-right: 1rem !important;
@@ -23,62 +22,49 @@ def show_page():
             }
             
             /* ========================================================= */
-            /* 🚀 1. TẠO THANH MENU NGANG TRÊN CÙNG (APP-BAR)            */
+            /* 🚀 ÉP BUỘC HIỂN THỊ NÚT >>> BẰNG MỌI GIÁ                  */
             /* ========================================================= */
+            /* Đảm bảo thanh Header chứa nút >>> không bị chìm xuống dưới */
             header[data-testid="stHeader"] {
                 display: flex !important;
-                background-color: #0B2E9E !important; 
-                z-index: 9999990 !important; 
-                border-bottom: 3px solid #FF6B00 !important; 
-                height: 3.5rem !important; 
-                width: 100% !important;
-                position: fixed !important;
-                top: 0 !important;
-                left: 0 !important;
+                visibility: visible !important;
+                background-color: transparent !important;
+                z-index: 9999998 !important;
             }
-            header[data-testid="stHeader"]::after {
-                content: "ERP BẢO TÍN";
-                position: absolute;
-                left: 55px; 
-                top: 50%;
-                transform: translateY(-50%); 
-                color: white;
-                font-weight: 800;
-                font-size: 18px;
-                letter-spacing: 1px;
-            }
-
-            /* ========================================================= */
-            /* 🚀 2. TÓM CỔ NÚT 3 GẠCH VÀ ĐÓNG ĐINH VÀO THANH APP-BAR      */
-            /* Quét mọi tên mã trên mọi phiên bản Streamlit (Cũ & Mới)   */
-            /* ========================================================= */
+            
+            /* Tóm cổ nút >>> trên mọi phiên bản Streamlit */
             [data-testid="collapsedControl"],
             [data-testid="stSidebarCollapsedControl"],
             button[kind="headerNoPadding"] {
                 display: flex !important;
                 visibility: visible !important;
                 opacity: 1 !important;
-                background: transparent !important; 
-                border: none !important;
-                /* Cưỡng chế nhấc nút này đặt vào góc trái trên cùng */
+                
+                /* Biến nó thành một nút nổi (Floating Button) màu Xanh đậm */
+                background-color: #0B2E9E !important; 
+                border-radius: 8px !important; /* Bo góc đẹp mắt */
+                padding: 6px !important;
+                margin-left: 10px !important;
+                margin-top: 10px !important;
+                box-shadow: 0px 4px 6px rgba(0,0,0,0.4) !important; /* Đổ bóng mạnh để nút nẩy lên */
+                
+                /* Lôi nó lên trên cùng, đè lên mọi trang con (như chuyen_di.py) */
                 position: fixed !important; 
-                top: 0.5rem !important; 
-                left: 0.5rem !important; 
                 z-index: 9999999 !important; 
             }
             
-            /* Ép biểu tượng 3 gạch to ra và có màu Trắng tinh */
+            /* Đổi màu biểu tượng >>> bên trong thành Trắng tinh */
             [data-testid="collapsedControl"] svg,
             [data-testid="stSidebarCollapsedControl"] svg,
             button[kind="headerNoPadding"] svg {
-                fill: white !important; 
+                fill: white !important;
                 color: white !important;
-                width: 2rem !important; 
-                height: 2rem !important;
+                width: 1.6rem !important;
+                height: 1.6rem !important;
             }
-            
+
             /* ========================================================= */
-            /* CSS GỐC CỦA THANH SIDEBAR                                 */
+            /* CSS GỐC CỦA THANH SIDEBAR CHUYÊN NGHIỆP                   */
             /* ========================================================= */
             section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
@@ -87,21 +73,29 @@ def show_page():
             [data-testid="stSidebarNav"] ul li div {
                 font-size: 16px !important; font-weight: 800 !important;
                 color: #0b5394 !important; text-transform: uppercase !important;
+                padding-bottom: 5px; margin-top: 5px !important; 
                 border-bottom: 2px solid #cbd5e1;
             }
             [data-testid="stSidebarNav"] > ul > li:nth-child(2) > div {
                 color: #d32f2f !important; font-size: 17px !important;
                 border-bottom: 2px solid #d32f2f !important;
+                padding-bottom: 8px !important; margin-top: 15px !important; 
+            }
+            [data-testid="stSidebarNav"] ul li ul li {
+                margin-left: 25px !important; border-left: 2px solid #e2e8f0;
             }
             [data-testid="stSidebarNav"] ul li ul li a span {
                 font-size: 16px !important; font-weight: 600 !important;  
-                color: #334155 !important; 
+                color: #334155 !important; text-transform: none !important; border-bottom: none !important;
+            }
+            [data-testid="stSidebarNav"] ul li ul li:hover {
+                background-color: #e2e8f0 !important; border-left: 3px solid #0b5394 !important; border-radius: 0 6px 6px 0;
             }
             [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] {
                 background-color: #dbeafe !important; border-left: 3px solid #0b5394 !important;
             }
             
-            /* CHỈ ẨN ICON ĐANG CHẠY VÀ FOOTER */
+            /* CHỈ ẨN ICON ĐANG CHẠY VÀ FOOTER (KHÔNG ẨN TOOLBAR TRÁNH LỖI MẠNG) */
             [data-testid="stStatusWidget"], footer {
                 display: none !important;
                 visibility: hidden !important;
@@ -125,7 +119,6 @@ def show_page():
 
     def toggle_password(): st.session_state['hien_mat_khau'] = not st.session_state['hien_mat_khau']
 
-    # 5. Giao diện Đăng nhập
     def login_ui():
         st.markdown("<h3 style='text-align: center; color: #0B2E9E;'>🔐 ĐĂNG NHẬP HỆ THỐNG ERP</h3>", unsafe_allow_html=True)
         col_l1, col_l2, col_l3 = st.columns([1, 1, 1])
@@ -207,11 +200,9 @@ def show_page():
     # CẤU HÌNH ĐIỀU HƯỚNG BÊN TRÁI CHUYÊN NGHIỆP CỦA ERP
     # =========================================================================
     if not st.session_state['logged_in']:
-        # Mẹo: Khởi tạo 2 trang ảo để Streamlit không bao giờ xóa thanh App-Bar trên điện thoại
         def trang_cho():
-            pass # Hàm rỗng hợp lệ thay cho lambda
-            
-        page_dummy = st.Page(trang_cho, title="Chưa đăng nhập", icon="👉", url_path="trang-cho")
+            pass
+        page_dummy = st.Page(trang_cho, title="Vui lòng đăng nhập", icon="👉", url_path="trang-cho")
         pg = st.navigation({"HỆ THỐNG ERP": [page_login, page_dummy]})
     else:
         role = st.session_state.get('role', 'User')
