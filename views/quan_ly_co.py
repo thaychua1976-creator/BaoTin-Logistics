@@ -367,12 +367,14 @@ with tab_ocr_co:
                 df_load = pd.read_excel(uploaded_excel, skiprows=3)
                 if 'SỐ C/O BẢN GỐC' in df_load.columns:
                     st.session_state["ocr_data"] = df_load.to_dict('records')
+                    # THÊM DÒNG NÀY ĐỂ NHỚ TÊN FILE GỐC
+                    st.session_state["ten_file_goc"] = uploaded_excel.name
+                    
                     st.success("✅ Đã khôi phục dữ liệu từ file Excel thành công!")
                 else:
                     st.error("❌ File Excel không đúng định dạng chuẩn của phần mềm.")
             except Exception as e:
                 st.error(f"Lỗi đọc file Excel: {e}")
-
     # ==========================================
     # KHU VỰC CHUNG: HIỂN THỊ LƯỚI DATA & KÝ NHẬN (CÓ DỮ LIỆU MỚI HIỆN)
     # ==========================================
@@ -427,7 +429,7 @@ with tab_ocr_co:
             return_image_data=True, key="canvas_ky_ten_2"
         )
         
-        if st.button("🤝 KÝ NHẬN & XUẤT EXCEL CHUẨN", type="primary"):
+        if st.button("🤝 KÝ NHẬN & XUẤT PDF CHUẨN", type="primary"):
             if not ten_dai_ly.strip():
                 st.error("Vui lòng nhập Tên đại lý.")
             elif canvas_result.image_data is None or canvas_result.image_data.sum() == 0:
@@ -531,15 +533,25 @@ with tab_ocr_co:
                     if os.path.exists(img_temp_path):
                         os.remove(img_temp_path)
                     
-                    # 7. XUẤT RA GIAO DIỆN
+                    # 7. XUẤT RA GIAO DIỆN & XỬ LÝ TÊN FILE
                     pdf_bytes = pdf.output()
                     
+                    # Lấy lại tên file gốc (nếu có), nếu không có thì dùng tên mặc định
+                    ten_goc = st.session_state.get("ten_file_goc", "")
+                    if ten_goc:
+                        # Bỏ đuôi .xlsx và thêm chữ _Da_Ky.pdf
+                        import os
+                        ten_file_xuat_ra = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.pdf"
+                    else:
+                        ten_file_xuat_ra = f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
+                    
                     st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao (PDF) đã sẵn sàng!")
+                    
                     st.download_button(
-                        label="📥 TẢI PHIẾU BÀN GIAO ĐÃ KÝ (BẢN PDF)",
+                        label="📥 TẢI PHIẾU BÀN GIAO ĐÃ KÝ VỀ MÁY",
                         data=bytes(pdf_bytes),
-                        file_name=f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf",
-                        mime="application/pdf",
+                        file_name=ten_file_xuat_ra, # Dùng tên file thông minh vừa tạo
+                        mime="application/octet-stream", # ÉP TRÌNH DUYỆT BẮT BUỘC TẢI VỀ MÁY, KHÔNG ĐƯỢC MỞ XEM TRƯỚC
                         type="primary"
                     )
         
