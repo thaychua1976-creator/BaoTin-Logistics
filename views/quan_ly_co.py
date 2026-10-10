@@ -533,32 +533,36 @@ with tab_ocr_co:
                     if os.path.exists(img_temp_path):
                         os.remove(img_temp_path)
                     
-                    # 7. XUẤT RA GIAO DIỆN & ÉP ĐÚNG TÊN FILE CHO ĐIỆN THOẠI
+                    # 7. XUẤT RA GIAO DIỆN & ÉP ĐÚNG TÊN FILE CHO ĐIỆN THOẠI BẰNG FILE ZIP
                     pdf_bytes = pdf.output()
                     
                     # Xử lý Tên File Đầu Ra Thông Minh
                     ten_goc = st.session_state.get("ten_file_goc", "")
                     if ten_goc:
                         import os
-                        ten_file_xuat_ra = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.pdf"
+                        ten_file_pdf = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.pdf"
+                        ten_file_zip = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.zip"
                     else:
-                        ten_file_xuat_ra = f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
+                        ten_file_pdf = f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
+                        ten_file_zip = f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.zip"
                     
-                    st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao (PDF) đã sẵn sàng!")
+                    # ĐÓNG GÓI FILE PDF VÀO BÊN TRONG FILE ZIP ĐỂ VƯỢT RÀO IPHONE
+                    import zipfile
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+                        zip_file.writestr(ten_file_pdf, pdf_bytes)
+                    zip_bytes = zip_buffer.getvalue()
+
+                    st.success(f"✅ Đã đóng gói thành công file: {ten_file_pdf}")
                     
-                    # TẠO NÚT TẢI BASE64 CHUYÊN TRỊ LỖI TÊN FILE TRÊN IPHONE/ANDROID
-                    import base64
-                    b64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-                    
-                    nui_tai_ve_html = f'''
-                    <a href="data:application/octet-stream;base64,{b64_pdf}" download="{ten_file_xuat_ra}" 
-                       style="display: block; padding: 12px 20px; background-color: #FF4B4B; color: white; 
-                              text-align: center; text-decoration: none; border-radius: 8px; font-weight: bold; 
-                              margin-top: 10px; font-family: sans-serif;">
-                        📥 BẤM VÀO ĐÂY ĐỂ TẢI PHIẾU BÀN GIAO ({ten_file_xuat_ra})
-                    </a>
-                    '''
-                    st.markdown(nui_tai_ve_html, unsafe_allow_html=True)
+                    # Trình duyệt thấy đuôi .zip sẽ ngoan ngoãn hiện bảng tải về ngay lập tức
+                    st.download_button(
+                        label="📥 TẢI PHIẾU BÀN GIAO (BẢN ZIP)",
+                        data=bytes(zip_bytes),
+                        file_name=ten_file_zip,
+                        mime="application/zip", 
+                        type="primary"
+                    )
         
         if st.button("🔄 Tải Lại Phiên Mới (Xóa Trắng)"):
             st.session_state["ocr_data"] = []
