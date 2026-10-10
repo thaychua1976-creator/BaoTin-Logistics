@@ -494,37 +494,26 @@ with tab_ocr_co:
                         worksheet.set_column('C:C', 30)
                         worksheet.set_column('D:D', 25)
                         
-                        # --- GIẢI PHÁP ĐÓNG BĂNG VỊ TRÍ CHỮ KÝ TRÊN MOBILE ---
+                        # --- GIẢI PHÁP TÁCH LÀN VĨNH VIỄN KHÔNG ĐÈ CHỮ TRÊN MOBILE ---
                         dong_ky_ten = 5 + len(edited_df) + 1
                         
-                        # 1. Dòng Tiêu đề Người nhận
-                        worksheet.set_row(dong_ky_ten, 30)
-                        worksheet.write(dong_ky_ten, 1, "ĐẠI DIỆN BÀN GIAO", format_sign_header)
-                        worksheet.write(dong_ky_ten, 2, f"ĐẠI LÝ NHẬN: {ten_dai_ly}", format_sign_header)
+                        # 1. Mở rộng chiều cao của chính dòng này lên 120pt để làm không gian chứa ảnh
+                        worksheet.set_row(dong_ky_ten, 120)
                         
-                        # 2. KHỞI TẠO KHUNG CỐ ĐỊNH CHỐNG ÉP DÒNG TRÊN ĐIỆN THOẠI
-                        # Tạo một định dạng bắt buộc ngắt dòng (text_wrap)
-                        format_signature_box = workbook.add_format({
-                            'text_wrap': True, 
-                            'align': 'center', 
-                            'valign': 'top'
-                        })
+                        # 2. VĂN BẢN NẰM BÊN TRÁI (Cột B và Cột C)
+                        # Dùng align: 'center' và valign: 'vcenter' để chữ nằm giữa ô đẹp mắt
+                        worksheet.write(dong_ky_ten, 1, "ĐẠI DIỆN BÀN GIAO\n(Bên giao)", workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'bold': True, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True}))
+                        worksheet.write(dong_ky_ten, 2, f"ĐẠI LÝ NHẬN C/O\nÔng/Bà: {ten_dai_ly}", workbook.add_format({'font_name': 'Times New Roman', 'font_size': 13, 'bold': True, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True}))
                         
-                        # Ép chiều cao dòng lên 120pt
-                        worksheet.set_row(dong_ky_ten + 1, 120)
-                        
-                        # NHỒI 6 DẤU XUỐNG DÒNG (ENTER) VÀO Ô ĐỂ ÉP ĐIỆN THOẠI PHẢI MỞ RỘNG Ô
-                        # Dù là iPhone hay Android cũng không thể bóp dẹp ô này được nữa
-                        worksheet.write(dong_ky_ten + 1, 2, "\n\n\n\n\n\n(Ký và ghi rõ họ tên)", format_signature_box)
-                        
-                        # 3. CHÈN ẢNH VÀO ĐÚNG CÁI Ô ĐÃ ĐƯỢC CHỐNG LƯNG NÀY
-                        worksheet.insert_image(dong_ky_ten + 1, 2, 'signature.png', {
+                        # 3. CHỮ KÝ NẰM HOÀN TOÀN BÊN PHẢI (Cột D)
+                        # Neo ảnh vào Cột số 3 (Tức là Cột D - Cột Ngày Nhận đang trống ở hàng này)
+                        worksheet.insert_image(dong_ky_ten, 3, 'signature.png', {
                             'image_data': img_buffer, 
-                            'x_scale': 0.5, 
-                            'y_scale': 0.5,
-                            'x_offset': 60,  # Đẩy nhẹ ảnh vào giữa ô
-                            'y_offset': 5,
-                            'positioning': 1  # Bắt ảnh phải co giãn theo ô
+                            'x_scale': 0.65, # Phóng to ảnh một chút cho rõ
+                            'y_scale': 0.65,
+                            'x_offset': 10,  # Đẩy ảnh lùi vào giữa cột D
+                            'y_offset': 15,
+                            'positioning': 1 # Khóa co giãn
                         })
                     
                     st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao đã sẵn sàng!")
