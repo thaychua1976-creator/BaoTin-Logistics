@@ -13,7 +13,7 @@ def show_page():
     # 2. CSS TẠO THANH APP-BAR ĐỈNH CAO CHUẨN MOBILE APP
     st.markdown("""
         <style>
-            /* Đẩy nội dung xuống dưới để không bị Thanh App-Bar đè lên */
+            /* Đẩy nội dung form xuống dưới để không bị thanh Menu đè lên */
             .block-container {
                 padding-top: 4.5rem !important; 
                 padding-bottom: 1rem !important;
@@ -27,47 +27,58 @@ def show_page():
             /* ========================================================= */
             header[data-testid="stHeader"] {
                 display: flex !important;
-                background-color: #0B2E9E !important; /* Đổ màu Xanh đậm ERP cho thanh Menu */
-                z-index: 9999999 !important; /* Ép nổi lên trên mọi trang con */
-                border-bottom: 3px solid #FF6B00 !important; /* Viền Cam chân thanh Menu */
-                height: 3.5rem !important; /* Chiều cao cố định chuẩn Mobile */
+                background-color: #0B2E9E !important; 
+                z-index: 9999990 !important; 
+                border-bottom: 3px solid #FF6B00 !important; 
+                height: 3.5rem !important; 
                 width: 100% !important;
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
             }
-            
-            /* 🚀 2. CHÈN TÊN PHẦN MỀM VÀO THANH MENU */
             header[data-testid="stHeader"]::after {
                 content: "ERP BẢO TÍN";
                 position: absolute;
-                left: 55px; /* Đẩy sang phải để nhường chỗ cho nút 3 gạch */
+                left: 55px; 
                 top: 50%;
-                transform: translateY(-50%); /* Canh giữa hoàn hảo theo chiều dọc */
+                transform: translateY(-50%); 
                 color: white;
                 font-weight: 800;
                 font-size: 18px;
                 letter-spacing: 1px;
             }
-            
-            /* 🚀 3. HIỆN NÚT 3 GẠCH NẰM BÊN TRONG THANH MENU */
-            header[data-testid="stHeader"] button {
-                display: inline-flex !important;
+
+            /* ========================================================= */
+            /* 🚀 2. TÓM CỔ NÚT 3 GẠCH VÀ ĐÓNG ĐINH VÀO THANH APP-BAR      */
+            /* Quét mọi tên mã trên mọi phiên bản Streamlit (Cũ & Mới)   */
+            /* ========================================================= */
+            [data-testid="collapsedControl"],
+            [data-testid="stSidebarCollapsedControl"],
+            button[kind="headerNoPadding"] {
+                display: flex !important;
                 visibility: visible !important;
                 opacity: 1 !important;
                 background: transparent !important; 
                 border: none !important;
-                margin-top: auto !important;
-                margin-bottom: auto !important;
+                /* Cưỡng chế nhấc nút này đặt vào góc trái trên cùng */
+                position: fixed !important; 
+                top: 0.5rem !important; 
+                left: 0.5rem !important; 
+                z-index: 9999999 !important; 
             }
             
-            /* Đổi màu biểu tượng 3 gạch thành Trắng để nổi trên nền Xanh */
-            header[data-testid="stHeader"] svg {
+            /* Ép biểu tượng 3 gạch to ra và có màu Trắng tinh */
+            [data-testid="collapsedControl"] svg,
+            [data-testid="stSidebarCollapsedControl"] svg,
+            button[kind="headerNoPadding"] svg {
                 fill: white !important; 
                 color: white !important;
-                width: 1.8rem !important; /* Phóng to nút 3 gạch ra một xíu cho dễ bấm */
-                height: 1.8rem !important;
+                width: 2rem !important; 
+                height: 2rem !important;
             }
             
             /* ========================================================= */
-            /* CSS GỐC CỦA THANH ĐIỀU HƯỚNG BÊN TRÁI (SIDEBAR)           */
+            /* CSS GỐC CỦA THANH SIDEBAR                                 */
             /* ========================================================= */
             section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
@@ -76,40 +87,26 @@ def show_page():
             [data-testid="stSidebarNav"] ul li div {
                 font-size: 16px !important; font-weight: 800 !important;
                 color: #0b5394 !important; text-transform: uppercase !important;
-                padding-bottom: 5px; margin-top: 5px !important; 
                 border-bottom: 2px solid #cbd5e1;
             }
             [data-testid="stSidebarNav"] > ul > li:nth-child(2) > div {
                 color: #d32f2f !important; font-size: 17px !important;
                 border-bottom: 2px solid #d32f2f !important;
-                padding-bottom: 8px !important; margin-top: 15px !important; 
-            }
-            [data-testid="stSidebarNav"] ul li ul li {
-                margin-left: 25px !important; border-left: 2px solid #e2e8f0;
             }
             [data-testid="stSidebarNav"] ul li ul li a span {
                 font-size: 16px !important; font-weight: 600 !important;  
-                color: #334155 !important; text-transform: none !important; border-bottom: none !important;
-            }
-            [data-testid="stSidebarNav"] ul li ul li:hover {
-                background-color: #e2e8f0 !important; border-left: 3px solid #0b5394 !important; border-radius: 0 6px 6px 0;
+                color: #334155 !important; 
             }
             [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] {
                 background-color: #dbeafe !important; border-left: 3px solid #0b5394 !important;
             }
-            [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] a span {
-                color: #0b5394 !important; font-weight: 800 !important;
-            }
             
-            /* CHỈ ẨN CÁI ICON ĐANG CHẠY VÀ FOOTER (KHÔNG ẨN TOOLBAR TRÁNH LỖI MẠNG) */
+            /* CHỈ ẨN ICON ĐANG CHẠY VÀ FOOTER */
             [data-testid="stStatusWidget"], footer {
                 display: none !important;
                 visibility: hidden !important;
             }
             div[data-testid="InputInstructions"] { display: none !important; }
-            section[data-testid="stSidebar"] .stButton button {
-                width: 100%; font-size: 15px !important; font-weight: bold !important; border-radius: 6px !important;
-            }
         </style>
     """, unsafe_allow_html=True)
 
