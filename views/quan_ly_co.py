@@ -466,9 +466,9 @@ with tab_ocr_co:
                     font_bold_path = "/tmp/Roboto-Bold.ttf"
                     
                     if not os.path.exists(font_path):
-                        urllib.request.urlretrieve("https://raw.githubusercontent.com/google/fonts/main/apache/roboto/Roboto-Regular.ttf", font_path)
+                        urllib.request.urlretrieve("https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Regular.ttf", font_path)
                     if not os.path.exists(font_bold_path):
-                        urllib.request.urlretrieve("https://raw.githubusercontent.com/google/fonts/main/apache/roboto/Roboto-Bold.ttf", font_bold_path)
+                        urllib.request.urlretrieve("https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Bold.ttf", font_bold_path)
                         
                     # 2. Khởi tạo tài liệu PDF (Khổ A4 ngang cho rộng rãi)
                     pdf = FPDF(orientation="L", unit="mm", format="A4")
