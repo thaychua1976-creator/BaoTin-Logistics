@@ -88,6 +88,22 @@ def show_page():
                 width: 100%; font-size: 15px !important; font-weight: bold !important; border-radius: 6px !important;
             }
             div[data-testid="InputInstructions"] { display: none !important; }
+            /* ============================================================== */
+            /* BÙA HỘ MỆNH: ÉP BUỘC HIỂN THỊ NÚT 3 GẠCH TRÊN MOBILE 100%      */
+            /* ============================================================== */
+            header[data-testid="stHeader"] {
+                display: block !important;
+                visibility: visible !important;
+                background-color: transparent !important;
+                z-index: 999999 !important; /* Đẩy nổi lên trên mọi giao diện */
+            }
+            
+            [data-testid="collapsedControl"] {
+                display: flex !important;
+                visibility: visible !important;
+                z-index: 999999 !important;
+                opacity: 1 !important;
+            }
         </style>
     """, unsafe_allow_html=True)
 
