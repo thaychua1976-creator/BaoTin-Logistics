@@ -4,8 +4,8 @@ import pandas as pd
 import bcrypt
 
 def show_page():
-    # SỬA LỖI 1: Để "auto" cho Mobile không bị đè màn hình
-    st.set_page_config(layout="wide", initial_sidebar_state="auto")
+    # Cấu hình giao diện rộng cho cả máy tính và điện thoại
+    st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
     
     with st.spinner("🔄 Đang tải chương trình và đồng bộ dữ liệu hệ thống, vui lòng đợi..."):
         time.sleep(0.3) 
@@ -23,87 +23,26 @@ def show_page():
         """
         st.markdown(custom_css, unsafe_allow_html=True)
         
-    # 2. CSS Tùy chỉnh Sidebar - THUẦN GỐC, KHÔNG ẨN HEADER HAY NÚT
+    # 2. CSS Tùy chỉnh Layout Gốc (ĐÃ XÓA BÙA HỘ MỆNH GÂY LỖI)
     st.markdown("""
         <style>
             .block-container {
-                padding-top: 3.5rem !important;
+                padding-top: 1rem !important; /* Kéo toàn bộ app lên sát mép trên */
                 padding-bottom: 1rem !important;
                 padding-left: 1rem !important;
                 padding-right: 1rem !important;
                 max-width: 98% !important;
             }
             
-            section[data-testid="stSidebar"] {
-                background-color: #f8fafc !important; 
-                border-right: 2px solid #e2e8f0 !important;
-            }
-
-            [data-testid="stSidebarNav"] ul li div {
-                font-size: 16px !important; font-weight: 800 !important;
-                color: #0b5394 !important; text-transform: uppercase !important;
-                padding-bottom: 5px; margin-top: 5px !important; 
-                border-bottom: 2px solid #cbd5e1;
-            }
-            [data-testid="stSidebarNav"] > ul > li:nth-child(2) > div {
-                color: #d32f2f !important; font-size: 17px !important;
-                border-bottom: 2px solid #d32f2f !important;
-                padding-bottom: 8px !important; margin-top: 15px !important; 
-            }
-            [data-testid="stSidebarNav"] ul li ul li {
-                margin-left: 25px !important; border-left: 2px solid #e2e8f0;
-            }
-            [data-testid="stSidebarNav"] ul li ul li a span {
-                font-size: 16px !important; font-weight: 600 !important;  
-                color: #334155 !important; text-transform: none !important; border-bottom: none !important;
-            }
-            [data-testid="stSidebarNav"] ul li ul li:hover {
-                background-color: #e2e8f0 !important; border-left: 3px solid #0b5394 !important; border-radius: 0 6px 6px 0;
-            }
-            [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] {
-                background-color: #dbeafe !important; border-left: 3px solid #0b5394 !important;
-            }
-            [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] a span {
-                color: #0b5394 !important; font-weight: 800 !important;
-            }
             /* --- ẨN CÁC THÀNH PHẦN MẶC ĐỊNH CỦA STREAMLIT --- */
-            /* 1. Ẩn biểu tượng người chạy (Running widget) góc trên bên phải */
-            [data-testid="stStatusWidget"] {
+            [data-testid="stStatusWidget"], [data-testid="stToolbar"], footer {
                 display: none !important;
                 visibility: hidden !important;
-            }
-            
-            /* 2. Ẩn thanh công cụ mặc định (Nút Deploy, dấu 3 chấm) */
-            [data-testid="stToolbar"] {
-                display: none !important;
-                visibility: hidden !important;
-            }
-            
-            /* 3. Ẩn dòng chữ Footer "Made with Streamlit" ở đáy trang */
-            footer {
-                display: none !important;
-                visibility: hidden !important;
-            }
-            section[data-testid="stSidebar"] .stButton button {
-                width: 100%; font-size: 15px !important; font-weight: bold !important; border-radius: 6px !important;
             }
             div[data-testid="InputInstructions"] { display: none !important; }
-            /* ============================================================== */
-            /* BÙA HỘ MỆNH: ÉP BUỘC HIỂN THỊ NÚT 3 GẠCH TRÊN MOBILE 100%      */
-            /* ============================================================== */
-            header[data-testid="stHeader"] {
-                display: block !important;
-                visibility: visible !important;
-                background-color: transparent !important;
-                z-index: 999999 !important; /* Đẩy nổi lên trên mọi giao diện */
-            }
             
-            [data-testid="collapsedControl"] {
-                display: flex !important;
-                visibility: visible !important;
-                z-index: 999999 !important;
-                opacity: 1 !important;
-            }
+            /* --- ẨN LUÔN NÚT 3 GẠCH (VÌ TA ĐÃ DÙNG TOP NAVBAR) --- */
+            [data-testid="collapsedControl"] { display: none !important; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -122,7 +61,7 @@ def show_page():
 
     def toggle_password(): st.session_state['hien_mat_khau'] = not st.session_state['hien_mat_khau']
 
-    # SỬA LỖI 2: Đóng gói giao diện Login thành một hàm chuẩn để làm st.Page
+    # 5. Giao diện Đăng nhập
     def login_ui():
         st.markdown("<h3 style='text-align: center; color: #0B2E9E;'>🔐 ĐĂNG NHẬP HỆ THỐNG ERP BẢO TÍN</h3>", unsafe_allow_html=True)
         col_l1, col_l2, col_l3 = st.columns([1, 1, 1])
@@ -178,22 +117,22 @@ def show_page():
                         else: st.error("❌ Tài khoản không tồn tại!")
                     except Exception as e: st.error(f"❌ Lỗi xác thực: {e}")
 
-    # XÓA BỎ TOÀN BỘ "default=True" ĐỂ STREAMLIT TỰ ĐỘNG CHỌN TRANG ĐẦU TIÊN LÀM TRANG CHỦ
+    # 6. Khởi tạo danh sách các trang
     page_login = st.Page(login_ui, title="Đăng nhập", icon="🔐", url_path="dang-nhap")
     page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", url_path="quan-ly-chuyen-di")
     page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝", url_path="quyet-toan-chuyen-di")
-    page_bao_cao   = st.Page("views/bao_cao.py", title="Thông kê lương & Công Nợ KH", icon="📊", url_path="thong-ke-luong")
+    page_bao_cao   = st.Page("views/bao_cao.py", title="Thông kê lương & Công Nợ", icon="📊", url_path="thong-ke-luong")
     page_nhan_vien = st.Page("views/nhan_vien.py", title="Quản lý Nhân viên", icon="🧑‍✈️", url_path="quan-ly-nhan-vien")
     page_khach_hang = st.Page("views/khach_hang.py", title="Quản lý Khách hàng", icon="🧑", url_path="quan-ly-khach-hang")
     page_to_khai_hq = st.Page("views/khai_bao_hq.py", title="Khai báo Hải Quan", icon="🧑‍✈️", url_path="khai-bao-hai-quan")
     page_quan_ly_co = st.Page("views/quan_ly_co.py", title="Quản lý CO", icon="🧑‍✈️", url_path="quan-ly-co")
     page_doi_xe    = st.Page("views/doi_xe.py", title="Quản lý Đội xe", icon="🚛", url_path="quan-ly-doi-xe")
     page_phap_ly_xe    = st.Page("views/phap_ly_xe.py", title="Quản lý pháp lý xe", icon="🚛", url_path="quan-ly-phap-ly-xe")
-    page_tai_khoan = st.Page("views/tai_khoan.py", title="Quản lý tài khoản user", icon="👤", url_path="quan-ly-tai-khoan")
+    page_tai_khoan = st.Page("views/tai_khoan.py", title="Quản lý tài khoản", icon="👤", url_path="quan-ly-tai-khoan")
     page_doi_mat_khau = st.Page("views/doi_mat_khau.py", title="Đổi mật khẩu", icon="🔑", url_path="doi-mat-khau") 
     page_kinh_doanh_result= st.Page("views/kinh_doanh_result.py", title="Kết quả Kinh doanh", icon="📈", url_path="ket-qua-kinh-doanh")
     page_app_tai_xe = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", url_path="cap-nhat-lich-trinh")
-    page_tool_zalo= st.Page("views/zalo_local_processor.py", title="Lấy thông tin book từ Zalo", icon="🚛", url_path="lay-thong-tin-tu-zalo")
+    page_tool_zalo= st.Page("views/zalo_local_processor.py", title="Lấy thông tin Zalo", icon="🚛", url_path="lay-thong-tin-tu-zalo")
     page_tool_import_pricing= st.Page("views/import_pricing_ui_2.py", title="Thiết lập bảng giá", icon="📈", url_path="thiet-lap-bang-gia")
     page_tool_import_phu_cap= st.Page("views/config_phu_cap.py", title="Thiết lập phụ cấp", icon="📈", url_path="thiet-lap-phu-cap")
     page_tool_import_pricing_haiquan= st.Page("views/ui_hai_quan.py", title="Thiết lập giá HQ", icon="📈", url_path="thiet-lap-gia-hq")
@@ -201,101 +140,96 @@ def show_page():
     page_tool_backup_database= st.Page("views/backup_database.py", title="Backup Database", icon="🚛", url_path="backup-database")
 
     # =========================================================================
-    # SỬA LỖI 4: THIẾT LẬP MENU ĐIỀU HƯỚNG BÊN TRÊN (TOP NAVBAR DROPDOWN)
+    # GIẢI PHÁP TỐI ƯU: THANH MENU VUỐT NGANG Y HỆT TRANG HOME PAGE
     # =========================================================================
     if not st.session_state['logged_in']:
-        # Chế độ chưa đăng nhập: Ẩn menu
         pg = st.navigation([page_login], position="hidden")
     else:
-        # 1. Gom tất cả các trang vào một danh sách phẳng để làm Menu Dropdown
         role = st.session_state.get('role', 'User')
         
         danh_sach_trang = {}
         if role == 'Admin':
             danh_sach_trang = {
-                "📝 Quản lý Chuyến đi": page_chuyen_di,
-                "🧑‍✈️ Khai báo Hải Quan": page_to_khai_hq,
-                "🧑‍✈️ Quản lý CO": page_quan_ly_co,
-                "🚛 Quản lý nhiên liệu": page_tool_fuel_manager,
-                "🚛 Quản lý pháp lý xe": page_phap_ly_xe,
-                "💰 Quyết toán chuyến đi": page_quyet_toan,
-                "📊 Thống kê lương & Công nợ": page_bao_cao,
-                "📈 Thiết lập bảng giá": page_tool_import_pricing,
-                "📈 Thiết lập phụ cấp": page_tool_import_phu_cap,
-                "📈 Thiết lập giá HQ": page_tool_import_pricing_haiquan,
-                "🚛 Zalo tự động": page_tool_zalo,
-                "🧑‍✈️ Quản lý Nhân viên": page_nhan_vien,
-                "🚛 Quản lý Đội xe": page_doi_xe,
-                "🧑 Quản lý Khách hàng": page_khach_hang,
-                "👤 Quản lý tài khoản": page_tai_khoan,
-                "📈 Kết quả Kinh doanh": page_kinh_doanh_result,
-                "🔑 Đổi mật khẩu": page_doi_mat_khau,
-                "🚛 Backup Database": page_tool_backup_database
+                "📝 Chuyến đi": page_chuyen_di, "🧑‍✈️ Hải Quan": page_to_khai_hq, "🧑‍✈️ Quản lý CO": page_quan_ly_co,
+                "💰 Quyết toán": page_quyet_toan, "🚛 Nhiên liệu": page_tool_fuel_manager, "🚛 Pháp lý xe": page_phap_ly_xe,
+                "📊 Thống kê": page_bao_cao, "📈 Bảng giá": page_tool_import_pricing, "📈 Phụ cấp": page_tool_import_phu_cap,
+                "📈 Giá HQ": page_tool_import_pricing_haiquan, "🚛 Zalo": page_tool_zalo, "🧑‍✈️ Nhân viên": page_nhan_vien,
+                "🚛 Đội xe": page_doi_xe, "🧑 Khách hàng": page_khach_hang, "👤 Tài khoản": page_tai_khoan,
+                "📈 KQ Kinh doanh": page_kinh_doanh_result, "🔑 Đổi mật khẩu": page_doi_mat_khau, "🚛 Backup": page_tool_backup_database
             }
         elif role == 'Tai_Xe':
-            page_app_tai_xe_default = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", url_path="cap-nhat-lich-trinh")
-            danh_sach_trang = {
-                "📱 Cập nhật Lịch trình": page_app_tai_xe_default,
-                "🔑 Đổi mật khẩu": page_doi_mat_khau
-            }
+            danh_sach_trang = { "📱 Cập nhật Lịch trình": page_app_tai_xe, "🔑 Đổi mật khẩu": page_doi_mat_khau }
         elif role == 'Ke_Toan':
-            page_quyet_toan_default = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝", url_path="quyet-toan-chuyen-di")
-            danh_sach_trang = {
-                "💰 Quyết toán chuyến đi": page_quyet_toan_default,
-                "📊 Thống kê lương & Công nợ": page_bao_cao,
-                "🔑 Đổi mật khẩu": page_doi_mat_khau
-            }
+            danh_sach_trang = { "💰 Quyết toán": page_quyet_toan, "📊 Thống kê": page_bao_cao, "🔑 Đổi mật khẩu": page_doi_mat_khau }
 
-        # 2. ẨN SIDEBAR CŨ ĐI (Chuyển thành hidden)
+        # Ẩn Sidebar gốc đi để dành đất diễn cho Top Menu
         pg = st.navigation(list(danh_sach_trang.values()), position="hidden")
         
-        # 3. VẼ MENU TOP DROPDOWN NỔI BẬT LÊN TRÊN CÙNG
+        # --- CSS BIẾN ST.RADIO THÀNH THANH ĐIỀU HƯỚNG VUỐT NGANG Y HỆT HOME ---
         st.markdown("""
             <style>
-                /* Trang trí cho Menu Dropdown đẹp mắt như App Mobile */
-                div[data-baseweb="select"] > div {
-                    background-color: #0B2E9E !important;
-                    color: white !important;
-                    border-radius: 8px !important;
-                    font-weight: bold !important;
-                    font-size: 16px !important;
-                    border: 2px solid #FF6B00 !important;
+                div[role="radiogroup"] {
+                    display: flex !important;
+                    flex-direction: row !important;
+                    flex-wrap: nowrap !important;
+                    overflow-x: auto !important;
+                    overflow-y: hidden !important;
+                    padding-bottom: 8px !important;
+                    -webkit-overflow-scrolling: touch !important; /* Mượt trên iOS */
+                }
+                /* Ẩn dấu chấm tròn mặc định của Radio */
+                div[role="radiogroup"] span[data-baseweb="radio"] { display: none !important; }
+                
+                /* Đóng khung từng Menu thành 1 Nút bấm */
+                div[role="radiogroup"] > label {
+                    background-color: #f1f5f9 !important;
+                    color: #0B2E9E !important;
+                    padding: 8px 16px !important;
+                    border-radius: 20px !important; /* Bo góc tròn như nút App */
+                    margin-right: 8px !important;
+                    font-weight: 800 !important;
+                    white-space: nowrap !important; /* Cấm xuống dòng */
+                    border: 1px solid #cbd5e1 !important;
                     cursor: pointer !important;
                 }
-                div[data-baseweb="select"] span, div[data-baseweb="select"] div { color: white !important; }
                 
-                /* Xóa khoảng trắng thừa trên cùng để Menu đẩy sát lên */
-                .block-container { padding-top: 1rem !important; }
+                /* Khi Menu đó đang được chọn (Active) */
+                div[role="radiogroup"] > label[data-checked="true"] {
+                    background-color: #0B2E9E !important;
+                    color: white !important;
+                    border: 2px solid #FF6B00 !important;
+                    box-shadow: 0px 4px 6px rgba(0,0,0,0.1) !important;
+                }
             </style>
         """, unsafe_allow_html=True)
 
-        # Đảm bảo lưu vết trang hiện tại
         if 'current_menu_page' not in st.session_state:
             st.session_state['current_menu_page'] = list(danh_sach_trang.keys())[0]
         
-        ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
-        st.markdown(f"<span style='color: #0B2E9E; font-weight: 800; font-size: 14px;'>👋 Xin chào, {ten_hien_thi}</span>", unsafe_allow_html=True)
-        
-        col_menu, col_out = st.columns([7, 3])
-        with col_menu:
-            selected_menu = st.selectbox(
-                "📍 CHỌN CHỨC NĂNG:", 
-                options=list(danh_sach_trang.keys()), 
-                index=list(danh_sach_trang.keys()).index(st.session_state['current_menu_page']) if st.session_state['current_menu_page'] in danh_sach_trang else 0,
-                label_visibility="collapsed" # Ẩn chữ đi cho tiết kiệm diện tích điện thoại
-            )
-            
-            # Logic chuyển trang
-            if selected_menu != st.session_state['current_menu_page']:
-                st.session_state['current_menu_page'] = selected_menu
-                st.switch_page(danh_sach_trang[selected_menu].url_path)
-                
-        with col_out:
-            if st.button("🚪 Đăng xuất", use_container_width=True, type="secondary"):
+        col_name, col_btn = st.columns([7, 3], vertical_alignment="center")
+        with col_name:
+            ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
+            st.markdown(f"<span style='color: #0B2E9E; font-weight: 800; font-size: 15px;'>👋 Chào, {ten_hien_thi}</span>", unsafe_allow_html=True)
+        with col_btn:
+            if st.button("🚪 Đăng xuất", use_container_width=True):
                 st.session_state.clear()
                 st.rerun()
-                
-        st.divider()
 
-    # HÀM RUN PHẢI NẰM NGOÀI CÙNG, ĐỂ STREAMLIT QUẢN LÝ
+        # Hiển thị Thanh Vuốt ngang (Ngay dưới lời chào)
+        selected_menu = st.radio(
+            "ĐIỀU HƯỚNG:", 
+            options=list(danh_sach_trang.keys()), 
+            index=list(danh_sach_trang.keys()).index(st.session_state['current_menu_page']) if st.session_state['current_menu_page'] in danh_sach_trang else 0,
+            horizontal=True,
+            label_visibility="collapsed"
+        )
+        
+        st.divider() # Đường gạch ngang phân cách Menu và Nội dung
+        
+        # Nhảy trang khi người dùng bấm vào Menu
+        if selected_menu != st.session_state['current_menu_page']:
+            st.session_state['current_menu_page'] = selected_menu
+            st.switch_page(danh_sach_trang[selected_menu])
+
+    # HÀM RUN LUÔN NẰM CUỐI CÙNG
     pg.run()
