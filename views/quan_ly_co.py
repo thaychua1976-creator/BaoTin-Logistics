@@ -452,25 +452,32 @@ with tab_ocr_co:
                     img_rgb.save(img_buffer, format="PNG")
                     img_buffer.seek(0)
                     
-                    # --- XUẤT FILE BẰNG PDF (GIẢI PHÁP ĐÓNG BĂNG 100% TRÊN MOBILE) ---
+                    # --- XUẤT FILE BẰNG PDF (HỖ TRỢ TIẾNG VIỆT CÓ DẤU, VƯỢT TƯỜNG LỬA GITHUB) ---
                     try:
                         from fpdf import FPDF
                     except ImportError:
                         st.error("⚠️ Thiếu thư viện PDF. Vui lòng thêm 'fpdf2' vào file requirements.txt")
                         st.stop()
                     
+                    import urllib.request
+                    import os
                     
+                    # 1. VƯỢT TƯỜNG LỬA CHỐNG BOT ĐỂ TẢI FONT
+                    # Giả danh trình duyệt Chrome để Github không chặn (Bắt buộc phải có)
+                    opener = urllib.request.build_opener()
+                    opener.addheaders = [('User-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')]
+                    urllib.request.install_opener(opener)
                     
-                    # 1. Tải Font chữ Tiếng Việt từ kho lưu trữ tĩnh (Bảo đảm 100% không bao giờ chết link)
+                    # 2. Tải Font chữ Tiếng Việt từ kho tĩnh siêu bền của Polymer (Google)
                     font_path = "/tmp/Roboto-Regular.ttf"
                     font_bold_path = "/tmp/Roboto-Bold.ttf"
                     
                     if not os.path.exists(font_path):
-                        urllib.request.urlretrieve("https://raw.githubusercontent.com/johnkil/Android-RobotoTextView/master/robototextview/src/main/assets/fonts/Roboto-Regular.ttf", font_path)
+                        urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Regular.ttf", font_path)
                     if not os.path.exists(font_bold_path):
-                        urllib.request.urlretrieve("https://raw.githubusercontent.com/johnkil/Android-RobotoTextView/master/robototextview/src/main/assets/fonts/Roboto-Bold.ttf", font_bold_path)
+                        urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Bold.ttf", font_bold_path)
                         
-                    # 2. Khởi tạo tài liệu PDF (Khổ A4 ngang cho rộng rãi)
+                    # 3. Khởi tạo tài liệu PDF (Khổ A4 ngang cho rộng rãi)
                     pdf = FPDF(orientation="L", unit="mm", format="A4")
                     pdf.add_page()
                     
@@ -478,17 +485,16 @@ with tab_ocr_co:
                     pdf.add_font("Roboto", style="", fname=font_path)
                     pdf.add_font("Roboto", style="B", fname=font_bold_path)
                     
-                    # 3. GHI TIÊU ĐỀ
+                    # 4. GHI TIÊU ĐỀ
                     pdf.set_font("Roboto", style="B", size=18)
                     pdf.cell(0, 10, "CÔNG TY FORTUNATE HONGKONG VIỆT NAM", align="C", new_x="LMARGIN", new_y="NEXT")
                     pdf.cell(0, 10, "GỞI CÔNG TY: EXPEDITORS", align="C", new_x="LMARGIN", new_y="NEXT")
-                    pdf.ln(5) # Cách dòng
+                    pdf.ln(5)
                     
-                    # 4. VẼ BẢNG DỮ LIỆU
+                    # 5. VẼ BẢNG DỮ LIỆU
                     pdf.set_font("Roboto", style="B", size=12)
-                    pdf.set_fill_color(220, 220, 220) # Tô màu nền xám cho tiêu đề bảng
+                    pdf.set_fill_color(220, 220, 220)
                     
-                    # Tỷ lệ cột (Tổng = 277mm chiều ngang khổ A4)
                     col_widths = [20, 100, 80, 50] 
                     headers = ['STT', 'SỐ C/O BẢN GỐC', 'KÝ NHẬN', 'NGÀY NHẬN']
                     
@@ -496,7 +502,7 @@ with tab_ocr_co:
                         pdf.cell(col_widths[i], 12, h, border=1, align="C", fill=True)
                     pdf.ln(12)
                     
-                    # Ghi từng dòng dữ liệu
+                    # Ghi từng dòng dữ liệu (Giữ nguyên tiếng Việt có dấu)
                     pdf.set_font("Roboto", style="", size=12)
                     edited_df['KÝ NHẬN'] = ten_dai_ly
                     edited_df['NGÀY NHẬN'] = ngay_nhan.strftime('%d/%m/%Y')
@@ -508,11 +514,10 @@ with tab_ocr_co:
                         pdf.cell(col_widths[3], 12, str(edited_df.iloc[r_idx, 3]), border=1, align="C")
                         pdf.ln(12)
                         
-                    # 5. KHU VỰC CHỮ KÝ BÀN GIAO (CHỐNG TRÔI)
-                    pdf.ln(15) # Cách bảng 15mm
+                    # 6. KHU VỰC CHỮ KÝ BÀN GIAO (CHỐNG TRÔI)
+                    pdf.ln(15)
                     pdf.set_font("Roboto", style="B", size=13)
                     
-                    # Chia đôi màn hình ngang
                     pdf.cell(135, 10, "ĐẠI DIỆN BÀN GIAO (BÊN GIAO)", align="C")
                     pdf.cell(135, 10, f"ĐẠI LÝ NHẬN: {ten_dai_ly}", align="C", new_x="LMARGIN", new_y="NEXT")
                     
@@ -520,16 +525,13 @@ with tab_ocr_co:
                     img_temp_path = "/tmp/temp_signature.png"
                     img_rgb.save(img_temp_path, format="PNG")
                     
-                    # Xác định tọa độ chèn ảnh (Đóng băng tuyệt đối tọa độ X, Y trên trang PDF)
                     current_y = pdf.get_y() + 5
-                    # Canh giữa ảnh cho phần bên phải (X = 135 + 135/2 - 25 = 177.5)
                     pdf.image(img_temp_path, x=175, y=current_y, w=60) 
                     
-                    # Xóa file tạm cho sạch server
                     if os.path.exists(img_temp_path):
                         os.remove(img_temp_path)
                     
-                    # 6. XUẤT RA GIAO DIỆN MÀN HÌNH
+                    # 7. XUẤT RA GIAO DIỆN
                     pdf_bytes = pdf.output()
                     
                     st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao (PDF) đã sẵn sàng!")
