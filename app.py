@@ -10,22 +10,69 @@ def show_page():
     with st.spinner("🔄 Đang tải chương trình và đồng bộ dữ liệu hệ thống, vui lòng đợi..."):
         time.sleep(0.3) 
 
-    # 2. Phục hồi CSS Gốc chuyên nghiệp của thanh Sidebar
+    # 2. CSS TẠO THANH APP-BAR ĐỈNH CAO CHUẨN MOBILE APP
     st.markdown("""
         <style>
+            /* Đẩy nội dung xuống dưới để không bị Thanh App-Bar đè lên */
             .block-container {
-                padding-top: 3.5rem !important; /* TRẢ LẠI KHOẢNG TRỐNG TRÊN ĐỂ CHỮ KHÔNG BỊ LẸM */
+                padding-top: 4.5rem !important; 
                 padding-bottom: 1rem !important;
                 padding-left: 1rem !important;
                 padding-right: 1rem !important;
                 max-width: 98% !important;
             }
             
+            /* ========================================================= */
+            /* 🚀 1. TẠO THANH MENU NGANG TRÊN CÙNG (APP-BAR)            */
+            /* ========================================================= */
+            header[data-testid="stHeader"] {
+                display: flex !important;
+                background-color: #0B2E9E !important; /* Đổ màu Xanh đậm ERP cho thanh Menu */
+                z-index: 9999999 !important; /* Ép nổi lên trên mọi trang con */
+                border-bottom: 3px solid #FF6B00 !important; /* Viền Cam chân thanh Menu */
+                height: 3.5rem !important; /* Chiều cao cố định chuẩn Mobile */
+                width: 100% !important;
+            }
+            
+            /* 🚀 2. CHÈN TÊN PHẦN MỀM VÀO THANH MENU */
+            header[data-testid="stHeader"]::after {
+                content: "ERP BẢO TÍN";
+                position: absolute;
+                left: 55px; /* Đẩy sang phải để nhường chỗ cho nút 3 gạch */
+                top: 50%;
+                transform: translateY(-50%); /* Canh giữa hoàn hảo theo chiều dọc */
+                color: white;
+                font-weight: 800;
+                font-size: 18px;
+                letter-spacing: 1px;
+            }
+            
+            /* 🚀 3. HIỆN NÚT 3 GẠCH NẰM BÊN TRONG THANH MENU */
+            header[data-testid="stHeader"] button {
+                display: inline-flex !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                background: transparent !important; 
+                border: none !important;
+                margin-top: auto !important;
+                margin-bottom: auto !important;
+            }
+            
+            /* Đổi màu biểu tượng 3 gạch thành Trắng để nổi trên nền Xanh */
+            header[data-testid="stHeader"] svg {
+                fill: white !important; 
+                color: white !important;
+                width: 1.8rem !important; /* Phóng to nút 3 gạch ra một xíu cho dễ bấm */
+                height: 1.8rem !important;
+            }
+            
+            /* ========================================================= */
+            /* CSS GỐC CỦA THANH ĐIỀU HƯỚNG BÊN TRÁI (SIDEBAR)           */
+            /* ========================================================= */
             section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
                 border-right: 2px solid #e2e8f0 !important;
             }
-
             [data-testid="stSidebarNav"] ul li div {
                 font-size: 16px !important; font-weight: 800 !important;
                 color: #0b5394 !important; text-transform: uppercase !important;
@@ -54,8 +101,8 @@ def show_page():
                 color: #0b5394 !important; font-weight: 800 !important;
             }
             
-            /* --- ẨN CÁC THÀNH PHẦN MẶC ĐỊNH CỦA STREAMLIT --- */
-            [data-testid="stStatusWidget"], [data-testid="stToolbar"], footer {
+            /* CHỈ ẨN CÁI ICON ĐANG CHẠY VÀ FOOTER (KHÔNG ẨN TOOLBAR TRÁNH LỖI MẠNG) */
+            [data-testid="stStatusWidget"], footer {
                 display: none !important;
                 visibility: hidden !important;
             }
@@ -63,37 +110,6 @@ def show_page():
             section[data-testid="stSidebar"] .stButton button {
                 width: 100%; font-size: 15px !important; font-weight: bold !important; border-radius: 6px !important;
             }
-            
-           /* --- KHÔI PHỤC HEADER VÀ NÚT 3 GẠCH CHO BẢN CLOUD MỚI NHẤT --- */
-            header[data-testid="stHeader"] {
-                display: flex !important;
-                visibility: visible !important;
-                background-color: #f8fafc !important; /* Đổ nền xám nhạt để tách biệt với App */
-                z-index: 999999 !important;
-                border-bottom: 2px solid #e2e8f0 !important;
-            }
-            
-            /* Ép buộc mọi nút bấm trong Header (chắc chắn sẽ bắt được nút 3 gạch) phải hiện ra */
-            header[data-testid="stHeader"] button {
-                display: inline-flex !important;
-                visibility: visible !important;
-                opacity: 1 !important;
-                transform: scale(1.1); /* Phóng to nút 3 gạch lên một chút cho dễ bấm */
-            }
-            
-            /* Đổ màu xanh đậm cho biểu tượng 3 gạch để không bị chìm vào nền trắng */
-            header[data-testid="stHeader"] svg {
-                fill: #0B2E9E !important; 
-                color: #0B2E9E !important;
-            }
-            
-            /* CHỈ ẨN CÁI ICON ĐANG CHẠY (Running...) VÀ FOOTER */
-            /* TUYỆT ĐỐI KHÔNG ẨN TOOLBAR ĐỂ TRÁNH LỖI SẬP HEADER TRÊN MOBILE */
-            [data-testid="stStatusWidget"], footer {
-                display: none !important;
-                visibility: hidden !important;
-            }
-            div[data-testid="InputInstructions"] { display: none !important; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -114,7 +130,7 @@ def show_page():
 
     # 5. Giao diện Đăng nhập
     def login_ui():
-        st.markdown("<h3 style='text-align: center; color: #0B2E9E;'>🔐 ĐĂNG NHẬP HỆ THỐNG ERP BẢO TÍN</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center; color: #0B2E9E;'>🔐 ĐĂNG NHẬP HỆ THỐNG ERP</h3>", unsafe_allow_html=True)
         col_l1, col_l2, col_l3 = st.columns([1, 1, 1])
         with col_l2:
             def trigger_login(): st.session_state['do_login'] = True
@@ -191,11 +207,11 @@ def show_page():
     page_tool_backup_database= st.Page("views/backup_database.py", title="Backup Database", icon="🚛", url_path="backup-database")
 
     # =========================================================================
-    # PHỤC HỒI THANH ĐIỀU HƯỚNG BÊN TRÁI CHUYÊN NGHIỆP CỦA ERP
+    # CẤU HÌNH ĐIỀU HƯỚNG BÊN TRÁI CHUYÊN NGHIỆP CỦA ERP
     # =========================================================================
     if not st.session_state['logged_in']:
-        # Để không bị lỗi mất nút 3 gạch trên mobile, ta cung cấp 2 trang cho trạng thái chưa login
-        page_dummy = st.Page(lambda: None, title="Vui lòng đăng nhập", icon="👉")
+        # Mẹo: Khởi tạo 2 trang ảo để Streamlit không bao giờ xóa thanh App-Bar trên điện thoại
+        page_dummy = st.Page(lambda: None, title=" ", icon="👉")
         pg = st.navigation({"HỆ THỐNG ERP": [page_login, page_dummy]})
     else:
         role = st.session_state.get('role', 'User')
