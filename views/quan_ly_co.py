@@ -464,10 +464,11 @@ with tab_ocr_co:
                     # 1. Tải Font chữ Tiếng Việt (Roboto) về bộ nhớ tạm của máy chủ (Nếu chưa có)
                     font_path = "/tmp/Roboto-Regular.ttf"
                     font_bold_path = "/tmp/Roboto-Bold.ttf"
+                    
                     if not os.path.exists(font_path):
-                        urllib.request.urlretrieve("https://github.com/google/fonts/raw/main/ofl/roboto/Roboto-Regular.ttf", font_path)
+                        urllib.request.urlretrieve("https://raw.githubusercontent.com/google/fonts/main/apache/roboto/Roboto-Regular.ttf", font_path)
                     if not os.path.exists(font_bold_path):
-                        urllib.request.urlretrieve("https://github.com/google/fonts/raw/main/ofl/roboto/Roboto-Bold.ttf", font_bold_path)
+                        urllib.request.urlretrieve("https://raw.githubusercontent.com/google/fonts/main/apache/roboto/Roboto-Bold.ttf", font_bold_path)
                         
                     # 2. Khởi tạo tài liệu PDF (Khổ A4 ngang cho rộng rãi)
                     pdf = FPDF(orientation="L", unit="mm", format="A4")
