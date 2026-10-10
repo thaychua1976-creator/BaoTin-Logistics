@@ -495,27 +495,27 @@ with tab_ocr_co:
                         worksheet.set_column('D:D', 25)
                         
                         # --- GIẢI PHÁP ĐÓNG BĂNG VỊ TRÍ CHỮ KÝ TRÊN MOBILE ---
-                        # Xác định hàng khởi tạo để ký tên (dưới bảng dữ liệu)
                         dong_ky_ten = 5 + len(edited_df) + 1
                         
-                        # Dòng `dong_ky_ten`: Tiêu đề & Vai trò (Cần nới rộng 30pt để không lướt vào chữ)
+                        # 1. Dòng Tiêu đề Người nhận
                         worksheet.set_row(dong_ky_ten, 30)
                         worksheet.write(dong_ky_ten, 1, "ĐẠI DIỆN BÀN GIAO", format_sign_header)
                         worksheet.write(dong_ky_ten, 2, f"ĐẠI LÝ NHẬN: {ten_dai_ly}", format_sign_header)
                         
-                        # Dòng `dong_ky_ten + 1`: ĐỂ TRỐNG HOÀN TOÀN (Làm vùng đệm chống trồi chữ ký)
-                        worksheet.set_row(dong_ky_ten + 1, 15)
+                        # 2. XÂY HÀNG RÀO ĐỆM: Dùng tới 2 dòng đệm (cao 30pt mỗi dòng) để ép ảnh phải tụt xuống
+                        worksheet.set_row(dong_ky_ten + 1, 30)
+                        worksheet.set_row(dong_ky_ten + 2, 30)
                         
-                        # Dòng `dong_ky_ten + 2`: VÙNG CHỨA ẢNH CHỮ KÝ CHUYÊN BIỆT (Nới rộng 110pt)
-                        worksheet.set_row(dong_ky_ten + 2, 110)
+                        # 3. VÙNG NEO ẢNH (Dòng thứ 4 bên dưới tên người nhận)
+                        worksheet.set_row(dong_ky_ten + 3, 150) # Mở rộng không gian lên tới 150pt
                         
-                        # Thực hiện chèn ảnh không dùng offset lớn/offset âm để tránh lỗi biến dạng khi mở bằng di động
-                        worksheet.insert_image(dong_ky_ten + 2, 2, 'signature.png', {
+                        # 4. Chèn ảnh vào dòng siêu thấp, đồng thời thu nhỏ tỷ lệ (scale: 0.5) để không bị tràn
+                        worksheet.insert_image(dong_ky_ten + 3, 2, 'signature.png', {
                             'image_data': img_buffer, 
-                            'x_scale': 0.6, 
-                            'y_scale': 0.6,
-                            'x_offset': 15,  # Căn lề nhỏ tự nhiên
-                            'y_offset': 0    # Đưa về 0 để triệt tiêu việc xô dịch ảnh
+                            'x_scale': 0.5, 
+                            'y_scale': 0.5,
+                            'x_offset': 20, 
+                            'y_offset': 10  # Đẩy nhẹ thêm 10 pixel từ lề trên của dòng neo
                         })
                     
                     st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao đã sẵn sàng!")
