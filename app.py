@@ -64,16 +64,36 @@ def show_page():
                 width: 100%; font-size: 15px !important; font-weight: bold !important; border-radius: 6px !important;
             }
             
-            /* --- ĐẢM BẢO HIỂN THỊ NÚT 3 GẠCH --- */
-            header[data-testid="stHeader"] {
+           /* --- ĐẢM BẢO HIỂN THỊ NÚT 3 GẠCH TUYỆT ĐỐI BẰNG MỌI GIÁ --- */
+            #root header[data-testid="stHeader"] {
                 display: block !important;
                 visibility: visible !important;
-                background-color: transparent !important;
+                background-color: rgba(255, 255, 255, 0.95) !important; /* Nền trắng đục để tách biệt với app */
+                z-index: 9999999 !important; /* Lực đẩy tuyệt đối: Luôn nổi trên cùng mọi trang con */
+                border-bottom: 2px solid #e2e8f0 !important;
+                height: 3.5rem !important; /* Cố định chiều cao thanh header */
             }
-            [data-testid="collapsedControl"] {
+            
+            /* Tái tạo nút 3 gạch thành một nút bấm vật lý màu xanh đậm */
+            #root [data-testid="collapsedControl"] {
                 display: flex !important;
                 visibility: visible !important;
                 opacity: 1 !important;
+                z-index: 9999999 !important;
+                background-color: #0B2E9E !important; /* Đổ màu nền xanh đậm ERP */
+                border-radius: 6px !important; /* Bo góc đẹp mắt */
+                padding: 4px !important;
+                margin-left: 10px !important;
+                margin-top: 10px !important;
+                box-shadow: 0px 4px 6px rgba(0,0,0,0.2) !important; /* Đổ bóng cho nút nẩy lên */
+            }
+            
+            /* Ép biểu tượng 3 gạch (SVG) bên trong biến thành màu Trắng */
+            #root [data-testid="collapsedControl"] svg {
+                fill: white !important;
+                color: white !important;
+                width: 1.5rem !important;
+                height: 1.5rem !important;
             }
         </style>
     """, unsafe_allow_html=True)
