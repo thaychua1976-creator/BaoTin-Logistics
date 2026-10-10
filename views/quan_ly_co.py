@@ -502,17 +502,29 @@ with tab_ocr_co:
                         worksheet.write(dong_ky_ten, 1, "ĐẠI DIỆN BÀN GIAO", format_sign_header)
                         worksheet.write(dong_ky_ten, 2, f"ĐẠI LÝ NHẬN: {ten_dai_ly}", format_sign_header)
                         
-                        # 2. Tạo vùng chứa ảnh chữ ký ở ngay bên dưới
-                        worksheet.set_row(dong_ky_ten + 1, 150) # Cố ý làm dòng thật cao
+                        # 2. KHỞI TẠO KHUNG CỐ ĐỊNH CHỐNG ÉP DÒNG TRÊN ĐIỆN THOẠI
+                        # Tạo một định dạng bắt buộc ngắt dòng (text_wrap)
+                        format_signature_box = workbook.add_format({
+                            'text_wrap': True, 
+                            'align': 'center', 
+                            'valign': 'top'
+                        })
                         
-                        # 3. Chèn ảnh với TÍNH NĂNG ÉP KHUÔN ('positioning': 1)
+                        # Ép chiều cao dòng lên 120pt
+                        worksheet.set_row(dong_ky_ten + 1, 120)
+                        
+                        # NHỒI 6 DẤU XUỐNG DÒNG (ENTER) VÀO Ô ĐỂ ÉP ĐIỆN THOẠI PHẢI MỞ RỘNG Ô
+                        # Dù là iPhone hay Android cũng không thể bóp dẹp ô này được nữa
+                        worksheet.write(dong_ky_ten + 1, 2, "\n\n\n\n\n\n(Ký và ghi rõ họ tên)", format_signature_box)
+                        
+                        # 3. CHÈN ẢNH VÀO ĐÚNG CÁI Ô ĐÃ ĐƯỢC CHỐNG LƯNG NÀY
                         worksheet.insert_image(dong_ky_ten + 1, 2, 'signature.png', {
                             'image_data': img_buffer, 
                             'x_scale': 0.5, 
                             'y_scale': 0.5,
-                            'x_offset': 15,
-                            'y_offset': 15,
-                            'positioning': 1  # QUAN TRỌNG NHẤT: Bắt ảnh phải co giãn theo ô (Move and size with cells), tuyệt đối không tràn lên trên khi mở bằng điện thoại
+                            'x_offset': 60,  # Đẩy nhẹ ảnh vào giữa ô
+                            'y_offset': 5,
+                            'positioning': 1  # Bắt ảnh phải co giãn theo ô
                         })
                     
                     st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao đã sẵn sàng!")
