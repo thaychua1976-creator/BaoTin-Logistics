@@ -502,16 +502,25 @@ with tab_ocr_co:
                         pdf.cell(col_widths[i], 8, h, border=1, align="C", fill=True)
                     pdf.ln(8)
                     
-                    # Ghi dữ liệu (Giữ nguyên tiếng Việt có dấu)
+                    # Ghi dữ liệu (In trực tiếp tên và ngày, canh GIỮA toàn bộ)
                     pdf.set_font("Roboto", style="", size=11)
-                    edited_df['TÊN NGƯỜI NHẬN'] = ten_dai_ly
-                    edited_df['NGÀY NHẬN'] = ngay_nhan.strftime('%d/%m/%Y')
+                    
+                    # Định dạng sẵn chuỗi ngày
+                    ngay_format = ngay_nhan.strftime('%d/%m/%Y')
                     
                     for r_idx in range(len(edited_df)):
-                        pdf.cell(col_widths[0], 8, str(edited_df.iloc[r_idx, 0]), border=1, align="C")
-                        pdf.cell(col_widths[1], 8, str(edited_df.iloc[r_idx, 1]), border=1, align="L")
-                        pdf.cell(col_widths[2], 8, str(edited_df.iloc[r_idx, 2]), border=1, align="L")
-                        pdf.cell(col_widths[3], 8, str(edited_df.iloc[r_idx, 3]), border=1, align="C")
+                        # Cột 1: STT (Canh giữa - "C")
+                        pdf.cell(col_widths[0], 8, str(edited_df.iloc[r_idx, 0]).replace('.0', ''), border=1, align="C")
+                        
+                        # Cột 2: SỐ C/O (Canh giữa - "C")
+                        pdf.cell(col_widths[1], 8, str(edited_df.iloc[r_idx, 1]), border=1, align="C")
+                        
+                        # Cột 3: TÊN NGƯỜI NHẬN (In thẳng biến ten_dai_ly, Canh giữa - "C")
+                        pdf.cell(col_widths[2], 8, ten_dai_ly, border=1, align="C")
+                        
+                        # Cột 4: NGÀY NHẬN (In thẳng biến ngày, Canh giữa - "C")
+                        pdf.cell(col_widths[3], 8, ngay_format, border=1, align="C")
+                        
                         pdf.ln(8)
                         
                     # 5. KHU VỰC CHỮ KÝ BÀN GIAO CỐ ĐỊNH
