@@ -421,10 +421,12 @@ with tab_ocr_co:
         
         st.write("Đại lý vẽ chữ ký xác nhận vào khung bên dưới:")
         canvas_result = st_canvas(
-            fill_color="rgba(255, 165, 0, 0.3)", stroke_width=2.5, stroke_color="#000080",
+            fill_color="rgba(255, 165, 0, 0.3)", 
+            stroke_width=2.5, 
+            stroke_color="#FF0000", # Đã đổi sang mực Đỏ tươi
             background_color="#f0f2f6", 
             height=150, 
-            width=350, # Vừa khít mọi màn hình điện thoại
+            width=350, 
             drawing_mode="freedraw",
             return_image_data=True, key="canvas_ky_ten_2"
         )
@@ -454,7 +456,7 @@ with tab_ocr_co:
                     img_rgb.save(img_buffer, format="PNG")
                     img_buffer.seek(0)
                     
-                    # --- XUẤT FILE BẰNG PDF (HỖ TRỢ TIẾNG VIỆT CÓ DẤU, VƯỢT TƯỜNG LỬA GITHUB) ---
+                    # --- XUẤT FILE BẰNG PDF (GIỮ TIẾNG VIỆT CÓ DẤU + LẤY TÊN FILE GỐC + ÉP TẢI VỀ) ---
                     try:
                         from fpdf import FPDF
                     except ImportError:
@@ -464,13 +466,11 @@ with tab_ocr_co:
                     import urllib.request
                     import os
                     
-                    # 1. VƯỢT TƯỜNG LỬA CHỐNG BOT ĐỂ TẢI FONT
-                    # Giả danh trình duyệt Chrome để Github không chặn (Bắt buộc phải có)
+                    # 1. TẢI FONT TIẾNG VIỆT BẰNG KỸ THUẬT VƯỢT TƯỜNG LỬA CHỐNG BOT
                     opener = urllib.request.build_opener()
                     opener.addheaders = [('User-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')]
                     urllib.request.install_opener(opener)
                     
-                    # 2. Tải Font chữ Tiếng Việt từ kho tĩnh siêu bền của Polymer (Google)
                     font_path = "/tmp/Roboto-Regular.ttf"
                     font_bold_path = "/tmp/Roboto-Bold.ttf"
                     
@@ -479,21 +479,20 @@ with tab_ocr_co:
                     if not os.path.exists(font_bold_path):
                         urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Bold.ttf", font_bold_path)
                         
-                    # 3. Khởi tạo tài liệu PDF (Khổ A4 ngang cho rộng rãi)
+                    # 2. KHỞI TẠO TÀI LIỆU PDF
                     pdf = FPDF(orientation="L", unit="mm", format="A4")
                     pdf.add_page()
                     
-                    # Nạp Font Tiếng Việt vào PDF
                     pdf.add_font("Roboto", style="", fname=font_path)
                     pdf.add_font("Roboto", style="B", fname=font_bold_path)
                     
-                    # 4. GHI TIÊU ĐỀ
+                    # 3. GHI TIÊU ĐỀ
                     pdf.set_font("Roboto", style="B", size=18)
                     pdf.cell(0, 10, "CÔNG TY FORTUNATE HONGKONG VIỆT NAM", align="C", new_x="LMARGIN", new_y="NEXT")
                     pdf.cell(0, 10, "GỞI CÔNG TY: EXPEDITORS", align="C", new_x="LMARGIN", new_y="NEXT")
                     pdf.ln(5)
                     
-                    # 5. VẼ BẢNG DỮ LIỆU
+                    # 4. VẼ BẢNG DỮ LIỆU
                     pdf.set_font("Roboto", style="B", size=12)
                     pdf.set_fill_color(220, 220, 220)
                     
@@ -504,7 +503,7 @@ with tab_ocr_co:
                         pdf.cell(col_widths[i], 12, h, border=1, align="C", fill=True)
                     pdf.ln(12)
                     
-                    # Ghi từng dòng dữ liệu (Giữ nguyên tiếng Việt có dấu)
+                    # Ghi dữ liệu (Giữ nguyên tiếng Việt có dấu)
                     pdf.set_font("Roboto", style="", size=12)
                     edited_df['KÝ NHẬN'] = ten_dai_ly
                     edited_df['NGÀY NHẬN'] = ngay_nhan.strftime('%d/%m/%Y')
@@ -516,14 +515,13 @@ with tab_ocr_co:
                         pdf.cell(col_widths[3], 12, str(edited_df.iloc[r_idx, 3]), border=1, align="C")
                         pdf.ln(12)
                         
-                    # 6. KHU VỰC CHỮ KÝ BÀN GIAO (CHỐNG TRÔI)
+                    # 5. KHU VỰC CHỮ KÝ BÀN GIAO CỐ ĐỊNH
                     pdf.ln(15)
                     pdf.set_font("Roboto", style="B", size=13)
                     
                     pdf.cell(135, 10, "ĐẠI DIỆN BÀN GIAO (BÊN GIAO)", align="C")
                     pdf.cell(135, 10, f"ĐẠI LÝ NHẬN: {ten_dai_ly}", align="C", new_x="LMARGIN", new_y="NEXT")
                     
-                    # Chèn ảnh chữ ký
                     img_temp_path = "/tmp/temp_signature.png"
                     img_rgb.save(img_temp_path, format="PNG")
                     
@@ -533,34 +531,24 @@ with tab_ocr_co:
                     if os.path.exists(img_temp_path):
                         os.remove(img_temp_path)
                     
-                    # 7. XUẤT RA GIAO DIỆN & ÉP ĐÚNG TÊN FILE CHO ĐIỆN THOẠI BẰNG FILE ZIP
+                    # 6. XUẤT FILE & ÉP TẢI VỀ
                     pdf_bytes = pdf.output()
                     
                     # Xử lý Tên File Đầu Ra Thông Minh
                     ten_goc = st.session_state.get("ten_file_goc", "")
                     if ten_goc:
-                        import os
-                        ten_file_pdf = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.pdf"
-                        ten_file_zip = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.zip"
+                        ten_file_xuat_ra = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.pdf"
                     else:
-                        ten_file_pdf = f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
-                        ten_file_zip = f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.zip"
+                        ten_file_xuat_ra = f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
                     
-                    # ĐÓNG GÓI FILE PDF VÀO BÊN TRONG FILE ZIP ĐỂ VƯỢT RÀO IPHONE
-                    import zipfile
-                    zip_buffer = io.BytesIO()
-                    with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
-                        zip_file.writestr(ten_file_pdf, pdf_bytes)
-                    zip_bytes = zip_buffer.getvalue()
-
-                    st.success(f"✅ Đã đóng gói thành công file: {ten_file_pdf}")
+                    st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao (PDF) đã sẵn sàng!")
                     
-                    # Trình duyệt thấy đuôi .zip sẽ ngoan ngoãn hiện bảng tải về ngay lập tức
+                    # Dùng application/octet-stream để ép trình duyệt tải về thẳng máy
                     st.download_button(
-                        label="📥 TẢI PHIẾU BÀN GIAO (BẢN ZIP)",
-                        data=bytes(zip_bytes),
-                        file_name=ten_file_zip,
-                        mime="application/zip", 
+                        label="📥 TẢI PHIẾU BÀN GIAO ĐÃ KÝ VỀ MÁY",
+                        data=bytes(pdf_bytes),
+                        file_name=ten_file_xuat_ra,
+                        mime="application/octet-stream", 
                         type="primary"
                     )
         
