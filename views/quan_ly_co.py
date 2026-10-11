@@ -528,10 +528,27 @@ with tab_ocr_co:
                             ngay_format = ngay_nhan.strftime('%d/%m/%Y')
                             
                             # Fix lỗi NaN và Canh GIỮA toàn bộ dữ liệu
+                            # --- THUẬT TOÁN CHỐNG RỚT TRANG MỒ CÔI (ORPHAN CONTROL) ---
                             for r_idx in range(len(edited_df)):
+                                # Kiểm tra xem chữ ký (cần khoảng 55mm) và các dòng cuối có bị rớt không
+                                so_dong_con_lai = len(edited_df) - r_idx
+                                space_needed = (so_dong_con_lai * 8) + 55 
+                                
+                                # Chiều cao khổ giấy A4 ngang là 210mm, lề dưới 10mm -> Giới hạn an toàn là Y=200
+                                # Nếu đang ở 3 dòng cuối mà không đủ chỗ cho cả bảng lẫn chữ ký -> Ngắt trang ngay lập tức!
+                                if so_dong_con_lai <= 3 and (pdf.get_y() + space_needed) > 200:
+                                    pdf.add_page()
+                                    # Vẽ lại Header cho trang mới để bảng không bị cụt lủn
+                                    pdf.set_font("Roboto", style="B", size=11)
+                                    for i, h in enumerate(headers):
+                                        pdf.cell(col_widths[i], 8, h, border=1, align="C", fill=True)
+                                    pdf.ln(8)
+                                    pdf.set_font("Roboto", style="", size=11)
+                                
+                                # In dòng dữ liệu
                                 pdf.cell(col_widths[0], 8, str(edited_df.iloc[r_idx, 0]).replace('.0', ''), border=1, align="C")
                                 pdf.cell(col_widths[1], 8, str(edited_df.iloc[r_idx, 1]), border=1, align="C")
-                                pdf.cell(col_widths[2], 8, ten_dai_ly, border=1, align="C") # Ép cứng tên đại lý
+                                pdf.cell(col_widths[2], 8, ten_dai_ly, border=1, align="C") 
                                 pdf.cell(col_widths[3], 8, ngay_format, border=1, align="C")
                                 pdf.ln(8)
                                 
