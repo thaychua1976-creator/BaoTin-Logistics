@@ -39,8 +39,8 @@ st.divider()
 # Thêm tab OCR vào danh sách tabs
 tab_khai_co, tab_file_co, tab_ocr_co, tab_quan_ly_co = st.tabs([
     "📋 KHAI BÁO C/O MỚI", 
-    "📂 TẠO C/O TỪ FILE", 
-    "🤖 TRÍCH XUẤT C/O TỪ PDF", 
+    "📂 TẠO C/O TỪ FILE BỘ CÔNG THƯƠNG", 
+    "🤖 TRÍCH XUẤT C/O TẠO FILE GIAO ĐẠI LÝ", 
     "🔍 DANH SÁCH & QUẢN LÝ"
 ])
 
@@ -387,7 +387,7 @@ with tab_ocr_co:
             df_current, 
             use_container_width=True, 
             num_rows="dynamic",
-            disabled=["STT", "KÝ NHẬN", "NGÀY NHẬN"],
+            disabled=["STT", "TÊN NGƯỜI NHẬN", "NGÀY NHẬN"],
             key="co_data_editor"
         )
         
@@ -433,7 +433,7 @@ with tab_ocr_co:
         
         if st.button("🤝 KÝ NHẬN & XUẤT PDF CHUẨN", type="primary"):
             if not ten_dai_ly.strip():
-                st.error("Vui lòng nhập Tên đại lý.")
+                st.error("Vui lòng nhập Tên người nhận của đại lý.")
             elif canvas_result.image_data is None or canvas_result.image_data.sum() == 0:
                 st.error("Đại lý chưa ký xác nhận vào khung.")
             else:
@@ -463,8 +463,7 @@ with tab_ocr_co:
                         st.error("⚠️ Thiếu thư viện PDF. Vui lòng thêm 'fpdf2' vào file requirements.txt")
                         st.stop()
                     
-                    import urllib.request
-                    import os
+                    
                     
                     # 1. TẢI FONT TIẾNG VIỆT BẰNG KỸ THUẬT VƯỢT TƯỜNG LỬA CHỐNG BOT
                     opener = urllib.request.build_opener()
@@ -493,34 +492,34 @@ with tab_ocr_co:
                     pdf.ln(5)
                     
                     # 4. VẼ BẢNG DỮ LIỆU
-                    pdf.set_font("Roboto", style="B", size=12)
+                    pdf.set_font("Roboto", style="B", size=11)
                     pdf.set_fill_color(220, 220, 220)
                     
                     col_widths = [20, 100, 80, 50] 
-                    headers = ['STT', 'SỐ C/O BẢN GỐC', 'KÝ NHẬN', 'NGÀY NHẬN']
+                    headers = ['STT', 'SỐ C/O BẢN GỐC', 'TÊN NGƯỜI NHẬN', 'NGÀY NHẬN']
                     
                     for i, h in enumerate(headers):
-                        pdf.cell(col_widths[i], 12, h, border=1, align="C", fill=True)
-                    pdf.ln(12)
+                        pdf.cell(col_widths[i], 8, h, border=1, align="C", fill=True)
+                    pdf.ln(8)
                     
                     # Ghi dữ liệu (Giữ nguyên tiếng Việt có dấu)
-                    pdf.set_font("Roboto", style="", size=12)
-                    edited_df['KÝ NHẬN'] = ten_dai_ly
+                    pdf.set_font("Roboto", style="", size=11)
+                    edited_df['TÊN NGƯỜI NHẬN'] = ten_dai_ly
                     edited_df['NGÀY NHẬN'] = ngay_nhan.strftime('%d/%m/%Y')
                     
                     for r_idx in range(len(edited_df)):
-                        pdf.cell(col_widths[0], 12, str(edited_df.iloc[r_idx, 0]), border=1, align="C")
-                        pdf.cell(col_widths[1], 12, str(edited_df.iloc[r_idx, 1]), border=1, align="L")
-                        pdf.cell(col_widths[2], 12, str(edited_df.iloc[r_idx, 2]), border=1, align="L")
-                        pdf.cell(col_widths[3], 12, str(edited_df.iloc[r_idx, 3]), border=1, align="C")
-                        pdf.ln(12)
+                        pdf.cell(col_widths[0], 8, str(edited_df.iloc[r_idx, 0]), border=1, align="C")
+                        pdf.cell(col_widths[1], 8, str(edited_df.iloc[r_idx, 1]), border=1, align="L")
+                        pdf.cell(col_widths[2], 8, str(edited_df.iloc[r_idx, 2]), border=1, align="L")
+                        pdf.cell(col_widths[3], 8, str(edited_df.iloc[r_idx, 3]), border=1, align="C")
+                        pdf.ln(8)
                         
                     # 5. KHU VỰC CHỮ KÝ BÀN GIAO CỐ ĐỊNH
-                    pdf.ln(15)
+                    pdf.ln(8)
                     pdf.set_font("Roboto", style="B", size=13)
                     
                     pdf.cell(135, 10, "ĐẠI DIỆN BÀN GIAO (BÊN GIAO)", align="C")
-                    pdf.cell(135, 10, f"ĐẠI LÝ NHẬN: {ten_dai_ly}", align="C", new_x="LMARGIN", new_y="NEXT")
+                    pdf.cell(135, 10, f"ĐẠI DIỆN ĐẠI LÝ NHẬN: {ten_dai_ly}", align="C", new_x="LMARGIN", new_y="NEXT")
                     
                     img_temp_path = "/tmp/temp_signature.png"
                     img_rgb.save(img_temp_path, format="PNG")
