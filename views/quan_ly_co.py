@@ -566,6 +566,7 @@ with tab_ocr_co:
             
             if st.button("🔄 Tải Lại Phiên Mới (Xóa Trắng)"):
                 st.session_state["ocr_data"] = []
+                st.session_state["ten_file_goc"] = ""
                 keys_to_reset = ["upload_pdfs_ocr", "upload_excel_to_sign", "co_data_editor", "canvas_ky_ten_2"]
                 for key in keys_to_reset:
                     if key in st.session_state:
