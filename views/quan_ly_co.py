@@ -294,7 +294,9 @@ with tab_ocr_co:
     # CHẾ ĐỘ 1: QUÉT PDF MỚI VÀ CHỈNH SỬA TRỰC TIẾP
     # ---------------------------------------------------------
     if che_do_tab3 == "1️⃣ Quét PDF Mới & Chỉnh Sửa":
-        uploaded_pdfs = st.file_uploader("📂 Kéo thả file PDF C/O vào đây", type=["pdf"], accept_multiple_files=True, key="upload_pdfs_ocr")
+            # Tạo khóa động thay vì khóa tĩnh
+        current_pdf_key = f"upload_pdfs_ocr_{st.session_state['reset_uploader_key']}"
+        uploaded_pdfs = st.file_uploader("📂 Kéo thả file PDF C/O vào đây", type=["pdf"], accept_multiple_files=True, key=current_pdf_key)
         
         if uploaded_pdfs:
             if st.button("🚀 Bắt Đầu Quét & Trích Xuất", type="primary"):
@@ -361,7 +363,9 @@ with tab_ocr_co:
     # CHẾ ĐỘ 2: TẢI LÊN FILE EXCEL (KHÔI PHỤC PHIÊN LÀM VIỆC)
     # ---------------------------------------------------------
     elif che_do_tab3 == "2️⃣ Tải File Excel Cũ Lên Để Ký Nhận (Làm tiếp)":
-        uploaded_excel = st.file_uploader("📂 Kéo thả file Excel (Bản chưa ký) vào đây", type=["xlsx", "xls"], key="upload_excel_to_sign")
+            # Tạo khóa động thay vì khóa tĩnh
+        current_excel_key = f"upload_excel_to_sign_{st.session_state['reset_uploader_key']}"
+        uploaded_excel = st.file_uploader("📂 Kéo thả file Excel (Bản chưa ký) vào đây", type=["xlsx", "xls"], key=current_excel_key)
         if uploaded_excel:
             try:
                 df_load = pd.read_excel(uploaded_excel, skiprows=3)
