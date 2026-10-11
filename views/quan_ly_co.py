@@ -535,20 +535,32 @@ with tab_ocr_co:
                                 pdf.cell(col_widths[3], 8, ngay_format, border=1, align="C")
                                 pdf.ln(8)
                                 
+                            # 5. KHU VỰC CHỮ KÝ BÀN GIAO CỐ ĐỊNH
                             pdf.ln(8)
                             pdf.set_font("Roboto", style="B", size=13)
                             
-                            pdf.cell(135, 10, "ĐẠI DIỆN BÀN GIAO (BÊN GIAO)", align="C")
-                            pdf.cell(135, 10, f"ĐẠI DIỆN ĐẠI LÝ NHẬN: {ten_dai_ly}", align="C", new_x="LMARGIN", new_y="NEXT")
+                            # Dòng 1: In tiêu đề chức danh 2 bên
+                            pdf.cell(135, 10, "ĐẠI DIỆN BÀN GIAO", align="C")
+                            pdf.cell(135, 10, "ĐẠI DIỆN ĐẠI LÝ NHẬN", align="C", new_x="LMARGIN", new_y="NEXT")
                             
+                            # Xử lý và lưu file ảnh chữ ký
                             img_temp_path = "/tmp/temp_signature.png"
                             img_rgb.save(img_temp_path, format="PNG")
                             
-                            current_y = pdf.get_y() + 5
-                            pdf.image(img_temp_path, x=175, y=current_y, w=60) 
+                            # Dòng 2: Chèn ảnh chữ ký nằm lọt lòng bên dưới cột "Đại lý nhận"
+                            current_y = pdf.get_y() + 2
+                            pdf.image(img_temp_path, x=180, y=current_y, w=55) 
                             
                             if os.path.exists(img_temp_path):
                                 os.remove(img_temp_path)
+                                
+                            # Dòng 3: Tạo một khoảng trống dọc (25mm) chừa chỗ cho khung ảnh chữ ký
+                            pdf.ln(25)
+                            
+                            # Dòng 4: In đích danh tên người nhận ngay ngắn bên dưới cùng
+                            pdf.set_font("Roboto", style="B", size=12) # Chữ tên hơi nhỏ lại một chút
+                            pdf.cell(135, 8, "", align="C") # Bỏ trống khu vực bên trái
+                            pdf.cell(135, 8, ten_dai_ly, align="C", new_x="LMARGIN", new_y="NEXT")
                             
                             pdf_bytes = pdf.output()
                             
