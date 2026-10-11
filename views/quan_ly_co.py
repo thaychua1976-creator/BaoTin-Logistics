@@ -566,7 +566,7 @@ with tab_ocr_co:
                             
                             # Dòng 2: Chèn ảnh chữ ký nằm lọt lòng bên dưới cột "Đại lý nhận"
                             current_y = pdf.get_y() + 2
-                            pdf.image(img_temp_path, x=180, y=current_y, w=55) 
+                            pdf.image(img_temp_path, x=185, y=current_y, w=55) 
                             
                             if os.path.exists(img_temp_path):
                                 os.remove(img_temp_path)
