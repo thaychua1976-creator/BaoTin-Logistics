@@ -289,6 +289,8 @@ with tab_ocr_co:
     
     if "ocr_data" not in st.session_state:
         st.session_state["ocr_data"] = []
+    if "reset_uploader_key" not in st.session_state:
+            st.session_state["reset_uploader_key"] = 0
     
     # ---------------------------------------------------------
     # CHẾ ĐỘ 1: QUÉT PDF MỚI VÀ CHỈNH SỬA TRỰC TIẾP
@@ -412,9 +414,7 @@ with tab_ocr_co:
             )
             
             st.session_state["ocr_data"] = edited_df.to_dict('records')
-            # Khóa động để Reset hoàn toàn khung Upload File
-            if "reset_uploader_key" not in st.session_state:
-                st.session_state["reset_uploader_key"] = 0
+            
             # OPTION 1: TẢI XUỐNG BẢN NHÁP CHƯA KÝ
             excel_nhap_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_nhap_buffer, engine='xlsxwriter') as writer:
