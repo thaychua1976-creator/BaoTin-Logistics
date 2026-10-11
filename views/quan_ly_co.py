@@ -379,194 +379,203 @@ with tab_ocr_co:
     # KHU VỰC CHUNG: HIỂN THỊ LƯỚI DATA & KÝ NHẬN (CÓ DỮ LIỆU MỚI HIỆN)
     # ==========================================
     if st.session_state.get("ocr_data"):
-        df_current = pd.DataFrame(st.session_state["ocr_data"])
         
-        st.markdown(f"#### 📝 Danh sách {len(df_current)} mã C/O (Nhấp đúp chuột vào ô để sửa lỗi)")
-        
-        edited_df = st.data_editor(
-            df_current, 
-            use_container_width=True, 
-            num_rows="dynamic",
-            disabled=["STT", "TÊN NGƯỜI NHẬN", "NGÀY NHẬN"],
-            key="co_data_editor"
-        )
-        
-        st.session_state["ocr_data"] = edited_df.to_dict('records')
-        
-        # OPTION 1: TẢI XUỐNG BẢN NHÁP CHƯA KÝ
-        excel_nhap_buffer = io.BytesIO()
-        with pd.ExcelWriter(excel_nhap_buffer, engine='xlsxwriter') as writer:
-            workbook = writer.book
-            worksheet = writer.sheets.setdefault('So_Giao_Nhan', workbook.add_worksheet('So_Giao_Nhan'))
-            worksheet.write('A1', "CÔNG TY FORTUNATE HONGKONG VIỆT NAM")
-            worksheet.write('A2', "GỞI CÔNG TY: EXPEDITORS")
-            edited_df.to_excel(writer, sheet_name='So_Giao_Nhan', index=False, startrow=3)
-            worksheet.set_column('A:A', 10); worksheet.set_column('B:B', 35); worksheet.set_column('C:C', 30); worksheet.set_column('D:D', 25)
+        # 🚀 1. SỬ DỤNG @st.fragment ĐỂ CÔ LẬP RERUN (Tuyệt đối không giật trang khi gõ/ký tên)
+        @st.fragment
+        def vung_hien_thi_va_ky_nhan():
             
-        st.download_button(
-            label="📥 OPTION 1: Tải File Nháp (Chưa Ký) Để Lưu Trữ",
-            data=excel_nhap_buffer.getvalue(),
-            file_name=f"Ban_Nhap_Giao_CO_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            help="Tải file này về máy. Lúc nào đại lý tới, chọn chế độ (2) tải file này lên lại để ký tên."
-        )
+            # 🚀 2. DÙNG CSS ĐỂ BÓP NHỎ KHOẢNG CÁCH (Ép các thành phần xích lại gần nhau)
+            st.markdown("""
+                <style>
+                    /* Ép khoảng trống dưới mỗi block nhỏ lại */
+                    div[data-testid="stVerticalBlock"] > div { padding-bottom: 0.1rem !important; }
+                    /* Thu hẹp khoảng trống của Text Input và Date Input */
+                    .stTextInput > div, .stDateInput > div { margin-bottom: -10px; }
+                </style>
+            """, unsafe_allow_html=True)
 
-        st.divider()
-        
-        # OPTION 2: KÝ TÊN VÀ XUẤT BẢN CHÍNH THỨC
-        st.markdown("#### 🤝 OPTION 2: Ký Nhận & Xuất Phiếu Bản Giao Chính Thức")
-        c_ten, c_ngay = st.columns(2)
-        ten_dai_ly = c_ten.text_input("Tên người nhận (Đại lý):", placeholder="Nhập họ tên người nhận C/O...")
-        ngay_nhan = c_ngay.date_input("Ngày nhận:", value=datetime.date.today())
-        
-        st.write("Đại lý vẽ chữ ký xác nhận vào khung bên dưới:")
-        canvas_result = st_canvas(
-            fill_color="rgba(255, 165, 0, 0.3)", 
-            stroke_width=2.5, 
-            stroke_color="#FF0000", # Đã đổi sang mực Đỏ tươi
-            background_color="#f0f2f6", 
-            height=150, 
-            width=350, 
-            drawing_mode="freedraw",
-            return_image_data=True, key="canvas_ky_ten_2"
-        )
-        
-        if st.button("🤝 KÝ NHẬN & XUẤT PDF CHUẨN", type="primary"):
-            if not ten_dai_ly.strip():
-                st.error("Vui lòng nhập Tên người nhận của đại lý.")
-            elif canvas_result.image_data is None or canvas_result.image_data.sum() == 0:
-                st.error("Đại lý chưa ký xác nhận vào khung.")
-            else:
-                with st.spinner("Đang chèn chữ ký và xử lý File..."):
-                    try:
-                        from audit_logger import ghi_log_he_thong
-                        chi_tiet_log = f"Bàn giao {len(edited_df)} C/O gốc cho đại lý: {ten_dai_ly}"
-                        ghi_log_he_thong(db.pool, "QUAN_LY_CO", None, current_user, "BAN_GIAO_CO", chi_tiet_log)
-                    except Exception as log_err:
-                        pass
-                    
-                    # --- Xử lý chữ ký trong suốt/alpha trên di động ---
-                    img_data = canvas_result.image_data
-                    img_rgba = Image.fromarray(img_data.astype('uint8'), 'RGBA')
-                    img_bg = Image.new("RGBA", img_rgba.size, "WHITE")
-                    img_bg.paste(img_rgba, mask=img_rgba)
-                    img_rgb = img_bg.convert('RGB')
-                    
-                    img_buffer = io.BytesIO()
-                    img_rgb.save(img_buffer, format="PNG")
-                    img_buffer.seek(0)
-                    
-                    # --- XUẤT FILE BẰNG PDF (GIỮ TIẾNG VIỆT CÓ DẤU + LẤY TÊN FILE GỐC + ÉP TẢI VỀ) ---
-                    try:
-                        from fpdf import FPDF
-                    except ImportError:
-                        st.error("⚠️ Thiếu thư viện PDF. Vui lòng thêm 'fpdf2' vào file requirements.txt")
-                        st.stop()
-                    
-                    
-                    
-                    # 1. TẢI FONT TIẾNG VIỆT BẰNG KỸ THUẬT VƯỢT TƯỜNG LỬA CHỐNG BOT
-                    opener = urllib.request.build_opener()
-                    opener.addheaders = [('User-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')]
-                    urllib.request.install_opener(opener)
-                    
-                    font_path = "/tmp/Roboto-Regular.ttf"
-                    font_bold_path = "/tmp/Roboto-Bold.ttf"
-                    
-                    if not os.path.exists(font_path):
-                        urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Regular.ttf", font_path)
-                    if not os.path.exists(font_bold_path):
-                        urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Bold.ttf", font_bold_path)
+            df_current = pd.DataFrame(st.session_state["ocr_data"])
+            
+            # Dùng thẻ HTML thay cho st.markdown mặc định để triệt tiêu margin thừa
+            st.markdown(f"<h5 style='margin-bottom: 0px; margin-top: 0px;'>📝 Danh sách {len(df_current)} mã C/O (Nhấp đúp chuột để sửa)</h5>", unsafe_allow_html=True)
+            
+            edited_df = st.data_editor(
+                df_current, 
+                use_container_width=True, 
+                num_rows="dynamic",
+                disabled=["STT", "TÊN NGƯỜI NHẬN", "NGÀY NHẬN"],
+                key="co_data_editor"
+            )
+            
+            st.session_state["ocr_data"] = edited_df.to_dict('records')
+            # Khóa động để Reset hoàn toàn khung Upload File
+            if "reset_uploader_key" not in st.session_state:
+                st.session_state["reset_uploader_key"] = 0
+            # OPTION 1: TẢI XUỐNG BẢN NHÁP CHƯA KÝ
+            excel_nhap_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_nhap_buffer, engine='xlsxwriter') as writer:
+                workbook = writer.book
+                worksheet = writer.sheets.setdefault('So_Giao_Nhan', workbook.add_worksheet('So_Giao_Nhan'))
+                worksheet.write('A1', "CÔNG TY FORTUNATE HONGKONG VIỆT NAM")
+                worksheet.write('A2', "GỞI CÔNG TY: EXPEDITORS")
+                edited_df.to_excel(writer, sheet_name='So_Giao_Nhan', index=False, startrow=3)
+                worksheet.set_column('A:A', 10); worksheet.set_column('B:B', 35); worksheet.set_column('C:C', 30); worksheet.set_column('D:D', 25)
+                
+            st.download_button(
+                label="📥 OPTION 1: Tải File Nháp (Chưa Ký) Để Lưu Trữ",
+                data=excel_nhap_buffer.getvalue(),
+                file_name=f"Ban_Nhap_Giao_CO_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+            # Thay st.divider() bằng thẻ hr mỏng gọn hơn
+            st.markdown("<hr style='margin: 10px 0px; border: 1px solid #ddd;'>", unsafe_allow_html=True)
+            
+            # OPTION 2: KÝ TÊN VÀ XUẤT BẢN CHÍNH THỨC
+            st.markdown("<h4 style='margin-bottom: 5px; margin-top: 0px;'>🤝 OPTION 2: Ký Nhận & Xuất Phiếu Bản Giao</h4>", unsafe_allow_html=True)
+            
+            c_ten, c_ngay = st.columns(2)
+            ten_dai_ly = c_ten.text_input("Tên người nhận (Đại lý):", placeholder="Nhập họ tên...")
+            ngay_nhan = c_ngay.date_input("Ngày nhận:", value=datetime.date.today())
+            
+            st.markdown("<p style='margin-bottom: 0px; margin-top: 10px; font-weight: bold;'>Đại lý vẽ chữ ký xác nhận vào khung bên dưới:</p>", unsafe_allow_html=True)
+            
+            canvas_result = st_canvas(
+                fill_color="rgba(255, 165, 0, 0.3)", 
+                stroke_width=2.5, 
+                stroke_color="#FF0000", # Mực đỏ nổi bật
+                background_color="#f0f2f6", 
+                height=150, 
+                width=350, 
+                drawing_mode="freedraw",
+                return_image_data=True, key="canvas_ky_ten_2"
+            )
+            
+            # Thu hẹp khoảng cách nút bấm
+            st.markdown("<div style='margin-top: -10px;'></div>", unsafe_allow_html=True)
+            
+            if st.button("🤝 KÝ NHẬN & XUẤT PDF CHUẨN", type="primary"):
+                if not ten_dai_ly.strip():
+                    st.error("Vui lòng nhập Tên người nhận của đại lý.")
+                elif canvas_result.image_data is None or canvas_result.image_data.sum() == 0:
+                    st.error("Đại lý chưa ký xác nhận vào khung.")
+                else:
+                    with st.spinner("Đang chèn chữ ký và xử lý File..."):
+                        try:
+                            from audit_logger import ghi_log_he_thong
+                            chi_tiet_log = f"Bàn giao {len(edited_df)} C/O gốc cho đại lý: {ten_dai_ly}"
+                            ghi_log_he_thong(db.pool, "QUAN_LY_CO", None, current_user, "BAN_GIAO_CO", chi_tiet_log)
+                        except Exception as log_err:
+                            pass
                         
-                    # 2. KHỞI TẠO TÀI LIỆU PDF
-                    pdf = FPDF(orientation="L", unit="mm", format="A4")
-                    pdf.add_page()
-                    
-                    pdf.add_font("Roboto", style="", fname=font_path)
-                    pdf.add_font("Roboto", style="B", fname=font_bold_path)
-                    
-                    # 3. GHI TIÊU ĐỀ
-                    pdf.set_font("Roboto", style="B", size=18)
-                    pdf.cell(0, 10, "CÔNG TY FORTUNATE HONGKONG VIỆT NAM", align="C", new_x="LMARGIN", new_y="NEXT")
-                    pdf.cell(0, 10, "GỞI CÔNG TY: EXPEDITORS", align="C", new_x="LMARGIN", new_y="NEXT")
-                    pdf.ln(5)
-                    
-                    # 4. VẼ BẢNG DỮ LIỆU
-                    pdf.set_font("Roboto", style="B", size=11)
-                    pdf.set_fill_color(220, 220, 220)
-                    
-                    col_widths = [20, 100, 80, 50] 
-                    headers = ['STT', 'SỐ C/O BẢN GỐC', 'TÊN NGƯỜI NHẬN', 'NGÀY NHẬN']
-                    
-                    for i, h in enumerate(headers):
-                        pdf.cell(col_widths[i], 8, h, border=1, align="C", fill=True)
-                    pdf.ln(8)
-                    
-                    # Ghi dữ liệu (In trực tiếp tên và ngày, canh GIỮA toàn bộ)
-                    pdf.set_font("Roboto", style="", size=11)
-                    
-                    # Định dạng sẵn chuỗi ngày
-                    ngay_format = ngay_nhan.strftime('%d/%m/%Y')
-                    
-                    for r_idx in range(len(edited_df)):
-                        # Cột 1: STT (Canh giữa - "C")
-                        pdf.cell(col_widths[0], 8, str(edited_df.iloc[r_idx, 0]).replace('.0', ''), border=1, align="C")
+                        img_data = canvas_result.image_data
+                        img_rgba = Image.fromarray(img_data.astype('uint8'), 'RGBA')
+                        img_bg = Image.new("RGBA", img_rgba.size, "WHITE")
+                        img_bg.paste(img_rgba, mask=img_rgba)
+                        img_rgb = img_bg.convert('RGB')
                         
-                        # Cột 2: SỐ C/O (Canh giữa - "C")
-                        pdf.cell(col_widths[1], 8, str(edited_df.iloc[r_idx, 1]), border=1, align="C")
+                        img_buffer = io.BytesIO()
+                        img_rgb.save(img_buffer, format="PNG")
+                        img_buffer.seek(0)
                         
-                        # Cột 3: TÊN NGƯỜI NHẬN (In thẳng biến ten_dai_ly, Canh giữa - "C")
-                        pdf.cell(col_widths[2], 8, ten_dai_ly, border=1, align="C")
+                        try:
+                            from fpdf import FPDF
+                        except ImportError:
+                            st.error("⚠️ Thiếu thư viện PDF. Vui lòng thêm 'fpdf2' vào file requirements.txt")
+                            st.stop()
                         
-                        # Cột 4: NGÀY NHẬN (In thẳng biến ngày, Canh giữa - "C")
-                        pdf.cell(col_widths[3], 8, ngay_format, border=1, align="C")
+                        import urllib.request
+                        import os
                         
+                        opener = urllib.request.build_opener()
+                        opener.addheaders = [('User-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')]
+                        urllib.request.install_opener(opener)
+                        
+                        font_path = "/tmp/Roboto-Regular.ttf"
+                        font_bold_path = "/tmp/Roboto-Bold.ttf"
+                        
+                        if not os.path.exists(font_path):
+                            urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Regular.ttf", font_path)
+                        if not os.path.exists(font_bold_path):
+                            urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Bold.ttf", font_bold_path)
+                            
+                        pdf = FPDF(orientation="L", unit="mm", format="A4")
+                        pdf.add_page()
+                        
+                        pdf.add_font("Roboto", style="", fname=font_path)
+                        pdf.add_font("Roboto", style="B", fname=font_bold_path)
+                        
+                        pdf.set_font("Roboto", style="B", size=18)
+                        pdf.cell(0, 10, "CÔNG TY FORTUNATE HONGKONG VIỆT NAM", align="C", new_x="LMARGIN", new_y="NEXT")
+                        pdf.cell(0, 10, "GỞI CÔNG TY: EXPEDITORS", align="C", new_x="LMARGIN", new_y="NEXT")
+                        pdf.ln(5)
+                        
+                        pdf.set_font("Roboto", style="B", size=11)
+                        pdf.set_fill_color(220, 220, 220)
+                        
+                        col_widths = [20, 100, 80, 50] 
+                        headers = ['STT', 'SỐ C/O BẢN GỐC', 'TÊN NGƯỜI NHẬN', 'NGÀY NHẬN']
+                        
+                        for i, h in enumerate(headers):
+                            pdf.cell(col_widths[i], 8, h, border=1, align="C", fill=True)
                         pdf.ln(8)
                         
-                    # 5. KHU VỰC CHỮ KÝ BÀN GIAO CỐ ĐỊNH
-                    pdf.ln(8)
-                    pdf.set_font("Roboto", style="B", size=13)
-                    
-                    pdf.cell(135, 10, "ĐẠI DIỆN BÀN GIAO (BÊN GIAO)", align="C")
-                    pdf.cell(135, 10, f"ĐẠI DIỆN ĐẠI LÝ NHẬN: {ten_dai_ly}", align="C", new_x="LMARGIN", new_y="NEXT")
-                    
-                    img_temp_path = "/tmp/temp_signature.png"
-                    img_rgb.save(img_temp_path, format="PNG")
-                    
-                    current_y = pdf.get_y() + 5
-                    pdf.image(img_temp_path, x=175, y=current_y, w=60) 
-                    
-                    if os.path.exists(img_temp_path):
-                        os.remove(img_temp_path)
-                    
-                    # 6. XUẤT FILE & ÉP TẢI VỀ
-                    pdf_bytes = pdf.output()
-                    
-                    # Xử lý Tên File Đầu Ra Thông Minh
-                    ten_goc = st.session_state.get("ten_file_goc", "")
-                    if ten_goc:
-                        ten_file_xuat_ra = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.pdf"
-                    else:
-                        ten_file_xuat_ra = f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
-                    
-                    st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao (PDF) đã sẵn sàng!")
-                    
-                    # Dùng application/octet-stream để ép trình duyệt tải về thẳng máy
-                    st.download_button(
-                        label="📥 TẢI PHIẾU BÀN GIAO ĐÃ KÝ VỀ MÁY",
-                        data=bytes(pdf_bytes),
-                        file_name=ten_file_xuat_ra,
-                        mime="application/octet-stream", 
-                        type="primary"
-                    )
-        
-        if st.button("🔄 Tải Lại Phiên Mới (Xóa Trắng)"):
-            st.session_state["ocr_data"] = []
-            keys_to_reset = ["upload_pdfs_ocr", "upload_excel_to_sign", "co_data_editor", "canvas_ky_ten_2"]
-            for key in keys_to_reset:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.rerun()
+                        pdf.set_font("Roboto", style="", size=11)
+                        ngay_format = ngay_nhan.strftime('%d/%m/%Y')
+                        
+                        # Fix lỗi NaN và Canh GIỮA toàn bộ dữ liệu
+                        for r_idx in range(len(edited_df)):
+                            pdf.cell(col_widths[0], 8, str(edited_df.iloc[r_idx, 0]).replace('.0', ''), border=1, align="C")
+                            pdf.cell(col_widths[1], 8, str(edited_df.iloc[r_idx, 1]), border=1, align="C")
+                            pdf.cell(col_widths[2], 8, ten_dai_ly, border=1, align="C") # Ép cứng tên đại lý
+                            pdf.cell(col_widths[3], 8, ngay_format, border=1, align="C")
+                            pdf.ln(8)
+                            
+                        pdf.ln(8)
+                        pdf.set_font("Roboto", style="B", size=13)
+                        
+                        pdf.cell(135, 10, "ĐẠI DIỆN BÀN GIAO (BÊN GIAO)", align="C")
+                        pdf.cell(135, 10, f"ĐẠI DIỆN ĐẠI LÝ NHẬN: {ten_dai_ly}", align="C", new_x="LMARGIN", new_y="NEXT")
+                        
+                        img_temp_path = "/tmp/temp_signature.png"
+                        img_rgb.save(img_temp_path, format="PNG")
+                        
+                        current_y = pdf.get_y() + 5
+                        pdf.image(img_temp_path, x=175, y=current_y, w=60) 
+                        
+                        if os.path.exists(img_temp_path):
+                            os.remove(img_temp_path)
+                        
+                        pdf_bytes = pdf.output()
+                        
+                        ten_goc = st.session_state.get("ten_file_goc", "")
+                        if ten_goc:
+                            ten_file_xuat_ra = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.pdf"
+                        else:
+                            ten_file_xuat_ra = f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
+                        
+                        st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao (PDF) đã sẵn sàng!")
+                        
+                        st.download_button(
+                            label="📥 TẢI PHIẾU BÀN GIAO ĐÃ KÝ VỀ MÁY",
+                            data=bytes(pdf_bytes),
+                            file_name=ten_file_xuat_ra,
+                            mime="application/octet-stream", 
+                            type="primary"
+                        )
+            
+            if st.button("🔄 Tải Lại Phiên Mới (Xóa Trắng)"):
+                st.session_state["ocr_data"] = []
+                keys_to_reset = ["upload_pdfs_ocr", "upload_excel_to_sign", "co_data_editor", "canvas_ky_ten_2"]
+                for key in keys_to_reset:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                # Kích hoạt thay đổi Khóa Động để ép Streamlit xóa sạch giao diện Khung Upload
+                st.session_state["reset_uploader_key"] += 1
+                st.rerun()
+
+        # THỰC THI KHỐI LỆNH MƯỢT MÀ
+        vung_hien_thi_va_ky_nhan()
 
 
 # ==========================================
