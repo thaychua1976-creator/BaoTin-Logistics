@@ -201,12 +201,17 @@ def process_offline_zalo_files():
       + BẮT BUỘC gán giá trị `dia_chi_kho_di` mặc định là "Công ty Fortunate".
       + Đưa chi tiết tên các xưởng (VD: "Lấy hàng tại Xưởng 4+3+1") vào trường `ghi_chu` để tài xế biết nơi bốc hàng.
       + Điểm đến (`dia_chi_kho_den`) áp dụng chung cho tất cả các chuyến xe nếu được nhắc ở đầu câu (VD: "sắp dùm em 7 xe đi cát lái" -> tất cả 7 xe đều có dia_chi_kho_den là "Cát Lái").
+    
+    **QUY TẮC 6: ĐẶC THÙ CỦA CÔNG TY YOUNG IL (HOẶC KHI CHỈ CÓ ĐIỂM ĐẾN)**
+    - Nếu tin nhắn thuộc nhóm khách hàng "YOUNG IL" (hoặc trong text/ảnh có nhắc đến YOUNG IL) và dữ liệu bảng CHỈ HIỂN THỊ điểm đến (Ví dụ: CHANG SHIN, BEESCO, FREETREND, FULUH...):
+      + BẮT BUỘC gán giá trị `dia_chi_kho_di` mặc định là "YOUNG IL".
+      + Cột có tên công ty khác (như Chang Shin, Beesco) phải được đưa vào `dia_chi_kho_den`.
 
-    **QUY TẮC 6: XỬ LÝ NGÀY THÁNG VÀ THỜI GIAN**
+    **QUY TẮC 7: XỬ LÝ NGÀY THÁNG VÀ THỜI GIAN**
     - Ngày đi: "Sáng mai", "mai" -> {tomorrow_str}. "Hôm nay", "tối nay" -> {today_str}.
     - Thời gian (Giờ giấc): Có thể nằm ở cột riêng (VD: "9H") hoặc lẫn trong điểm đến. Hãy trích xuất thời gian và đưa vào trường "ghi_chu".
 
-    **QUY TẮC 7: XỬ LÝ LOẠI XE YÊU CẦU & THỂ TÍCH (CBM)**
+    **QUY TẮC 8: XỬ LÝ LOẠI XE YÊU CẦU & THỂ TÍCH (CBM)**
     - Nhận diện cột loại xe (thường có chữ "OUT SIDE TRUCK" hoặc ghi rõ trong text "xe 5 tấn"). Đọc thật cẩn thận số Tấn. CHỈ LẤY SỐ TẤN cho trường `loai_xe_yeu_cau` (VD: "1T", "5T", "8T").
     - Thể tích xe (nếu khách ghi chú, VD: "19cbm", "14 cbm") hãy bóc tách phần số và đưa vào trường `the_tich_cbm`.
 
