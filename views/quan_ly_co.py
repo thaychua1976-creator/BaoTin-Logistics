@@ -339,12 +339,24 @@ with tab_ocr_co:
                                         
                                         if match:
                                             prefix_raw, dd, mm = match.group(1), match.group(2), match.group(3)
-                                            num_clean = re.sub(r'\s+', '', match.group(4)).replace('O', '0')
+                                            raw_suffix = match.group(4)
                                             
-                                            # 💡 FIX LỖI NHẬN DIỆN CỦA AI: OCR hay nhìn nhầm chữ 'B' (Form B) thành số '8'
-                                            # Nếu chuỗi C/O đang có 7 ký tự (VD: 9961838) và kết thúc bằng '8', ta sẽ ép nó về chữ 'B'
-                                            if len(num_clean) == 7 and num_clean.endswith('8'):
-                                                num_clean = num_clean[:-1] + 'B'
+                                            # Loại bỏ khoảng trắng và chuyển chữ O thành số 0
+                                            num_clean = re.sub(r'\s+', '', raw_suffix).replace('O', '0')
+                                            
+                                            # BỘ LỌC CỨNG: Bóc tách chính xác phần số (6-7 số) và tối đa 1 chữ cái đi liền sau
+                                            m_strict = re.match(r'^(\d{5,8})([A-Z]?)', num_clean)
+                                            if m_strict:
+                                                digits, letter = m_strict.group(1), m_strict.group(2)
+                                                
+                                                # FIX LỖI NHẬN DIỆN CỦA AI: Nhìn nhầm chữ 'B' thành số '8'
+                                                # Nếu khối số có 7 ký tự (VD: 9961838) và kết thúc bằng '8', tự bẻ ngược về 'B'
+                                                if len(digits) == 7 and digits.endswith('8'):
+                                                    digits = digits[:-1]
+                                                    letter = 'B'
+                                                    
+                                                # Ráp lại chuẩn xác (tự động vứt bỏ rác I0, 70 phía sau)
+                                                num_clean = digits + letter
                                                 
                                             suffix_clean = f"{dd}/{mm}/{num_clean}"
                                             
