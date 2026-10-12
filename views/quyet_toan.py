@@ -441,8 +441,12 @@ def normalize_location_alias(text):
         # AI sẽ tự động tách chữ "CÁT LÁI" này thành token [CÁT, LÁI] 
         # và khớp 100% với chữ "CẢNG CÁT LÁI" (gồm token [CẢNG, CÁT, LÁI]) trên DataBase
         text_upper = 'CÁT LÁI' 
-        
-    # 5. [Bổ sung thêm] Đề phòng các địa danh khác bị viết dính liền trong file Excel
+    # 5. [MỚI BỔ SUNG] Chuẩn hóa Nhóm KHO ICD TRANSIMEX
+    # Xóa bỏ các đuôi số kho như WH 42, WH 41... để ép về chuẩn của Database
+    if 'ICD TRANSIMEX' in text_upper:
+        text_upper = 'KHO ICD TRANSIMEX'
+
+    # 6. [Bổ sung thêm] Đề phòng các địa danh khác bị viết dính liền trong file Excel
     text_upper = text_upper.replace('SONGTHAN', 'SÓNG THẦN')
     text_upper = text_upper.replace('MYPHUOC', 'MỸ PHƯỚC')
     text_upper = text_upper.replace('HIEPPHUOC', 'HIỆP PHƯỚC')
