@@ -419,7 +419,6 @@ def keyword_match_score(app_str, db_str):
     exactness = len(intersection) / max_len
     return base_score + (exactness * 0.1)
 
-# === THÊM HÀM MỚI VÀO ĐÂY ===
 def normalize_location_alias(text):
     """Gom nhóm các cụm điểm đến đặc thù để AI dễ dàng matching 100%"""
     if not text: return ""
@@ -432,12 +431,20 @@ def normalize_location_alias(text):
     # 2. Xóa hậu tố số của các kho TBS (VD: TBS03, TBS 06, TBS-05 -> TBS)
     text_upper = re.sub(r'TBS[\s\-]*\d+', 'TBS', text_upper)
     
-    # 3. Chuẩn hóa tên viết tắt FIRST TEAM (Chỉ thay thế khi FT/FTVN đứng độc lập)
-    text_upper = re.sub(r'\b(F.T|FT|FTVN|FTVM)\b', 'FIRST TEAM', text_upper)
+    # 3. Chuẩn hóa tên viết tắt FIRST TEAM (Bổ sung F.T, FIRSTEAM dính liền)
+    text_upper = text_upper.replace('FIRSTEAM', 'FIRST TEAM')
+    text_upper = re.sub(r'\b(F\.T|FT|FTVN|FTVM)\b', 'FIRST TEAM', text_upper)
 
-    # 4. Chuẩn hóa Cát Lái: Chấp nhận mọi biến thể, chỉ cần có chữ Cát Lái
-    if 'CÁT LÁI' in text_upper or 'CAT LAI' in text_upper:
-        text_upper = 'CÁT LÁI'
+    # 4. Chuẩn hóa Cát Lái: Chấp nhận mọi biến thể, kể cả CATLAI dính liền
+    if any(kw in text_upper for kw in ['CÁT LÁI', 'CAT LAI', 'CATLAI']):
+        # AI sẽ tự động tách chữ "CÁT LÁI" này thành token [CÁT, LÁI] 
+        # và khớp 100% với chữ "CẢNG CÁT LÁI" (gồm token [CẢNG, CÁT, LÁI]) trên DataBase
+        text_upper = 'CÁT LÁI' 
+        
+    # 5. [Bổ sung thêm] Đề phòng các địa danh khác bị viết dính liền trong file Excel
+    text_upper = text_upper.replace('SONGTHAN', 'SÓNG THẦN')
+    text_upper = text_upper.replace('MYPHUOC', 'MỸ PHƯỚC')
+    text_upper = text_upper.replace('HIEPPHUOC', 'HIỆP PHƯỚC')
     
     return text_upper
 # ============================
