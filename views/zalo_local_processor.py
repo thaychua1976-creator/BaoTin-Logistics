@@ -177,6 +177,7 @@ def process_offline_zalo_files():
     unprocessed_files = [] 
     
     # [CẬP NHẬT] Prompt mới: Gộp các điểm đến của ô merge thành 1 chuyến duy nhất và sửa lỗi nhận diện 1T
+    # [CẬP NHẬT] Prompt mới: Tích hợp logic xử lý kho xưởng của Công ty Fortunate
     prompt = f"""
     Bạn là chuyên gia phân tích dữ liệu Logistics. Nhiệm vụ: Chuyển đổi văn bản thành mảng JSON chứa các chuyến đi độc lập.
 
@@ -195,14 +196,19 @@ def process_offline_zalo_files():
     - Bắt buộc tách rõ "Địa chỉ kho đi" và "Địa chỉ kho đến". 
     - ĐẶC BIỆT: Loại bỏ các từ dư thừa như "closing time", "CLOSING TIME T7" khỏi Điểm đến. Chỉ lấy tên địa danh cốt lõi.
 
-    **QUY TẮC 5: XỬ LÝ NGÀY THÁNG VÀ THỜI GIAN**
+    **QUY TẮC 5: ĐẶC THÙ CỦA CÔNG TY FORTUNATE (ĐI TỪ XƯỞNG) - RẤT QUAN TRỌNG**
+    - Nếu trong tin nhắn có nhắc đến việc lấy hàng tại các "xưởng" (VD: "xưởng 4+3+1", "xưởng 1", "xưởng 3"...) hoặc mô phỏng lệnh điều xe từ xưởng đến bãi/cảng (VD: đi Cát Lái):
+      + BẮT BUỘC gán giá trị `dia_chi_kho_di` mặc định là "Công ty Fortunate".
+      + Đưa chi tiết tên các xưởng (VD: "Lấy hàng tại Xưởng 4+3+1") vào trường `ghi_chu` để tài xế biết nơi bốc hàng.
+      + Điểm đến (`dia_chi_kho_den`) áp dụng chung cho tất cả các chuyến xe nếu được nhắc ở đầu câu (VD: "sắp dùm em 7 xe đi cát lái" -> tất cả 7 xe đều có dia_chi_kho_den là "Cát Lái").
+
+    **QUY TẮC 6: XỬ LÝ NGÀY THÁNG VÀ THỜI GIAN**
     - Ngày đi: "Sáng mai", "mai" -> {tomorrow_str}. "Hôm nay", "tối nay" -> {today_str}.
     - Thời gian (Giờ giấc): Có thể nằm ở cột riêng (VD: "9H") hoặc lẫn trong điểm đến. Hãy trích xuất thời gian và đưa vào trường "ghi_chu".
 
-    **QUY TẮC 6: XỬ LÝ LOẠI XE YÊU CẦU & Ô BỊ GỘP (MERGED CELLS) - RẤT QUAN TRỌNG**
-    - Nhận diện cột loại xe (thường có chữ "OUT SIDE TRUCK"). Đọc thật cẩn thận số Tấn (VD: "1T" là 1 Tấn, tuyệt đối không được đọc nhầm thành "11T"). CHỈ LẤY SỐ TẤN cho trường `loai_xe_yeu_cau` (VD: "1T", "8T").
-    - NẾU Ô LOẠI XE BỊ GỘP (dùng chung cho nhiều dòng bên trái, VD: 3 điểm đến sân bay dùng chung 1 xe 1T): BẮT BUỘC CHỈ TẠO 1 CHUYẾN XE DUY NHẤT đại diện cho khối này. 
-    - Hãy gộp tên của tất cả các điểm đến trong khối đó thành một chuỗi (VD: "AIR CC HỜ, AIR CC - KHO SCSC, TCS- AIR CC") và đưa vào trường `dia_chi_kho_den` (và có thể nhắc lại trong `ghi_chu`). Gán khối lượng `khoi_luong_kg` quy đổi tương ứng với chiếc xe dùng chung đó.
+    **QUY TẮC 7: XỬ LÝ LOẠI XE YÊU CẦU & THỂ TÍCH (CBM)**
+    - Nhận diện cột loại xe (thường có chữ "OUT SIDE TRUCK" hoặc ghi rõ trong text "xe 5 tấn"). Đọc thật cẩn thận số Tấn. CHỈ LẤY SỐ TẤN cho trường `loai_xe_yeu_cau` (VD: "1T", "5T", "8T").
+    - Thể tích xe (nếu khách ghi chú, VD: "19cbm", "14 cbm") hãy bóc tách phần số và đưa vào trường `the_tich_cbm`.
 
     **SCHEMA JSON YÊU CẦU ĐẦU RA:**
     {{
@@ -210,12 +216,12 @@ def process_offline_zalo_files():
         "danh_sach_xe": [
             {{
                 "ngay_chuyen_di": "YYYY-MM-DD",
-                "dia_chi_kho_di": "Địa điểm xuất phát",
-                "dia_chi_kho_den": "Điểm giao hàng (Gộp chuỗi nếu 1 xe giao nhiều điểm)",
-                "khoi_luong_kg": Số thực,
-                "the_tich_cbm": Số thực,
-                "loai_xe_yeu_cau": "Số tấn (VD: 1T, 8T)",
-                "ghi_chu": "Chi tiết giờ giấc, Số lượng hàng, Các điểm đến gộp..."
+                "dia_chi_kho_di": "Địa điểm xuất phát (Luôn ghi Công ty Fortunate nếu lấy hàng tại xưởng)",
+                "dia_chi_kho_den": "Điểm giao hàng",
+                "khoi_luong_kg": Số thực (Tính theo KG),
+                "the_tich_cbm": Số thực (Thể tích khối CBM, VD: 19.0),
+                "loai_xe_yeu_cau": "Số tấn (VD: 1T, 5T, 8T)",
+                "ghi_chu": "Xưởng 4+3+1, giờ giấc, số lượng..."
             }}
         ]
     }}
