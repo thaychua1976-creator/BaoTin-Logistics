@@ -441,7 +441,7 @@ def process_offline_zalo_files():
 def main_app():
     # [CẬP NHẬT]: Tự động quét và xóa file của phiên làm việc trước khi mở App
     if "auto_cleaned_files" not in st.session_state:
-        clear_files_and_folders() # Dọn dẹp sạch sẽ 100% khi ứng dụng bắt đầu
+        clear_files_only() # CHỈ XÓA FILE - GIỮ LẠI CÁC THƯ MỤC NHÓM
         st.session_state["auto_cleaned_files"] = True
 
     # Khởi tạo bộ đếm form key để phục vụ việc reset widget file_uploader
@@ -493,7 +493,7 @@ def main_app():
     st.markdown("Nếu tiến trình trước đó bị lỗi hoặc dừng đột ngột, hãy dọn rác trước khi tải file mới lên để tránh quá tải AI.")
     
     if st.button("🗑️ Dọn sạch toàn bộ File & Thư mục Zalo cũ", type="secondary"):
-        deleted = clear_files_and_folders()
+        deleted = clear_files_only()
         if deleted > 0:
             st.success(f"✅ Đã xóa thành công {deleted} file/thư mục rác và dọn sạch cấu trúc!")
         else:
@@ -618,7 +618,7 @@ def main_app():
                         os.remove(EXCEL_FILE)
                 except Exception: pass
                 
-                clear_files_and_folders() # Gọi hàm mới để dọn dẹp triệt để thư mục
+                clear_files_only() # CHỈ XÓA FILE BÊN TRONG
                 
                 st.session_state["zalo_form_reset_key"] += 1
                 st.toast("🎉 Hệ thống đã tự động dọn sạch file rác của phiên làm việc này.")
