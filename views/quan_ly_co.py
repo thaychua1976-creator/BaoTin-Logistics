@@ -269,6 +269,31 @@ with tab_ocr_co:
     # 🚀 1. SỬ DỤNG @st.fragment ĐỂ CÔ LẬP RERUN (Tuyệt đối không giật trang khi gõ/ký tên)
     @st.fragment
     def vung_trich_xuat_va_ky_nhan():
+        # --- BƯỚC 1: TIÊM CSS ÉP KHOẢNG CÁCH NGAY TỪ ĐẦU ---
+        st.markdown("""
+            <style>
+                /* Thu hẹp khoảng trống dưới các khối văn bản/nút bấm */
+                div[data-testid="stVerticalBlock"] > div { padding-bottom: 0.1rem !important; }
+                div[data-testid="stHorizontalBlock"] > div { padding-bottom: 0.1rem !important; }
+                /* Thu hẹp viền của Input */
+                .stTextInput > div, .stDateInput > div { margin-bottom: -15px; }
+                /* Ép margin của tiêu đề nhỏ lại */
+                h4, h5 { margin-top: 5px !important; margin-bottom: 5px !important; }
+                
+                /* Thu hẹp khoảng cách của Radio button */
+                div[role="radiogroup"] { margin-bottom: -10px !important; margin-top: -10px !important; }
+                
+                /* 🚀 CHỐNG TRƯỢT MÀN HÌNH TRÊN IPHONE KHI KÝ TÊN */
+                div[data-testid="stWebComponentContainer"] {
+                    touch-action: none !important; 
+                    overscroll-behavior: none !important;
+                }
+                iframe[title="streamlit_drawable_canvas.st_canvas"] {
+                    touch-action: none !important;
+                }
+            </style>
+        """, unsafe_allow_html=True)
+
         try:
             from streamlit_drawable_canvas import st_canvas
             from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
@@ -287,10 +312,12 @@ with tab_ocr_co:
             horizontal=True
         )
         
-        st.divider()
+        # --- BƯỚC 2: THAY THẾ st.divider() BẰNG KẺ NGANG HTML MỎNG NHẸ ---
+        st.markdown("<hr style='margin: 10px 0px 5px 0px; border: 1px solid #e0e0e0;'>", unsafe_allow_html=True)
         
         if "ocr_data" not in st.session_state:
             st.session_state["ocr_data"] = []
+            
         if "reset_uploader_key" not in st.session_state:
                 st.session_state["reset_uploader_key"] = 0
         
@@ -414,30 +441,7 @@ with tab_ocr_co:
         # ==========================================
         if st.session_state.get("ocr_data"):
             
-            
-                
-                # --- CSS THU GỌN KHOẢNG CÁCH & KHÓA MÀN HÌNH KHI KÝ ---
-                st.markdown("""
-                    <style>
-                        /* Thu hẹp khoảng trống dưới các khối văn bản/nút bấm */
-                        div[data-testid="stVerticalBlock"] > div { padding-bottom: 0.2rem !important; }
-                        /* Thu hẹp viền của Input */
-                        .stTextInput > div, .stDateInput > div { margin-bottom: -15px; }
-                        /* Ép margin của tiêu đề nhỏ lại */
-                        h4, h5 { margin-top: 5px !important; margin-bottom: 5px !important; }
-                        hr { margin: 10px 0px !important; }
-                        
-                        /* 🚀 CHỐNG TRƯỢT MÀN HÌNH TRÊN IPHONE KHI KÝ TÊN */
-                        div[data-testid="stWebComponentContainer"] {
-                            touch-action: none !important; 
-                            overscroll-behavior: none !important;
-                        }
-                        iframe[title="streamlit_drawable_canvas.st_canvas"] {
-                            touch-action: none !important;
-                        }
-                    </style>
-                """, unsafe_allow_html=True)
-                
+                            
                 df_current = pd.DataFrame(st.session_state["ocr_data"])
                 
                 # Dùng thẻ HTML thay cho st.markdown mặc định để triệt tiêu margin thừa
