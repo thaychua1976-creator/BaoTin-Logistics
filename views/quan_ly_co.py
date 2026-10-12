@@ -5,6 +5,9 @@ import urllib.request
 import os
 from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 from co_manager import save_co_transaction, delete_co_transaction, get_don_gia_co_theo_khach_hang
+from dotenv import load_dotenv
+# Vẫn load file .env cho môi trường Local
+load_dotenv(override=False) 
 
 # --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -334,10 +337,7 @@ with tab_ocr_co:
                     with st.spinner("⏳ Đang xử lý siêu tốc..."):
                         extracted_data = []
                         
-                        @st.cache_resource
-                        def load_ocr_reader():
-                            return easyocr.Reader(['en'], gpu=False)
-                        reader = load_ocr_reader()
+                        
                         
                         # CẬP NHẬT: Cho phép chữ cái (A-Z) nằm ở phần đuôi số seri của C/O
                         pattern = r'([A-Z0-9.\-\s]{0,20})(\d{2})\s*[-/|17lI\.]\s*(\d{2})\s*[-/|17lI\.]\s*([0-9A-Z\s]{5,15})'
@@ -352,24 +352,40 @@ with tab_ocr_co:
                                         match = re.search(pattern, text_fast)
                                         
                                         if not match:
-                                            # Cắt khu vực góc phải trên cùng (chứa Số C/O)
+                                            # Cắt khu vực góc phải trên cùng (chứa Số C/O) để AI tập trung
                                             bounding_box = (page.width * 0.35, 0, page.width, page.height * 0.35)
                                             micro_crop = page.crop(bounding_box)
+                                            pil_img = micro_crop.to_image(resolution=300).original
                                             
-                                            # 🚀 NÂNG CẤP THỊ LỰC AI: Tăng độ phân giải lên 400 và tăng độ tương phản (Contrast)
-                                            pil_img = micro_crop.to_image(resolution=400).original.convert('L')
+                                            # 🚀 GỌI GEMINI 1.5 FLASH (Tuyệt đối chính xác, Không tốn RAM)
+                                            try:
+                                                import google.generativeai as genai
+                                                if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
+                                                            api_key = st.secrets["api_keys"]["gemini"]
+                                                elif "GEMINI_API_KEY" in st.secrets:
+                                                            api_key = st.secrets["GEMINI_API_KEY"]
+                                            except Exception:
+                                                        pass
+                                                
+                                                    # Bước 2: Thử lấy từ biến môi trường của hệ điều hành (Local)
+                                            if not api_key:
+                                                api_key = os.getenv("GEMINI_API_KEY")
+                                                
+                                                    # Khởi tạo model nếu tìm thấy key
+                                            if api_key:
+                                                genai.configure(api_key=api_key)
+                                                model = genai.GenerativeModel('gemini-3.6-flash')
+                                                
+                                                # Yêu cầu AI đọc chính xác văn bản trong ảnh cắt
+                                                prompt = "Đọc và trích xuất nguyên văn tất cả các đoạn văn bản có trong hình ảnh này. Không cần giải thích thêm."
+                                                response = model.generate_content([prompt, pil_img])
+                                                
+                                                text_ai = (response.text or "").upper()
+                                                match = re.search(pattern, text_ai)
+                                            else:
+                                                    st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống! Vui lòng kiểm tra lại cấu trúc Secrets trên Cloud.")
+                                                    return None    
                                             
-                                            from PIL import ImageOps, ImageEnhance
-                                            # Tăng độ tương phản lên gấp đôi (2.0) để nét chữ đen rõ ràng hơn, chống nhòe nét 1 thành 7, 0 thành 8
-                                            enhancer = ImageEnhance.Contrast(pil_img)
-                                            pil_img = enhancer.enhance(2.0) 
-                                            
-                                            padded_img = ImageOps.expand(pil_img, border=50, fill='white')
-                                            img_array = np.array(padded_img)
-                                            
-                                            result = reader.readtext(img_array, detail=0, allowlist='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-/. ')
-                                            text_ai = " ".join(result).upper()
-                                            match = re.search(pattern, text_ai)
                                         
                                         if match:
                                             prefix_raw, dd, mm = match.group(1), match.group(2), match.group(3)
