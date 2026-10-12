@@ -352,11 +352,18 @@ with tab_ocr_co:
                                         match = re.search(pattern, text_fast)
                                         
                                         if not match:
+                                            # Cắt khu vực góc phải trên cùng (chứa Số C/O)
                                             bounding_box = (page.width * 0.35, 0, page.width, page.height * 0.35)
                                             micro_crop = page.crop(bounding_box)
-                                            pil_img = micro_crop.to_image(resolution=200).original.convert('L')
                                             
-                                            from PIL import ImageOps
+                                            # 🚀 NÂNG CẤP THỊ LỰC AI: Tăng độ phân giải lên 400 và tăng độ tương phản (Contrast)
+                                            pil_img = micro_crop.to_image(resolution=400).original.convert('L')
+                                            
+                                            from PIL import ImageOps, ImageEnhance
+                                            # Tăng độ tương phản lên gấp đôi (2.0) để nét chữ đen rõ ràng hơn, chống nhòe nét 1 thành 7, 0 thành 8
+                                            enhancer = ImageEnhance.Contrast(pil_img)
+                                            pil_img = enhancer.enhance(2.0) 
+                                            
                                             padded_img = ImageOps.expand(pil_img, border=50, fill='white')
                                             img_array = np.array(padded_img)
                                             
