@@ -1744,6 +1744,9 @@ with tab6:
                 if isinstance(df_canh_bao, pd.DataFrame) and not df_canh_bao.empty:
                     df_canh_bao['Ngày Chạy'] = pd.to_datetime(df_canh_bao['Ngày Chạy']).dt.strftime('%d/%m/%Y')
                     st.error(f"⚠️ PHÁT HIỆN **{len(df_canh_bao)}** CHUYẾN ĐI QUÁ HẠN CHƯA QUYẾT TOÁN!")
+                    # 💡 FIX LỖI FORMAT: Định dạng lại cột 'Trọng tải (kg)' ngay trên DataFrame gốc
+                    if 'Trọng tải (kg)' in df_canh_bao.columns:
+                        df_canh_bao['Trọng tải (kg)'] = pd.to_numeric(df_canh_bao['Trọng tải (kg)'], errors='coerce').fillna(0).apply(lambda x: f"{x:,.0f}")
                     
                     def highlight_tre(val):
                         return 'background-color: #ffcccc' if isinstance(val, (int, float)) and val > 0 else ''
@@ -1753,8 +1756,8 @@ with tab6:
                     except AttributeError:
                         styled_df = df_canh_bao.style.applymap(highlight_tre, subset=['Số Ngày Trễ'])
                         
-                    if 'khoi_luong_kg' in styled_df.columns:
-                        styled_df['khoi_luong_kg'] = pd.to_numeric(styled_df['khoi_luong_kg'], errors='coerce').fillna(0).apply(lambda x: f"{x:,.0f}")
+                    #if 'khoi_luong_kg' in styled_df.columns:
+                    #    styled_df['khoi_luong_kg'] = pd.to_numeric(styled_df['khoi_luong_kg'], errors='coerce').fillna(0).apply(lambda x: f"{x:,.0f}")
                         
                     st.dataframe(styled_df, use_container_width=True, hide_index=True)
                     
