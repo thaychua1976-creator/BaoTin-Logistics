@@ -344,18 +344,25 @@ with tab_ocr_co:
                                             # Loại bỏ khoảng trắng và chuyển chữ O thành số 0
                                             num_clean = re.sub(r'\s+', '', raw_suffix).replace('O', '0')
                                             
-                                            # BỘ LỌC CỨNG: Bóc tách chính xác phần số (6-7 số) và tối đa 1 chữ cái đi liền sau
+                                            # BỘ LỌC CỨNG (V2): Siết chặt quy tắc 6 chữ số chuẩn
                                             m_strict = re.match(r'^(\d{5,8})([A-Z]?)', num_clean)
                                             if m_strict:
-                                                digits, letter = m_strict.group(1), m_strict.group(2)
+                                                digits = m_strict.group(1)
+                                                letter = m_strict.group(2)
                                                 
-                                                # FIX LỖI NHẬN DIỆN CỦA AI: Nhìn nhầm chữ 'B' thành số '8'
-                                                # Nếu khối số có 7 ký tự (VD: 9961838) và kết thúc bằng '8', tự bẻ ngược về 'B'
-                                                if len(digits) == 7 and digits.endswith('8'):
-                                                    digits = digits[:-1]
-                                                    letter = 'B'
+                                                # Trường hợp 1: Có >= 7 chữ số và vị trí số thứ 7 là số '8' (AI nhìn nhầm chữ B)
+                                                if len(digits) >= 7 and digits[6] == '8':
+                                                    digits = digits[:6] # Chỉ giữ đúng 6 số đầu
+                                                    letter = 'B'        # Khôi phục chữ B
+                                                
+                                                # Trường hợp 2: Các Form khác bị quét dư thành 7, 8 chữ số -> Ép chặt bỏ số dư
+                                                elif len(digits) > 6:
+                                                    digits = digits[:6]
                                                     
-                                                # Ráp lại chuẩn xác (tự động vứt bỏ rác I0, 70 phía sau)
+                                                # Nếu có chữ cái rác dính vào đuôi (A, C, D...) mà không phải Form B -> Vứt bỏ chữ cái
+                                                if letter != 'B':
+                                                    letter = ''
+                                                    
                                                 num_clean = digits + letter
                                                 
                                             suffix_clean = f"{dd}/{mm}/{num_clean}"
