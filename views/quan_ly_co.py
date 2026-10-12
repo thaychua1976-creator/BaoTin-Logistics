@@ -390,13 +390,25 @@ with tab_ocr_co:
             
             
                 
-                # 🚀 2. DÙNG CSS ĐỂ BÓP NHỎ KHOẢNG CÁCH (Ép các thành phần xích lại gần nhau)
+                # --- CSS THU GỌN KHOẢNG CÁCH & KHÓA MÀN HÌNH KHI KÝ ---
                 st.markdown("""
                     <style>
-                        /* Ép khoảng trống dưới mỗi block nhỏ lại */
-                        div[data-testid="stVerticalBlock"] > div { padding-bottom: 0.1rem !important; }
-                        /* Thu hẹp khoảng trống của Text Input và Date Input */
-                        .stTextInput > div, .stDateInput > div { margin-bottom: -10px; }
+                        /* Thu hẹp khoảng trống dưới các khối văn bản/nút bấm */
+                        div[data-testid="stVerticalBlock"] > div { padding-bottom: 0.2rem !important; }
+                        /* Thu hẹp viền của Input */
+                        .stTextInput > div, .stDateInput > div { margin-bottom: -15px; }
+                        /* Ép margin của tiêu đề nhỏ lại */
+                        h4, h5 { margin-top: 5px !important; margin-bottom: 5px !important; }
+                        hr { margin: 10px 0px !important; }
+                        
+                        /* 🚀 CHỐNG TRƯỢT MÀN HÌNH TRÊN IPHONE KHI KÝ TÊN */
+                        div[data-testid="stWebComponentContainer"] {
+                            touch-action: none !important; 
+                            overscroll-behavior: none !important;
+                        }
+                        iframe[title="streamlit_drawable_canvas.st_canvas"] {
+                            touch-action: none !important;
+                        }
                     </style>
                 """, unsafe_allow_html=True)
 
