@@ -1458,7 +1458,13 @@ with tab3:
 
                                     dt_raw1 = float(row_db.get('doanh_thu', 0.0) or 0.0)
                                     doanh_thu_db = 0.0 if pd.isna(dt_raw1) or dt_raw1 == "" else float(dt_raw1)
-                                    lo_trinh_hien_tai = str(row_db.get('dia_diem_giao_nhan', '')).strip()
+                                    
+                                    # [CẬP NHẬT] Ưu tiên lấy Lộ trình từ file Excel nếu người dùng có sửa đổi
+                                    lo_trinh_excel = str(r.get('LỘ TRÌNH (THAM KHẢO)', r.get('LỘ TRÌNH (Tham khảo)', ''))).strip()
+                                    if lo_trinh_excel and lo_trinh_excel.lower() not in ['nan', 'none', '']:
+                                        lo_trinh_hien_tai = lo_trinh_excel
+                                    else:
+                                        lo_trinh_hien_tai = str(row_db.get('dia_diem_giao_nhan', '')).strip()
                                     
                                     doanh_thu_chuyen = parse_excel_money(r.get('DOANH_THU_CHUYEN'))
                                     if doanh_thu_chuyen == 0: doanh_thu_chuyen = doanh_thu_db
