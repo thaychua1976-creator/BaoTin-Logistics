@@ -493,7 +493,7 @@ with tab_ocr_co:
                 st.download_button(
                     label="📥 OPTION 1: Tải File Nháp (Chưa Ký) Để Lưu Trữ",
                     data=excel_nhap_buffer.getvalue(),
-                    file_name=f"Ban_Nhap_Giao_CO_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
+                    file_name=f"Ban_Giao_CO_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
 

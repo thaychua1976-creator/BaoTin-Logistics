@@ -1142,9 +1142,18 @@ with tab3:
                         
                         if not df_valid_orders.empty and not missing_customers:
                             # KHÔNG DÙNG CACHE: Trạng thái xe bận rảnh thay đổi liên tục theo từng giây
+                            # [CẬP NHẬT THUẬT TOÁN ĐIỀU PHỐI LUÂN PHIÊN & TRÁNH TRÙNG LẶP TUYẾN]
                             sql_xe_ranh = """
                                 SELECT x.id, x.bien_so_xe, x.tai_xe_co_dinh_id, x.tai_trong_thiet_ke, x.dung_tich_cbm, 
-                                    nv.ho_ten as ten_tai_xe, nv.so_dien_thoai as sdt_tai_xe, nv.cccd as cccd_tai_xe
+                                    nv.ho_ten as ten_tai_xe, nv.so_dien_thoai as sdt_tai_xe, nv.cccd as cccd_tai_xe,
+                                    (
+                                        SELECT COUNT(id) FROM chuyen_di cd2 
+                                        WHERE cd2.xe_id = x.id AND cd2.ngay_chuyen_di >= DATE_SUB(CURDATE(), INTERVAL 3 DAY)
+                                    ) as so_chuyen_ganday,
+                                    (
+                                        SELECT GROUP_CONCAT(dia_diem_giao_nhan SEPARATOR '||') FROM chuyen_di cd3
+                                        WHERE cd3.xe_id = x.id AND cd3.ngay_chuyen_di >= DATE_SUB(CURDATE(), INTERVAL 2 DAY)
+                                    ) as lich_su_tuyen
                                 FROM xe x 
                                 LEFT JOIN nhan_vien nv ON x.tai_xe_co_dinh_id = nv.id
                                 WHERE x.trang_thai = 'Dang_Hoat_Dong'
@@ -1153,7 +1162,7 @@ with tab3:
                                     WHERE trang_thai_chuyen IN ('Tao_Moi', 'Dang_Di') 
                                         AND xe_id IS NOT NULL
                                 )
-                                ORDER BY x.tai_trong_thiet_ke ASC, x.dung_tich_cbm ASC
+                                ORDER BY x.tai_trong_thiet_ke ASC, so_chuyen_ganday ASC, RAND()
                             """
                             df_xe_ranh = db.execute_query(sql_xe_ranh)
                             
@@ -1186,25 +1195,45 @@ with tab3:
                                     khach_hang_ten = str(row.get('TEN_KHACH_HANG', 'Khách Lẻ')).strip()
                                     kho_di = str(row.get('DIA_CHI_KHO_DI', '')).strip()
                                     kho_den = str(row.get('DIA_CHI_KHO_DEN', '')).strip()
+                                    
+                                    # Tạo chuỗi tuyến đường hiện tại để đối chiếu
+                                    tuyen_duong_hien_tai = f"{kho_di} ➡️ {kho_den}"
                                     ghi_chu_excel = str(row.get('GHI_CHU', ''))
                                     
                                     xe_phu_hop = None
+                                    xe_du_phong = None # Lưu tạm xe đủ tải nhưng vừa đi tuyến này để dùng làm backup
+                                    
                                     for xe in xe_list:
                                         if xe['is_used'] or pd.isna(xe['tai_xe_co_dinh_id']): continue 
                                         cap_kg = float(xe['tai_trong_thiet_ke'] or 0) * 1000 
                                         cap_cbm = float(xe['dung_tich_cbm'] or 0)
+                                        
+                                        # Kiểm tra điều kiện tải trọng và thể tích
                                         if (cap_kg >= req_kg) and (req_cbm == 0 or cap_cbm >= req_cbm):
-                                            xe_phu_hop = xe
-                                            xe['is_used'] = True
-                                            break
-                                    
+                                            lich_su_2_ngay_qua = str(xe.get('lich_su_tuyen', ''))
+                                            
+                                            # ĐIỀU KIỆN ĐỔI TUYẾN: Tránh cho tài xế chạy lại tuyến y hệt trong 2 ngày
+                                            if tuyen_duong_hien_tai in lich_su_2_ngay_qua:
+                                                # Nếu trùng tuyến, tạm cất xe này vào biến dự phòng (nhường ưu tiên cho xe sau)
+                                                if not xe_du_phong:
+                                                    xe_du_phong = xe
+                                            else:
+                                                # Tuyệt vời, tìm được xe đủ tải, ít chuyến nhất và CHƯA ĐI tuyến này gần đây
+                                                xe_phu_hop = xe
+                                                break
+                                                
+                                    # Nếu duyệt hết kho xe mà không có người nào mới tinh, đành lấy người dự phòng
+                                    if not xe_phu_hop and xe_du_phong:
+                                        xe_phu_hop = xe_du_phong
+                                        
                                     if xe_phu_hop:
+                                        xe_phu_hop['is_used'] = True
                                         data_chuyen_di = {
                                             'ngay_chuyen_di': ngay_chay_str,
                                             'khach_hang_id': kh_id,
                                             'ten_khach_hang': khach_hang_ten,
                                             'xe_id': xe_phu_hop['id'],
-                                            'dia_diem_giao_nhan': f"{kho_di} ➡️ {kho_den}",
+                                            'dia_diem_giao_nhan': tuyen_duong_hien_tai,
                                             'khoi_luong_kg': req_kg,
                                             'the_tich_cbm': req_cbm, 
                                             'is_thue_ngoai': 0,
