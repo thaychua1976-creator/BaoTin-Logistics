@@ -584,15 +584,19 @@ def main_app():
     if os.path.exists(EXCEL_FILE):
         try:
             # 1. Đọc TRỰC TIẾP file tạm mà hệ thống vừa sinh ra từ lần AI chạy gần nhất
-            df_preview = pd.read_excel(EXCEL_FILE)
+            # [FIX MỚI]: Khai báo sheet_name=None để đọc TOÀN BỘ các Sheet, sau đó gộp lại thành 1 bảng Preview duy nhất
+            df_dict = pd.read_excel(EXCEL_FILE, sheet_name=None)
+            df_preview = pd.concat(df_dict.values(), ignore_index=True)
             
             # Lọc bỏ cột GHI_CHU nếu nó bị rỗng hoàn toàn để bảng preview nhìn gọn gàng hơn
             if 'GHI_CHU' in df_preview.columns and df_preview['GHI_CHU'].isnull().all():
                 df_preview = df_preview.drop(columns=['GHI_CHU'])
                 
             st.markdown("##### 👁️‍🗨️ XEM TRƯỚC DỮ LIỆU ĐÃ BÓC TÁCH (PREVIEW)")
-            st.info("Vui lòng kiểm tra kỹ các cột Ngày, Khách hàng, Điểm đi/đến, và Tải trọng trước khi lưu về máy.")
-            st.dataframe(df_preview, use_container_width=True)
+            st.info(f"Đã trích xuất thành công tổng cộng {len(df_preview)} chuyến đi. Vui lòng kiểm tra kỹ trước khi tải về.")
+            
+            # Nếu muốn hiển thị danh sách dài mà không bị cuộn nhỏ, anh có thể thêm height
+            st.dataframe(df_preview, use_container_width=True, height=600)
             
             st.markdown("<br>", unsafe_allow_html=True)
             
