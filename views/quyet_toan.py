@@ -1816,6 +1816,7 @@ with tab3:
 
                                             data_dict_excel = {
                                                 'ten_khach_hang': ten_khach_hang_db,
+                                                'dia_diem_giao_nhan': lo_trinh_hien_tai, # [BỔ SUNG] Lưu đè lại lộ trình đã sửa vào DB
                                                 'cong_chuyen': parse_excel_money(r.get('TIEN_CONG_TAI_XE', 0)),
                                                 'doanh_thu': doanh_thu_chuyen,
                                                 'chi_phi_thue_ngoai': chi_phi_thue_ngoai_val,
