@@ -433,6 +433,7 @@ def normalize_location_alias(text):
     
     # 3. Chuẩn hóa tên viết tắt FIRST TEAM (Bổ sung F.T, FIRSTEAM dính liền)
     text_upper = text_upper.replace('FIRSTEAM', 'FIRST TEAM')
+    text_upper = text_upper.replace('FIRSTTEAM', 'FIRST TEAM')
     text_upper = re.sub(r'\b(F\.T|FT|FTVN|FTVM)\b', 'FIRST TEAM', text_upper)
 
     # 4. Chuẩn hóa Cát Lái: Chấp nhận mọi biến thể, kể cả CATLAI dính liền
