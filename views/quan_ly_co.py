@@ -312,7 +312,8 @@ with tab_ocr_co:
                             return easyocr.Reader(['en'], gpu=False)
                         reader = load_ocr_reader()
                         
-                        pattern = r'([A-Z0-9.\-\s]{0,20})(\d{2})\s*[-/|17lI\.]\s*(\d{2})\s*[-/|17lI\.]\s*([0-9O\s]{5,})'
+                        # CẬP NHẬT: Cho phép chữ cái (A-Z) nằm ở phần đuôi số seri của C/O
+                        pattern = r'([A-Z0-9.\-\s]{0,20})(\d{2})\s*[-/|17lI\.]\s*(\d{2})\s*[-/|17lI\.]\s*([0-9A-Z\s]{5,15})'
                         
                         for pdf_file in uploaded_pdfs:
                             try:
@@ -339,6 +340,12 @@ with tab_ocr_co:
                                         if match:
                                             prefix_raw, dd, mm = match.group(1), match.group(2), match.group(3)
                                             num_clean = re.sub(r'\s+', '', match.group(4)).replace('O', '0')
+                                            
+                                            # 💡 FIX LỖI NHẬN DIỆN CỦA AI: OCR hay nhìn nhầm chữ 'B' (Form B) thành số '8'
+                                            # Nếu chuỗi C/O đang có 7 ký tự (VD: 9961838) và kết thúc bằng '8', ta sẽ ép nó về chữ 'B'
+                                            if len(num_clean) == 7 and num_clean.endswith('8'):
+                                                num_clean = num_clean[:-1] + 'B'
+                                                
                                             suffix_clean = f"{dd}/{mm}/{num_clean}"
                                             
                                             prefix_clean = re.sub(r'[\s.\-]', '', prefix_raw)
@@ -411,7 +418,7 @@ with tab_ocr_co:
                         }
                     </style>
                 """, unsafe_allow_html=True)
-
+                
                 df_current = pd.DataFrame(st.session_state["ocr_data"])
                 
                 # Dùng thẻ HTML thay cho st.markdown mặc định để triệt tiêu margin thừa
