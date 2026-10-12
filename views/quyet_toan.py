@@ -998,7 +998,11 @@ with tab1:
                             phi_khac_final = phi_khac_nhap_tay + tong_phi_ai
                             
                             gc_final = str(edit_gc).strip()
-                            if is_chuyen_phu: gc_final += f" [CHUYẾN PHỤ CỦA ĐƠN #{int(chuyen_goc_id_val)}]"
+                            if is_chuyen_phu: 
+                                # [BỔ SUNG] Lưu thêm khối lượng hàng book vào ghi chú để làm căn cứ tính phụ cấp cho TX
+                                kg_hien_thi = f"{tt_xe_tan:g} Tấn" if tt_xe_tan > 0 else "0 Tấn"
+                                gc_final += f" [CHUYẾN PHỤ CỦA ĐƠN #{int(chuyen_goc_id_val)} - KL Book: {kg_hien_thi}]"
+
                             if chuoi_ghi_chu_ai: gc_final += f" [AI: {', '.join(chuoi_ghi_chu_ai)}]"
                             if chuoi_phu_cap_tx: gc_final += f" [Phụ cấp TX: +{tien_phu_cap_tx:,.0f}đ ({chuoi_phu_cap_tx})]"
                             
@@ -1484,7 +1488,9 @@ with tab3:
                                     # [BỔ SUNG] Force doanh thu chuyến về 0 ngay lập tức nếu là chuyến phụ 
                                     if is_chuyen_phu:
                                         doanh_thu_chuyen = 0.0
-                                        ghi_chu_goc = f"{ghi_chu_goc} [Tự động lưu 0đ vì là chuyến ghép phụ của #{int(chuyen_goc_id_val)}]".strip()
+                                        # Ghi thêm khối lượng book vào Ghi chú để tính lương TX
+                                        kg_hien_thi = f"{tai_trong_so_sanh_tan:g} Tấn" if tai_trong_so_sanh_tan > 0 else "0 Tấn"
+                                        ghi_chu_goc = f"{ghi_chu_goc} [Lưu 0đ vì là chuyến phụ của #{int(chuyen_goc_id_val)} - KL Book: {kg_hien_thi}]".strip()
 
                                     # [FIX] Khởi tạo giá trị mặc định để chống lỗi UnboundLocalError khi biến bị skip
                                     matched_khoang_cach = 0.0
