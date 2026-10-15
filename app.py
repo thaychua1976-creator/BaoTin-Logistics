@@ -173,7 +173,15 @@ def show_page():
                             else: st.error("❌ Sai mật khẩu!")
                         else: st.error("❌ Tài khoản không tồn tại!")
                     except Exception as e: st.error(f"❌ Lỗi xác thực: {e}")
-
+    # =========================================================================
+    # [CẬP NHẬT MỚI]: BẢO VỆ PHIÊN LÀM VIỆC (SESSION TIMEOUT PROTECTION)
+    # =========================================================================
+    # Nếu hệ thống ghi nhận 'logged_in' = True nhưng bị mất biến 'username' 
+    # (do hết timeout hoặc Streamlit tự reset worker), sẽ ép về màn hình Đăng nhập
+    if st.session_state.get('logged_in') and 'username' not in st.session_state:
+        st.session_state.clear()
+        st.session_state['logged_in'] = False
+        st.warning("⚠️ Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại!")
     # 6. Khởi tạo danh sách các trang
     page_login = st.Page(login_ui, title="Đăng nhập", icon="🔐", url_path="dang-nhap")
     page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", url_path="quan-ly-chuyen-di")
