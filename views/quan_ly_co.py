@@ -623,7 +623,7 @@ with tab_ocr_co:
                                     pdf.ln(8)
                                     pdf.set_font("Roboto", style="", size=11)
                                 
-                                # In dòng dữ liệu bảng C/O
+                                # In từng dòng dữ liệu trong bảng C/O
                                 pdf.cell(col_widths[0], 8, str(edited_df.iloc[r_idx, 0]).replace('.0', ''), border=1, align="C")
                                 pdf.cell(col_widths[1], 8, str(edited_df.iloc[r_idx, 1]), border=1, align="C")
                                 pdf.cell(col_widths[2], 8, ten_dai_ly, border=1, align="C") 
@@ -631,7 +631,7 @@ with tab_ocr_co:
                                 pdf.ln(8)
                                 
                             # =========================================================
-                            # BƯỚC 1: XỬ LÝ CHÈN DANH SÁCH NHIỀU ẢNH BẰNG CHỨNG (NẾU CÓ)
+                            # BƯỚC 1: XỬ LÝ CHÈN DANH SÁCH NHIỀU ẢNH BẰNG CHỨNG (2 ẢNH / HÀNG TỐI ƯU)
                             # =========================================================
                             if imgs_bang_chung:
                                 try:
@@ -642,55 +642,75 @@ with tab_ocr_co:
                                     if pdf.get_y() > 155:
                                         pdf.add_page()
                                     else:
-                                        pdf.ln(5)
+                                        pdf.ln(4)
                                         
                                     pdf.set_font("Roboto", style="B", size=10)
                                     pdf.cell(0, 6, "HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC THỰC TẾ KHI BÀN GIAO:", new_x="LMARGIN", new_y="NEXT")
                                     
-                                    # Lặp qua từng tấm ảnh đã upload
-                                    for idx_img, img_file in enumerate(imgs_bang_chung):
-                                        eb_img = PILImage.open(img_file).convert('RGB')
-                                        eb_path = os.path.join(temp_dir, f"temp_evidence_co_{idx_img}.png")
-                                        eb_img.save(eb_path, format="PNG")
+                                    # Chia danh sách ảnh thành các cặp 2 ảnh / hàng
+                                    img_pairs = [imgs_bang_chung[i:i + 2] for i in range(0, len(imgs_bang_chung), 2)]
+                                    
+                                    for row_idx, pair in enumerate(img_pairs):
+                                        # Chuẩn bị dữ liệu hình ảnh trong hàng
+                                        row_imgs_info = []
+                                        for idx_in_pair, img_file in enumerate(pair):
+                                            global_idx = row_idx * 2 + idx_in_pair
+                                            eb_img = PILImage.open(img_file).convert('RGB')
+                                            eb_path = os.path.join(temp_dir, f"temp_evidence_co_{global_idx}.png")
+                                            eb_img.save(eb_path, format="PNG")
+                                            
+                                            w_img_px, h_img_px = eb_img.size
+                                            # Kích thước tiêu chuẩn 125mm cho mỗi ảnh khi nằm ngang
+                                            render_w = 125.0
+                                            render_h = (h_img_px / w_img_px) * render_w
+                                            if render_h > 75: # Khống chế chiều cao tối đa của ảnh
+                                                render_h = 75.0
+                                                render_w = (w_img_px / h_img_px) * render_h
+                                                
+                                            row_imgs_info.append({
+                                                'path': eb_path,
+                                                'w': render_w,
+                                                'h': render_h
+                                            })
                                         
-                                        # Tính toán chiều cao ảnh chuẩn theo tỷ lệ thực tế khi ép chiều rộng w = 120mm
-                                        w_img_px, h_img_px = eb_img.size
-                                        render_w = 120.0
-                                        render_h = (h_img_px / w_img_px) * render_w
-                                        if render_h > 85: # Giới hạn chiều cao tối đa của 1 bức ảnh là 85mm
-                                            render_h = 85.0
-                                            render_w = (w_img_px / h_img_px) * render_h
-
-                                        # Nếu chèn bức ảnh này làm tràn trang (>195mm) -> Ngắt sang trang mới
-                                        if pdf.get_y() + render_h + 8 > 195:
+                                        # Chiều cao hàng bằng chiều cao của bức ảnh cao nhất trong hàng đó
+                                        max_row_h = max(item['h'] for item in row_imgs_info)
+                                        
+                                        # Nếu chèn hàng ảnh này làm tràn trang (>195mm) -> Ngắt sang trang mới
+                                        if pdf.get_y() + max_row_h + 6 > 195:
                                             pdf.add_page()
                                             
-                                        # In ảnh lên PDF
-                                        pdf.image(eb_path, x=15, y=pdf.get_y() + 2, w=render_w, h=render_h)
+                                        start_y = pdf.get_y() + 2
                                         
-                                        # TỰ ĐỘNG ĐẨY CON TRỎ Y XUỐNG DƯỚI ĐÁY BỨC ẢNH (Chống đè chữ 100%)
-                                        pdf.ln(render_h + 6)
+                                        # In từng ảnh trong hàng (Cột 1 tại X=15mm, Cột 2 tại X=148mm)
+                                        x_positions = [15.0, 148.0]
+                                        for col_idx, item in enumerate(row_imgs_info):
+                                            x_pos = x_positions[col_idx]
+                                            pdf.image(item['path'], x=x_pos, y=start_y, w=item['w'], h=item['h'])
+                                            if os.path.exists(item['path']):
+                                                os.remove(item['path'])
+                                                
+                                        # Đẩy con trỏ Y xuống dưới đáy của hàng ảnh
+                                        pdf.set_y(start_y + max_row_h + 5)
                                         
-                                        if os.path.exists(eb_path):
-                                            os.remove(eb_path)
                                 except Exception as e_img:
                                     print(f"Lỗi chèn ảnh bằng chứng: {e_img}")
 
                             # =========================================================
                             # BƯỚC 2: XỬ LÝ KHỐI [CAM KẾT + CHỮ KÝ + TÊN] NGUYÊN KHỐI NẰM DƯỚI CÙNG
                             # =========================================================
-                            # Toàn bộ khối này cần khoảng 60mm chiều cao. 
-                            # Nếu chiều cao còn lại ở trang hiện tại < 60mm (pdf.get_y() + 60 > 195),
+                            # Toàn bộ khối này cần khoảng 55mm chiều cao. 
+                            # Nếu chiều cao còn lại ở trang hiện tại < 55mm (pdf.get_y() + 55 > 195),
                             # hệ thống sẽ tự động chuyển NGUYÊN KHỐI này sang trang cuối!
-                            if pdf.get_y() + 60 > 195:
+                            if pdf.get_y() + 55 > 195:
                                 pdf.add_page()
                             else:
-                                pdf.ln(6)
+                                pdf.ln(4)
 
-                            # 1. Câu xác nhận cam kết (Luôn nằm trên cùng của khối chữ ký, nằm dưới tất cả ảnh)
+                            # 1. Câu xác nhận cam kết (Luôn nằm trên cùng của khối chữ ký, bên dưới tất cả ảnh)
                             pdf.set_font("Roboto", style="", size=9)
                             pdf.multi_cell(0, 5, "XÁC NHẬN: Đại lý cam kết đã kiểm tra kỹ, đếm và nhận đủ các bản C/O GỐC (có mộc đỏ) ghi trong danh sách trên. Mọi sự thất lạc sau thời điểm ký nhận này hoàn toàn thuộc trách nhiệm của Đại lý.", align="L")
-                            pdf.ln(4)
+                            pdf.ln(3)
 
                             # 2. Tiêu đề chức danh 2 bên
                             pdf.set_font("Roboto", style="B", size=12)
@@ -707,8 +727,8 @@ with tab_ocr_co:
                             if os.path.exists(img_temp_path):
                                 os.remove(img_temp_path)
                                 
-                            # Tạo khoảng trống 22mm cho khung chữ ký
-                            pdf.ln(22)
+                            # Tạo khoảng trống 20mm cho khung chữ ký
+                            pdf.ln(20)
                             
                             # 4. In tên đại lý ngay ngắn nằm dưới cùng của trang
                             pdf.set_font("Roboto", style="B", size=11)
