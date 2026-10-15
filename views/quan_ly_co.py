@@ -89,8 +89,8 @@ with tab_khai_co:
             c1, c2, c3 = st.columns(3)
             form_co = c1.selectbox("Form C/O", ["", "Form EURO.1", "Form EURO.1UK", "Form AI", "Form EAV","Form AJ","Form AHK","Form RCEP","Form AK", "Form D","Form E","Form VK","Form VJ","Form S","Form VI"])
             so_co = c2.text_input("Số C/O*")
-            ngay_co = c3.date_input("Ngày Cấp C/O", value=datetime.date.today())
-            ngay_co = ngay_co.strftime('%d/%m/%Y')
+            # Lưu ý: GIỮ NGUYÊN kiểu dữ liệu datetime.date trả về, KHÔNG DÙNG strftime ở đây
+            ngay_co = c3.date_input("Ngày Cấp C/O", value=datetime.date.today(), format="DD/MM/YYYY")
             
             c4, c5, c6 = st.columns(3)
             phi_co_val = f"{gia_co_tu_dong:,.0f}" if gia_co_tu_dong > 0 else ""
