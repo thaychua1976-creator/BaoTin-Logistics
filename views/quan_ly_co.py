@@ -504,9 +504,9 @@ with tab_ocr_co:
                 # OPTION 2: KÝ TÊN VÀ XUẤT BẢN CHÍNH THỨC
                 st.markdown("<h4 style='margin-bottom: 5px; margin-top: 0px;'>🤝 OPTION 2: Ký Nhận & Xuất Phiếu Bản Giao</h4>", unsafe_allow_html=True)
 
-                # 📸 BỔ SUNG: Chụp ảnh hoặc Upload ảnh chứng từ C/O gốc thực tế làm bằng chứng
-                st.markdown("📸 **Chụp ảnh/Upload hình ảnh C/O gốc làm bằng chứng giao nhận:**")
-                img_bang_chung = st.file_uploader("Tải ảnh chụp tập C/O gốc (Hiển thị rõ mộc đỏ/số C/O):", type=["jpg", "jpeg", "png"], key="upload_evidence_co")
+                # [CẬP NHẬT]: Cho phép chọn NHIỀU ẤNH bằng chứng C/O cùng lúc
+                st.markdown("<p style='margin-bottom: 0px; margin-top: 5px;'>📸 <b>Chụp/Upload hình ảnh C/O gốc làm bằng chứng (Có thể chọn nhiều ảnh):</b></p>", unsafe_allow_html=True)
+                imgs_bang_chung = st.file_uploader("Tải ảnh chụp tập C/O gốc (Thấy rõ mộc đỏ/số seri)", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="upload_evidence_co", label_visibility="collapsed")
 
                 c_ten, c_ngay = st.columns(2)
                 ten_dai_ly = c_ten.text_input("Tên người nhận (Đại lý):", placeholder="Nhập họ tên...")
@@ -623,7 +623,7 @@ with tab_ocr_co:
                                     pdf.ln(8)
                                     pdf.set_font("Roboto", style="", size=11)
                                 
-                                # In từng dòng dữ liệu trong bảng C/O
+                                # In dòng dữ liệu bảng C/O
                                 pdf.cell(col_widths[0], 8, str(edited_df.iloc[r_idx, 0]).replace('.0', ''), border=1, align="C")
                                 pdf.cell(col_widths[1], 8, str(edited_df.iloc[r_idx, 1]), border=1, align="C")
                                 pdf.cell(col_widths[2], 8, ten_dai_ly, border=1, align="C") 
@@ -631,45 +631,63 @@ with tab_ocr_co:
                                 pdf.ln(8)
                                 
                             # =========================================================
-                            # BƯỚC 1: XỬ LÝ BỐ CỤC ẢNH BẰNG CHỨNG (NẾU CÓ)
+                            # BƯỚC 1: XỬ LÝ CHÈN DANH SÁCH NHIỀU ẢNH BẰNG CHỨNG (NẾU CÓ)
                             # =========================================================
-                            if img_bang_chung is not None:
+                            if imgs_bang_chung:
                                 try:
                                     from PIL import Image as PILImage
-                                    eb_img = PILImage.open(img_bang_chung).convert('RGB')
-                                    
                                     temp_dir = tempfile.gettempdir()
-                                    eb_path = os.path.join(temp_dir, "temp_evidence_co.png")
-                                    eb_img.save(eb_path, format="PNG")
                                     
-                                    # Khổ A4 ngang cao 210mm. Kiểm tra nếu không đủ 65mm cho ảnh -> Sang trang mới ngay
-                                    if pdf.get_y() + 65 > 195:
+                                    # Nếu khoảng trống còn lại ở cuối bảng quá ít (<40mm) thì sang trang mới để in danh sách ảnh
+                                    if pdf.get_y() > 155:
                                         pdf.add_page()
                                     else:
-                                        pdf.ln(4)
+                                        pdf.ln(5)
                                         
                                     pdf.set_font("Roboto", style="B", size=10)
                                     pdf.cell(0, 6, "HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC THỰC TẾ KHI BÀN GIAO:", new_x="LMARGIN", new_y="NEXT")
                                     
-                                    # In ảnh đối chứng (Rộng 110mm)
-                                    pdf.image(eb_path, x=15, y=pdf.get_y() + 2, w=110)
-                                    pdf.ln(60) # Đẩy con trỏ Y xuống qua khỏi vị trí ảnh
-                                    
-                                    if os.path.exists(eb_path):
-                                        os.remove(eb_path)
+                                    # Lặp qua từng tấm ảnh đã upload
+                                    for idx_img, img_file in enumerate(imgs_bang_chung):
+                                        eb_img = PILImage.open(img_file).convert('RGB')
+                                        eb_path = os.path.join(temp_dir, f"temp_evidence_co_{idx_img}.png")
+                                        eb_img.save(eb_path, format="PNG")
+                                        
+                                        # Tính toán chiều cao ảnh chuẩn theo tỷ lệ thực tế khi ép chiều rộng w = 120mm
+                                        w_img_px, h_img_px = eb_img.size
+                                        render_w = 120.0
+                                        render_h = (h_img_px / w_img_px) * render_w
+                                        if render_h > 85: # Giới hạn chiều cao tối đa của 1 bức ảnh là 85mm
+                                            render_h = 85.0
+                                            render_w = (w_img_px / h_img_px) * render_h
+
+                                        # Nếu chèn bức ảnh này làm tràn trang (>195mm) -> Ngắt sang trang mới
+                                        if pdf.get_y() + render_h + 8 > 195:
+                                            pdf.add_page()
+                                            
+                                        # In ảnh lên PDF
+                                        pdf.image(eb_path, x=15, y=pdf.get_y() + 2, w=render_w, h=render_h)
+                                        
+                                        # TỰ ĐỘNG ĐẨY CON TRỎ Y XUỐNG DƯỚI ĐÁY BỨC ẢNH (Chống đè chữ 100%)
+                                        pdf.ln(render_h + 6)
+                                        
+                                        if os.path.exists(eb_path):
+                                            os.remove(eb_path)
                                 except Exception as e_img:
                                     print(f"Lỗi chèn ảnh bằng chứng: {e_img}")
 
                             # =========================================================
-                            # BƯỚC 2: KIỂM TRA TRANG CHO KHỐI "CAM KẾT + CHỮ KÝ + TÊN" (KHÔNG TÁCH RỜI)
+                            # BƯỚC 2: XỬ LÝ KHỐI [CAM KẾT + CHỮ KÝ + TÊN] NGUYÊN KHỐI NẰM DƯỚI CÙNG
                             # =========================================================
-                            # Toàn bộ khối Cam kết & Chữ ký cần khoảng 60mm chiều cao
+                            # Toàn bộ khối này cần khoảng 60mm chiều cao. 
+                            # Nếu chiều cao còn lại ở trang hiện tại < 60mm (pdf.get_y() + 60 > 195),
+                            # hệ thống sẽ tự động chuyển NGUYÊN KHỐI này sang trang cuối!
                             if pdf.get_y() + 60 > 195:
                                 pdf.add_page()
                             else:
                                 pdf.ln(6)
 
-                            # 1. Câu xác nhận cam kết (Luôn nằm trên cùng của khối chữ ký)
+                            # 1. Câu xác nhận cam kết (Luôn nằm trên cùng của khối chữ ký, nằm dưới tất cả ảnh)
                             pdf.set_font("Roboto", style="", size=9)
                             pdf.multi_cell(0, 5, "XÁC NHẬN: Đại lý cam kết đã kiểm tra kỹ, đếm và nhận đủ các bản C/O GỐC (có mộc đỏ) ghi trong danh sách trên. Mọi sự thất lạc sau thời điểm ký nhận này hoàn toàn thuộc trách nhiệm của Đại lý.", align="L")
                             pdf.ln(4)
@@ -692,7 +710,7 @@ with tab_ocr_co:
                             # Tạo khoảng trống 22mm cho khung chữ ký
                             pdf.ln(22)
                             
-                            # 4. In tên đại lý ngay ngắn nằm gọn dưới khung chữ ký
+                            # 4. In tên đại lý ngay ngắn nằm dưới cùng của trang
                             pdf.set_font("Roboto", style="B", size=11)
                             pdf.cell(135, 6, "", align="C")
                             pdf.cell(135, 6, ten_dai_ly, align="C", new_x="LMARGIN", new_y="NEXT")
