@@ -305,6 +305,7 @@ with tab_ocr_co:
             import pdfplumber
             import easyocr
             import numpy as np
+            
         except ImportError:
             st.error("⚠️ Server thiếu thư viện. Chạy lệnh: `pip install streamlit-drawable-canvas openpyxl pdfplumber easyocr`")
             st.stop()
@@ -559,18 +560,26 @@ with tab_ocr_co:
                             
                             import urllib.request
                             import os
-                            
+                            import tempfile # [BỔ SUNG] Thư viện tìm thư mục tạm tự động
+
                             opener = urllib.request.build_opener()
                             opener.addheaders = [('User-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')]
                             urllib.request.install_opener(opener)
                             
-                            font_path = "/tmp/Roboto-Regular.ttf"
-                            font_bold_path = "/tmp/Roboto-Bold.ttf"
+                            # [CẬP NHẬT]: Dùng tempfile thay vì fix cứng /tmp/ để chạy được trên Windows
+                            temp_dir = tempfile.gettempdir()
+                            font_path = os.path.join(temp_dir, "Roboto-Regular.ttf")
+                            font_bold_path = os.path.join(temp_dir, "Roboto-Bold.ttf")
                             
-                            if not os.path.exists(font_path):
-                                urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Regular.ttf", font_path)
-                            if not os.path.exists(font_bold_path):
-                                urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Bold.ttf", font_bold_path)
+                            # Tải font nếu chưa có
+                            try:
+                                if not os.path.exists(font_path):
+                                    urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Regular.ttf", font_path)
+                                if not os.path.exists(font_bold_path):
+                                    urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Bold.ttf", font_bold_path)
+                            except Exception as e:
+                                st.error(f"Lỗi tải Font chữ: Không có kết nối mạng hoặc bị tường lửa chặn ({e})")
+                                st.stop()
                                 
                             pdf = FPDF(orientation="L", unit="mm", format="A4")
                             pdf.add_page()
@@ -614,73 +623,79 @@ with tab_ocr_co:
                                     pdf.ln(8)
                                     pdf.set_font("Roboto", style="", size=11)
                                 
-                                # In dòng dữ liệu
+                                # In từng dòng dữ liệu trong bảng C/O
                                 pdf.cell(col_widths[0], 8, str(edited_df.iloc[r_idx, 0]).replace('.0', ''), border=1, align="C")
                                 pdf.cell(col_widths[1], 8, str(edited_df.iloc[r_idx, 1]), border=1, align="C")
                                 pdf.cell(col_widths[2], 8, ten_dai_ly, border=1, align="C") 
                                 pdf.cell(col_widths[3], 8, ngay_format, border=1, align="C")
                                 pdf.ln(8)
                                 
-                            # --- [BỔ SUNG BƯỚC 2]: XỬ LÝ CHÈN ẢNH BẰNG CHỨNG C/O GỐC VÀO PDF ---
+                            # =========================================================
+                            # BƯỚC 1: XỬ LÝ BỐ CỤC ẢNH BẰNG CHỨNG (NẾU CÓ)
+                            # =========================================================
                             if img_bang_chung is not None:
                                 try:
                                     from PIL import Image as PILImage
                                     eb_img = PILImage.open(img_bang_chung).convert('RGB')
-                                    eb_path = "/tmp/temp_evidence_co.png"
+                                    
+                                    temp_dir = tempfile.gettempdir()
+                                    eb_path = os.path.join(temp_dir, "temp_evidence_co.png")
                                     eb_img.save(eb_path, format="PNG")
                                     
-                                    # Kiểm tra xem có cần sang trang mới cho ảnh không để tránh rớt ảnh
-                                    if pdf.get_y() > 150:
+                                    # Khổ A4 ngang cao 210mm. Kiểm tra nếu không đủ 65mm cho ảnh -> Sang trang mới ngay
+                                    if pdf.get_y() + 65 > 195:
                                         pdf.add_page()
                                     else:
-                                        pdf.ln(5)
+                                        pdf.ln(4)
                                         
                                     pdf.set_font("Roboto", style="B", size=10)
                                     pdf.cell(0, 6, "HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC THỰC TẾ KHI BÀN GIAO:", new_x="LMARGIN", new_y="NEXT")
                                     
-                                    # Chèn ảnh bằng chứng vào PDF (Chiều rộng cố định 120mm)
-                                    pdf.image(eb_path, x=15, y=pdf.get_y() + 2, w=120)
-                                    pdf.ln(75) # Đẩy con trỏ xuống dưới ảnh
+                                    # In ảnh đối chứng (Rộng 110mm)
+                                    pdf.image(eb_path, x=15, y=pdf.get_y() + 2, w=110)
+                                    pdf.ln(60) # Đẩy con trỏ Y xuống qua khỏi vị trí ảnh
                                     
                                     if os.path.exists(eb_path):
                                         os.remove(eb_path)
                                 except Exception as e_img:
                                     print(f"Lỗi chèn ảnh bằng chứng: {e_img}")
 
-                            # --- BỔ SUNG CÂU CAM KẾT PHÁP LÝ BỌC LÓT TRƯỚC CHỮ KÝ ---
+                            # =========================================================
+                            # BƯỚC 2: KIỂM TRA TRANG CHO KHỐI "CAM KẾT + CHỮ KÝ + TÊN" (KHÔNG TÁCH RỜI)
+                            # =========================================================
+                            # Toàn bộ khối Cam kết & Chữ ký cần khoảng 60mm chiều cao
+                            if pdf.get_y() + 60 > 195:
+                                pdf.add_page()
+                            else:
+                                pdf.ln(6)
+
+                            # 1. Câu xác nhận cam kết (Luôn nằm trên cùng của khối chữ ký)
                             pdf.set_font("Roboto", style="", size=9)
                             pdf.multi_cell(0, 5, "XÁC NHẬN: Đại lý cam kết đã kiểm tra kỹ, đếm và nhận đủ các bản C/O GỐC (có mộc đỏ) ghi trong danh sách trên. Mọi sự thất lạc sau thời điểm ký nhận này hoàn toàn thuộc trách nhiệm của Đại lý.", align="L")
+                            pdf.ln(4)
+
+                            # 2. Tiêu đề chức danh 2 bên
+                            pdf.set_font("Roboto", style="B", size=12)
+                            pdf.cell(135, 8, "ĐẠI DIỆN BÀN GIAO", align="C")
+                            pdf.cell(135, 8, "ĐẠI LÝ KÍ NHẬN - ĐÃ NHẬN ĐỦ", align="C", new_x="LMARGIN", new_y="NEXT")
                             
-                            # 5. KHU VỰC CHỮ KÝ BÀN GIAO CỐ ĐỊNH
-                            pdf.ln(8)
-                            pdf.set_font("Roboto", style="B", size=13)
-                                
-                            # 5. KHU VỰC CHỮ KÝ BÀN GIAO CỐ ĐỊNH
-                            pdf.ln(8)
-                            pdf.set_font("Roboto", style="B", size=13)
-                            
-                            # Dòng 1: In tiêu đề chức danh 2 bên
-                            pdf.cell(135, 10, "ĐẠI DIỆN BÀN GIAO", align="C")
-                            pdf.cell(135, 10, "ĐẠI LÝ KÍ NHẬN -ĐÃ NHẬN ĐỦ", align="C", new_x="LMARGIN", new_y="NEXT")
-                            
-                            # Xử lý và lưu file ảnh chữ ký
-                            img_temp_path = "/tmp/temp_signature.png"
+                            # 3. Chèn ảnh chữ ký của Đại lý
+                            img_temp_path = os.path.join(tempfile.gettempdir(), "temp_signature.png")
                             img_rgb.save(img_temp_path, format="PNG")
                             
-                            # Dòng 2: Chèn ảnh chữ ký nằm lọt lòng bên dưới cột "Đại lý nhận"
                             current_y = pdf.get_y() + 2
-                            pdf.image(img_temp_path, x=185, y=current_y, w=60) 
+                            pdf.image(img_temp_path, x=185, y=current_y, w=55) 
                             
                             if os.path.exists(img_temp_path):
                                 os.remove(img_temp_path)
                                 
-                            # Dòng 3: Tạo một khoảng trống dọc (25mm) chừa chỗ cho khung ảnh chữ ký
-                            pdf.ln(25)
+                            # Tạo khoảng trống 22mm cho khung chữ ký
+                            pdf.ln(22)
                             
-                            # Dòng 4: In đích danh tên người nhận ngay ngắn bên dưới cùng
-                            pdf.set_font("Roboto", style="B", size=12) # Chữ tên hơi nhỏ lại một chút
-                            pdf.cell(135, 8, "", align="C") # Bỏ trống khu vực bên trái
-                            pdf.cell(135, 8, ten_dai_ly, align="C", new_x="LMARGIN", new_y="NEXT")
+                            # 4. In tên đại lý ngay ngắn nằm gọn dưới khung chữ ký
+                            pdf.set_font("Roboto", style="B", size=11)
+                            pdf.cell(135, 6, "", align="C")
+                            pdf.cell(135, 6, ten_dai_ly, align="C", new_x="LMARGIN", new_y="NEXT")
                             
                             pdf_bytes = pdf.output()
                             
