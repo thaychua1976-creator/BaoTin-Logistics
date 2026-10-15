@@ -7,8 +7,13 @@
 - **Nguyên tắc Coding bắt buộc:**
   1. Mọi thao tác Thêm/Sửa/Xóa (CUD) phải dùng `try...except` và `Transaction` (`conn.autocommit = False`, `conn.commit()`, `conn.rollback()`).
   2. Phải kiểm tra `cursor.rowcount` sau lệnh UPDATE/DELETE.
-  3. Dữ liệu tiền tệ từ giao diện bắt buộc đưa qua hàm `parse_money_input()` trước khi xử lý.
-  4. Mọi hành động thay đổi dữ liệu phải được ghi vết bằng các hàm Audit Log.
+  3. Dữ liệu tiền tệ từ giao diện bắt buộc đưa qua hàm `parse_money_input()` trước khi xử lý, hiển thị ra giao diện phải có dấu phẩy phân cách nhóm ngàn cho dễ nhìn.
+  4. Dữ liệu ngày tháng khi hiển thị phải format dạng dd/mm/yyyy và khi lưu vào database phải định dạng lại cho đúng theo mysql
+  5. Kiểm tra NAN, NULL, lỗi convert, không tự ý thêm số 0 phía sau dấu chấm nếu là tiền tệ.
+  6. Hãy tự phân mảnh fragment để khi thực hiện các tác vụ các tab được mềm mại tránh bị dựt để tăng trải nghiệm người dùng khi làm việc với streamlit
+  7. Khi rerun form khi thực hiện các tác vụ liên quan đến database như thêm, sửa, xoá thì form phải reset trắng tránh để form còn dữ liệu.
+  8. Khi sửa code thì chỉ sữa theo yêu cầu không tự ý xoá hay thay đổi các phần khác mà chưa có sự đồng ý; hãy hỏi trước khi thay đổi code
+  9. Mọi hành động thay đổi dữ liệu phải được ghi vết bằng các hàm Audit Log.
 
 ---
 
