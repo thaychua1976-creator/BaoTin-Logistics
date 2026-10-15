@@ -502,7 +502,11 @@ with tab_ocr_co:
                 
                 # OPTION 2: KÝ TÊN VÀ XUẤT BẢN CHÍNH THỨC
                 st.markdown("<h4 style='margin-bottom: 5px; margin-top: 0px;'>🤝 OPTION 2: Ký Nhận & Xuất Phiếu Bản Giao</h4>", unsafe_allow_html=True)
-                
+
+                # 📸 BỔ SUNG: Chụp ảnh hoặc Upload ảnh chứng từ C/O gốc thực tế làm bằng chứng
+                st.markdown("📸 **Chụp ảnh/Upload hình ảnh C/O gốc làm bằng chứng giao nhận:**")
+                img_bang_chung = st.file_uploader("Tải ảnh chụp tập C/O gốc (Hiển thị rõ mộc đỏ/số C/O):", type=["jpg", "jpeg", "png"], key="upload_evidence_co")
+
                 c_ten, c_ngay = st.columns(2)
                 ten_dai_ly = c_ten.text_input("Tên người nhận (Đại lý):", placeholder="Nhập họ tên...")
                 ngay_nhan = c_ngay.date_input("Ngày nhận:", value=datetime.date.today())
@@ -617,13 +621,47 @@ with tab_ocr_co:
                                 pdf.cell(col_widths[3], 8, ngay_format, border=1, align="C")
                                 pdf.ln(8)
                                 
+                            # --- [BỔ SUNG BƯỚC 2]: XỬ LÝ CHÈN ẢNH BẰNG CHỨNG C/O GỐC VÀO PDF ---
+                            if img_bang_chung is not None:
+                                try:
+                                    from PIL import Image as PILImage
+                                    eb_img = PILImage.open(img_bang_chung).convert('RGB')
+                                    eb_path = "/tmp/temp_evidence_co.png"
+                                    eb_img.save(eb_path, format="PNG")
+                                    
+                                    # Kiểm tra xem có cần sang trang mới cho ảnh không để tránh rớt ảnh
+                                    if pdf.get_y() > 150:
+                                        pdf.add_page()
+                                    else:
+                                        pdf.ln(5)
+                                        
+                                    pdf.set_font("Roboto", style="B", size=10)
+                                    pdf.cell(0, 6, "HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC THỰC TẾ KHI BÀN GIAO:", new_x="LMARGIN", new_y="NEXT")
+                                    
+                                    # Chèn ảnh bằng chứng vào PDF (Chiều rộng cố định 120mm)
+                                    pdf.image(eb_path, x=15, y=pdf.get_y() + 2, w=120)
+                                    pdf.ln(75) # Đẩy con trỏ xuống dưới ảnh
+                                    
+                                    if os.path.exists(eb_path):
+                                        os.remove(eb_path)
+                                except Exception as e_img:
+                                    print(f"Lỗi chèn ảnh bằng chứng: {e_img}")
+
+                            # --- BỔ SUNG CÂU CAM KẾT PHÁP LÝ BỌC LÓT TRƯỚC CHỮ KÝ ---
+                            pdf.set_font("Roboto", style="", size=9)
+                            pdf.multi_cell(0, 5, "XÁC NHẬN: Đại lý cam kết đã kiểm tra kỹ, đếm và nhận đủ các bản C/O GỐC (có mộc đỏ) ghi trong danh sách trên. Mọi sự thất lạc sau thời điểm ký nhận này hoàn toàn thuộc trách nhiệm của Đại lý.", align="L")
+                            
+                            # 5. KHU VỰC CHỮ KÝ BÀN GIAO CỐ ĐỊNH
+                            pdf.ln(8)
+                            pdf.set_font("Roboto", style="B", size=13)
+                                
                             # 5. KHU VỰC CHỮ KÝ BÀN GIAO CỐ ĐỊNH
                             pdf.ln(8)
                             pdf.set_font("Roboto", style="B", size=13)
                             
                             # Dòng 1: In tiêu đề chức danh 2 bên
                             pdf.cell(135, 10, "ĐẠI DIỆN BÀN GIAO", align="C")
-                            pdf.cell(135, 10, "ĐẠI DIỆN ĐẠI LÝ NHẬN", align="C", new_x="LMARGIN", new_y="NEXT")
+                            pdf.cell(135, 10, "ĐẠI LÝ KÍ NHẬN -ĐÃ NHẬN ĐỦ", align="C", new_x="LMARGIN", new_y="NEXT")
                             
                             # Xử lý và lưu file ảnh chữ ký
                             img_temp_path = "/tmp/temp_signature.png"
