@@ -778,8 +778,8 @@ with tab_quan_ly_co:
     def vung_thao_tac_edit_delete_co():
         col_f1, col_f2 = st.columns(2)
         today = datetime.date.today()
-        co_tu_ngay = col_f1.date_input("Từ ngày", value=today.replace(day=1), key="co_tu_ngay")
-        co_den_ngay = col_f2.date_input("Đến ngày", value=today, key="co_den_ngay")
+        co_tu_ngay = col_f1.date_input("Từ ngày", value=today.replace(day=1),format= "DD/MM/YYYY", key="co_tu_ngay")
+        co_den_ngay = col_f2.date_input("Đến ngày", value=today,format= "DD/MM/YYYY", key="co_den_ngay")
         
         sql_ds_co = """
             SELECT co.id, co.to_khai_id, co.form_co, co.so_co, co.ngay_co, 
