@@ -853,7 +853,11 @@ with tab_quan_ly_co:
                     with st.form(f"form_edit_co_{selected_co_id}", clear_on_submit=False):
                         sql_tk_edit = "SELECT id, so_to_khai FROM to_khai_hai_quan WHERE khach_hang_id = %s"
                         df_tk_edit = get_cached_master_data(db, sql_tk_edit, (co_info['khach_hang_id'],))
-                        dict_tk_edit = {r['id']: f"Số TK: {r['so_to_khai']}" for _, r in df_tk_edit.iterrows()} if not df_tk_edit.empty else {co_info['to_khai_id']: co_info['so_to_khai']}
+                        # [FIX LỖI]: Kiểm tra isinstance để đảm bảo nó là DataFrame trước khi gọi .empty
+                        if isinstance(df_tk_edit, pd.DataFrame) and not df_tk_edit.empty:
+                            dict_tk_edit = {r['id']: f"Số TK: {r['so_to_khai']}" for _, r in df_tk_edit.iterrows()}
+                        else:
+                            dict_tk_edit = {co_info['to_khai_id']: co_info['so_to_khai']}
                         
                         e_to_khai_id = st.selectbox("Tờ Khai Xuất Khẩu Liên Kết", options=list(dict_tk_edit.keys()), index=get_idx(list(dict_tk_edit.keys()), co_info['to_khai_id']), format_func=lambda x: dict_tk_edit[x])
                             
