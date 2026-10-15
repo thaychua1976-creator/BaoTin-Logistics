@@ -800,6 +800,8 @@ with tab_quan_ly_co:
             df_co['ghi_chu'] = df_co['ghi_chu'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
 
             df_co_view = df_co[['id', 'form_co', 'so_co', 'ngay_co', 'so_to_khai', 'ten_khach_hang', 'phi_co', 'phi_dvhq', 'so_hoa_don_co', 'ghi_chu']].copy()
+            # [BỔ SUNG]: Format cột ngay_co hiển thị theo dạng dd/mm/yyyy
+            df_co_view['ngay_co'] = pd.to_datetime(df_co_view['ngay_co'], errors='coerce').dt.strftime('%d/%m/%Y').fillna('')
             df_co_view['phi_co'] = df_co_view['phi_co'].apply(lambda x: f"{int(x):,}" if pd.notnull(x) else "0")
             df_co_view['phi_dvhq'] = df_co_view['phi_dvhq'].apply(lambda x: f"{int(x):,}" if pd.notnull(x) else "0")
             st.dataframe(df_co_view, use_container_width=True, hide_index=True)
