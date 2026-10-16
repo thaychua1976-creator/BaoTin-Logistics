@@ -355,7 +355,7 @@ def tinh_phu_cap_tai_xe(db_instance, xe_id, danh_sach_tieu_chi_id):
         if df_xe.empty: return 0.0, ""
         tai_trong = float(df_xe.iloc[0]['tai_trong_thiet_ke'] or 0)
         
-        df_khung = get_cached_master_data("SELECT id FROM dm_tai_trong_phu_cap WHERE tai_trong_min <= %s AND tai_trong_max >= %s ORDER BY tai_trong_min DESC LIMIT 1", (tai_trong, tai_trong))
+        df_khung = get_cached_master_data("SELECT id FROM dm_tai_trong_phu_cap WHERE tai_trong_min <= %s AND tai_trong_max >= %s ORDER BY tai_trong_min ASC LIMIT 1", (tai_trong, tai_trong))
         if df_khung.empty: return 0.0, ""
         tt_id = int(df_khung.iloc[0]['id'])
         
