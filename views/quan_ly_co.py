@@ -757,17 +757,33 @@ with tab_ocr_co:
                         
                         st.success("✅ Đã tạo file thành công! Trình duyệt đang tự động tải xuống...")
                         
+                        # CƠ CHẾ JS BLOB ĐỂ ÉP TẢI XUỐNG TRÊN ĐIỆN THOẠI (KHÔNG BỊ THOÁT TRANG)
                         b64_pdf = base64.b64encode(pdf_bytes).decode()
-                        href = f'''
-                        <a id="auto_download_pdf" href="data:application/pdf;base64,{b64_pdf}" download="{ten_file_xuat_ra}" style="display:none;">Tải xuống</a>
+                        js_download = f"""
                         <script>
-                            setTimeout(function() {{
-                                document.getElementById("auto_download_pdf").click();
-                            }}, 500);
+                        function downloadPDF() {{
+                            const b64Data = "{b64_pdf}";
+                            const byteCharacters = atob(b64Data);
+                            const byteNumbers = new Array(byteCharacters.length);
+                            for (let i = 0; i < byteCharacters.length; i++) {{ byteNumbers[i] = byteCharacters.charCodeAt(i); }}
+                            const byteArray = new Uint8Array(byteNumbers);
+                            const blob = new Blob([byteArray], {{type: 'application/pdf'}});
+                            
+                            const link = document.createElement('a');
+                            link.href = window.URL.createObjectURL(blob);
+                            link.download = "{ten_file_xuat_ra}";
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            window.URL.revokeObjectURL(link.href);
+                        }}
+                        setTimeout(downloadPDF, 300);
                         </script>
-                        '''
-                        st.components.v1.html(href, height=0)
-                        st.markdown(f'<a href="data:application/pdf;base64,{b64_pdf}" download="{ten_file_xuat_ra}">🔗 Nhấp vào đây nếu trình duyệt không tự động tải xuống</a>', unsafe_allow_html=True)
+                        """
+                        st.components.v1.html(js_download, height=0)
+                        
+                        # Dự phòng 1 nút bấm nội bộ của Streamlit nếu anh dùng app chặn JS
+                        st.download_button(label="📥 Nút dự phòng: Tải File Về Lại", data=bytes(pdf_bytes), file_name=ten_file_xuat_ra, mime="application/pdf")
             
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
             if st.button("🔄 Tải Lại Phiên Mới (Xóa Trắng)"):
