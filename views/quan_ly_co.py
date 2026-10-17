@@ -529,13 +529,16 @@ with tab_ocr_co:
                 # Thu hẹp khoảng cách nút bấm
                 st.markdown("<div style='margin-top: -10px;'></div>", unsafe_allow_html=True)
                 
-                if st.button("🤝 KÝ NHẬN & XUẤT PDF CHUẨN", type="primary"):
+                # ---------------------------------------------------------
+                # NÚT BẤM ĐÃ GỘP: VỪA KÝ XÁC NHẬN, VỪA TỰ ĐỘNG TẢI FILE
+                # ---------------------------------------------------------
+                if st.button("🤝 KÝ VÀ TẢI FILE VỀ", type="primary"):
                     if not ten_dai_ly.strip():
                         st.error("Vui lòng nhập Tên người nhận của đại lý.")
                     elif canvas_result.image_data is None or canvas_result.image_data.sum() == 0:
                         st.error("Đại lý chưa ký xác nhận vào khung.")
                     else:
-                        with st.spinner("Đang chèn chữ ký và xử lý File..."):
+                        with st.spinner("Đang chèn chữ ký, nối ảnh và chuẩn bị File tải xuống..."):
                             try:
                                 from audit_logger import ghi_log_he_thong
                                 chi_tiet_log = f"Bàn giao {len(edited_df)} C/O gốc cho đại lý: {ten_dai_ly}"
@@ -561,25 +564,24 @@ with tab_ocr_co:
                             
                             import urllib.request
                             import os
-                            import tempfile # [BỔ SUNG] Thư viện tìm thư mục tạm tự động
+                            import tempfile 
+                            import base64
 
                             opener = urllib.request.build_opener()
                             opener.addheaders = [('User-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')]
                             urllib.request.install_opener(opener)
                             
-                            # [CẬP NHẬT]: Dùng tempfile thay vì fix cứng /tmp/ để chạy được trên Windows
                             temp_dir = tempfile.gettempdir()
                             font_path = os.path.join(temp_dir, "Roboto-Regular.ttf")
                             font_bold_path = os.path.join(temp_dir, "Roboto-Bold.ttf")
                             
-                            # Tải font nếu chưa có
                             try:
                                 if not os.path.exists(font_path):
                                     urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Regular.ttf", font_path)
                                 if not os.path.exists(font_bold_path):
                                     urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Bold.ttf", font_bold_path)
                             except Exception as e:
-                                st.error(f"Lỗi tải Font chữ: Không có kết nối mạng hoặc bị tường lửa chặn ({e})")
+                                st.error(f"Lỗi tải Font chữ: ({e})")
                                 st.stop()
                                 
                             pdf = FPDF(orientation="L", unit="mm", format="A4")
@@ -606,40 +608,27 @@ with tab_ocr_co:
                             pdf.set_font("Roboto", style="", size=11)
                             ngay_format = ngay_nhan.strftime('%d/%m/%Y')
                             
-                            # Fix lỗi NaN và Canh GIỮA toàn bộ dữ liệu
-                            # --- THUẬT TOÁN CHỐNG RỚT TRANG MỒ CÔI (ORPHAN CONTROL) ---
                             for r_idx in range(len(edited_df)):
-                                # Kiểm tra xem chữ ký (cần khoảng 55mm) và các dòng cuối có bị rớt không
                                 so_dong_con_lai = len(edited_df) - r_idx
                                 space_needed = (so_dong_con_lai * 8) + 55 
                                 
-                                # Chiều cao khổ giấy A4 ngang là 210mm, lề dưới 10mm -> Giới hạn an toàn là Y=200
-                                # Nếu đang ở 3 dòng cuối mà không đủ chỗ cho cả bảng lẫn chữ ký -> Ngắt trang ngay lập tức!
                                 if so_dong_con_lai <= 3 and (pdf.get_y() + space_needed) > 200:
                                     pdf.add_page()
-                                    # Vẽ lại Header cho trang mới để bảng không bị cụt lủn
                                     pdf.set_font("Roboto", style="B", size=11)
                                     for i, h in enumerate(headers):
                                         pdf.cell(col_widths[i], 8, h, border=1, align="C", fill=True)
                                     pdf.ln(8)
                                     pdf.set_font("Roboto", style="", size=11)
                                 
-                                # In từng dòng dữ liệu trong bảng C/O
                                 pdf.cell(col_widths[0], 8, str(edited_df.iloc[r_idx, 0]).replace('.0', ''), border=1, align="C")
                                 pdf.cell(col_widths[1], 8, str(edited_df.iloc[r_idx, 1]), border=1, align="C")
                                 pdf.cell(col_widths[2], 8, ten_dai_ly, border=1, align="C") 
                                 pdf.cell(col_widths[3], 8, ngay_format, border=1, align="C")
                                 pdf.ln(8)
                                 
-                            # =========================================================
-                            # BƯỚC 1: XỬ LÝ CHÈN DANH SÁCH NHIỀU ẢNH BẰNG CHỨNG (2 ẢNH / HÀNG TỐI ƯU)
-                            # =========================================================
                             if imgs_bang_chung:
                                 try:
                                     from PIL import Image as PILImage
-                                    temp_dir = tempfile.gettempdir()
-                                    
-                                    # Nếu khoảng trống còn lại ở cuối bảng quá ít (<40mm) thì sang trang mới để in danh sách ảnh
                                     if pdf.get_y() > 155:
                                         pdf.add_page()
                                     else:
@@ -648,11 +637,8 @@ with tab_ocr_co:
                                     pdf.set_font("Roboto", style="B", size=10)
                                     pdf.cell(0, 6, "HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC THỰC TẾ KHI BÀN GIAO:", new_x="LMARGIN", new_y="NEXT")
                                     
-                                    # Chia danh sách ảnh thành các cặp 2 ảnh / hàng
                                     img_pairs = [imgs_bang_chung[i:i + 2] for i in range(0, len(imgs_bang_chung), 2)]
-                                    
                                     for row_idx, pair in enumerate(img_pairs):
-                                        # Chuẩn bị dữ liệu hình ảnh trong hàng
                                         row_imgs_info = []
                                         for idx_in_pair, img_file in enumerate(pair):
                                             global_idx = row_idx * 2 + idx_in_pair
@@ -661,29 +647,19 @@ with tab_ocr_co:
                                             eb_img.save(eb_path, format="PNG")
                                             
                                             w_img_px, h_img_px = eb_img.size
-                                            # Kích thước tiêu chuẩn 125mm cho mỗi ảnh khi nằm ngang
                                             render_w = 125.0
                                             render_h = (h_img_px / w_img_px) * render_w
-                                            if render_h > 75: # Khống chế chiều cao tối đa của ảnh
+                                            if render_h > 75: 
                                                 render_h = 75.0
                                                 render_w = (w_img_px / h_img_px) * render_h
                                                 
-                                            row_imgs_info.append({
-                                                'path': eb_path,
-                                                'w': render_w,
-                                                'h': render_h
-                                            })
+                                            row_imgs_info.append({'path': eb_path, 'w': render_w, 'h': render_h})
                                         
-                                        # Chiều cao hàng bằng chiều cao của bức ảnh cao nhất trong hàng đó
                                         max_row_h = max(item['h'] for item in row_imgs_info)
-                                        
-                                        # Nếu chèn hàng ảnh này làm tràn trang (>195mm) -> Ngắt sang trang mới
                                         if pdf.get_y() + max_row_h + 6 > 195:
                                             pdf.add_page()
                                             
                                         start_y = pdf.get_y() + 2
-                                        
-                                        # In từng ảnh trong hàng (Cột 1 tại X=15mm, Cột 2 tại X=148mm)
                                         x_positions = [15.0, 148.0]
                                         for col_idx, item in enumerate(row_imgs_info):
                                             x_pos = x_positions[col_idx]
@@ -691,47 +667,32 @@ with tab_ocr_co:
                                             if os.path.exists(item['path']):
                                                 os.remove(item['path'])
                                                 
-                                        # Đẩy con trỏ Y xuống dưới đáy của hàng ảnh
                                         pdf.set_y(start_y + max_row_h + 5)
-                                        
                                 except Exception as e_img:
                                     print(f"Lỗi chèn ảnh bằng chứng: {e_img}")
 
-                            # =========================================================
-                            # BƯỚC 2: XỬ LÝ KHỐI [CAM KẾT + CHỮ KÝ + TÊN] NGUYÊN KHỐI NẰM DƯỚI CÙNG
-                            # =========================================================
-                            # Toàn bộ khối này cần khoảng 55mm chiều cao. 
-                            # Nếu chiều cao còn lại ở trang hiện tại < 55mm (pdf.get_y() + 55 > 195),
-                            # hệ thống sẽ tự động chuyển NGUYÊN KHỐI này sang trang cuối!
                             if pdf.get_y() + 55 > 195:
                                 pdf.add_page()
                             else:
                                 pdf.ln(4)
 
-                            # 1. Câu xác nhận cam kết (Luôn nằm trên cùng của khối chữ ký, bên dưới tất cả ảnh)
                             pdf.set_font("Roboto", style="", size=9)
                             pdf.multi_cell(0, 5, "XÁC NHẬN: Đại lý cam kết đã kiểm tra kỹ, đếm và nhận đủ các bản C/O GỐC (có mộc đỏ) ghi trong danh sách trên. Mọi sự thất lạc sau thời điểm ký nhận này hoàn toàn thuộc trách nhiệm của Đại lý.", align="L")
                             pdf.ln(3)
 
-                            # 2. Tiêu đề chức danh 2 bên
                             pdf.set_font("Roboto", style="B", size=12)
                             pdf.cell(135, 8, "ĐẠI DIỆN BÀN GIAO", align="C")
-                            pdf.cell(135, 8, "ĐẠI LÝ KÍ NHẬN - ĐÃ NHẬN ĐỦ", align="C", new_x="LMARGIN", new_y="NEXT")
+                            pdf.cell(135, 8, "ĐẠI LÝ KÍ NHẬN - ĐĐ NHẬN ĐỦ", align="C", new_x="LMARGIN", new_y="NEXT")
                             
-                            # 3. Chèn ảnh chữ ký của Đại lý
                             img_temp_path = os.path.join(tempfile.gettempdir(), "temp_signature.png")
                             img_rgb.save(img_temp_path, format="PNG")
-                            
                             current_y = pdf.get_y() + 2
                             pdf.image(img_temp_path, x=185, y=current_y, w=55) 
                             
                             if os.path.exists(img_temp_path):
                                 os.remove(img_temp_path)
                                 
-                            # Tạo khoảng trống 20mm cho khung chữ ký
                             pdf.ln(20)
-                            
-                            # 4. In tên đại lý ngay ngắn nằm dưới cùng của trang
                             pdf.set_font("Roboto", style="B", size=11)
                             pdf.cell(135, 6, "", align="C")
                             pdf.cell(135, 6, ten_dai_ly, align="C", new_x="LMARGIN", new_y="NEXT")
@@ -744,16 +705,23 @@ with tab_ocr_co:
                             else:
                                 ten_file_xuat_ra = f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
                             
-                            st.success("✅ Ghi log hệ thống thành công. Phiếu bàn giao (PDF) đã sẵn sàng!")
+                            st.success("✅ Đã tạo file thành công! Trình duyệt đang tự động tải xuống...")
                             
-                            st.download_button(
-                                label="📥 TẢI PHIẾU BÀN GIAO ĐÃ KÝ VỀ MÁY",
-                                data=bytes(pdf_bytes),
-                                file_name=ten_file_xuat_ra,
-                                mime="application/octet-stream", 
-                                type="primary"
-                            )
+                            # CƠ CHẾ JS TỰ ĐỘNG KÍCH HOẠT DOWNLOAD (Thay thế cho st.download_button)
+                            b64_pdf = base64.b64encode(pdf_bytes).decode()
+                            href = f'''
+                            <a id="auto_download_pdf" href="data:application/pdf;base64,{b64_pdf}" download="{ten_file_xuat_ra}" style="display:none;">Tải xuống</a>
+                            <script>
+                                setTimeout(function() {{
+                                    document.getElementById("auto_download_pdf").click();
+                                }}, 500);
+                            </script>
+                            '''
+                            st.components.v1.html(href, height=0)
+                            st.markdown(f'<a href="data:application/pdf;base64,{b64_pdf}" download="{ten_file_xuat_ra}">🔗 Nhấp vào đây nếu trình duyệt không tự động tải xuống</a>', unsafe_allow_html=True)
                 
+                # Nút Reset Form
+                st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
                 if st.button("🔄 Tải Lại Phiên Mới (Xóa Trắng)"):
                     st.session_state["ocr_data"] = []
                     st.session_state["ten_file_goc"] = ""
@@ -761,9 +729,111 @@ with tab_ocr_co:
                     for key in keys_to_reset:
                         if key in st.session_state:
                             del st.session_state[key]
-                    # Kích hoạt thay đổi Khóa Động để ép Streamlit xóa sạch giao diện Khung Upload
                     st.session_state["reset_uploader_key"] += 1
                     st.rerun()
+
+                # =========================================================
+                # OPTION 3: BỔ SUNG ẢNH VÀO FILE PDF ĐÃ KÝ (VỀ NHÀ MỚI LÀM)
+                # =========================================================
+                st.markdown("<hr style='margin: 20px 0px 10px 0px; border: 2px dashed #ccc;'>", unsafe_allow_html=True)
+                st.markdown("<h4 style='margin-bottom: 5px; margin-top: 0px;'>📎 OPTION 3: Đính Kèm Thêm Ảnh Vào File PDF Đã Ký</h4>", unsafe_allow_html=True)
+                st.info("💡 Mẹo: Ở công ty/cảng anh chỉ cần cho đại lý ký rồi tải file PDF chứa chữ ký về máy. Sau đó về nhà có mạng Wifi mạnh, anh upload lại file PDF đó vào đây cùng với mớ hình ảnh C/O để hệ thống tự ghép ảnh vào đuôi PDF nhé!")
+                
+                col_up1, col_up2 = st.columns(2)
+                file_pdf_da_ky = col_up1.file_uploader("1️⃣ Tải lên Phiếu bàn giao ĐÃ KÝ (PDF)", type=["pdf"], key="upload_pdf_da_ky")
+                imgs_bo_sung = col_up2.file_uploader("2️⃣ Tải lên hình ảnh C/O gốc bổ sung", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="upload_img_bo_sung")
+                
+                if st.button("🚀 NỐI ẢNH VÀ TẢI FILE HOÀN CHỈNH VỀ MÁY", type="primary"):
+                    if not file_pdf_da_ky:
+                        st.error("⚠️ Vui lòng tải lên file PDF Phiếu bàn giao đã ký.")
+                    elif not imgs_bo_sung:
+                        st.error("⚠️ Vui lòng tải lên ít nhất 1 hình ảnh C/O.")
+                    else:
+                        with st.spinner("⏳ Đang xử lý nối ảnh vào file PDF của anh..."):
+                            try:
+                                import pypdf
+                                from fpdf import FPDF
+                                from PIL import Image as PILImage
+                                import tempfile, os, base64
+                                
+                                temp_dir = tempfile.gettempdir()
+                                pdf_imgs = FPDF(orientation="L", unit="mm", format="A4")
+                                
+                                font_path = os.path.join(temp_dir, "Roboto-Bold.ttf")
+                                if os.path.exists(font_path):
+                                    pdf_imgs.add_font("Roboto", style="B", fname=font_path)
+                                    
+                                pdf_imgs.add_page()
+                                try:
+                                    pdf_imgs.set_font("Roboto", style="B", size=10)
+                                except:
+                                    pdf_imgs.set_font("Arial", style="B", size=10)
+                                    
+                                pdf_imgs.cell(0, 6, "HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC (BỔ SUNG SAU):", new_x="LMARGIN", new_y="NEXT")
+                                pdf_imgs.ln(4)
+                                
+                                img_pairs = [imgs_bo_sung[i:i + 2] for i in range(0, len(imgs_bo_sung), 2)]
+                                for row_idx, pair in enumerate(img_pairs):
+                                    row_imgs_info = []
+                                    for idx_in_pair, img_file in enumerate(pair):
+                                        eb_img = PILImage.open(img_file).convert('RGB')
+                                        eb_path = os.path.join(temp_dir, f"temp_evidence_bs_{row_idx}_{idx_in_pair}.png")
+                                        eb_img.save(eb_path, format="PNG")
+                                        
+                                        w_img_px, h_img_px = eb_img.size
+                                        render_w = 125.0
+                                        render_h = (h_img_px / w_img_px) * render_w
+                                        if render_h > 75:
+                                            render_h = 75.0
+                                            render_w = (w_img_px / h_img_px) * render_h
+                                            
+                                        row_imgs_info.append({'path': eb_path, 'w': render_w, 'h': render_h})
+                                        
+                                    max_row_h = max(item['h'] for item in row_imgs_info)
+                                    
+                                    if pdf_imgs.get_y() + max_row_h + 6 > 195:
+                                        pdf_imgs.add_page()
+                                        
+                                    start_y = pdf_imgs.get_y() + 2
+                                    x_positions = [15.0, 148.0]
+                                    for col_idx, item in enumerate(row_imgs_info):
+                                        x_pos = x_positions[col_idx]
+                                        pdf_imgs.image(item['path'], x=x_pos, y=start_y, w=item['w'], h=item['h'])
+                                        if os.path.exists(item['path']):
+                                            os.remove(item['path'])
+                                            
+                                    pdf_imgs.set_y(start_y + max_row_h + 5)
+                                
+                                # Đưa cụm ảnh vừa tạo vào RAM (Không cần lưu ra ổ cứng)
+                                imgs_pdf_buffer = io.BytesIO(pdf_imgs.output())
+                                
+                                # Dùng PyPDF ghép nối PDF gốc và trang ảnh mới
+                                merger = pypdf.PdfWriter()
+                                merger.append(file_pdf_da_ky)
+                                merger.append(imgs_pdf_buffer)
+                                
+                                final_buffer = io.BytesIO()
+                                merger.write(final_buffer)
+                                final_pdf_bytes = final_buffer.getvalue()
+                                
+                                st.success("✅ Đã ghép file thành công! Trình duyệt đang tự động tải xuống...")
+                                
+                                b64 = base64.b64encode(final_pdf_bytes).decode()
+                                filename = f"Ban_Giao_CO_Kem_Hinh_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
+                                href = f'''
+                                <a id="download_pdf_bs" href="data:application/pdf;base64,{b64}" download="{filename}" style="display:none;">Tải xuống</a>
+                                <script>
+                                    setTimeout(function() {{
+                                        document.getElementById("download_pdf_bs").click();
+                                    }}, 500);
+                                </script>
+                                '''
+                                st.components.v1.html(href, height=0)
+                                st.markdown(f'<a href="data:application/pdf;base64,{b64}" download="{filename}">🔗 Nhấp vào đây nếu trình duyệt không tự động tải xuống</a>', unsafe_allow_html=True)
+                            except ImportError:
+                                st.error("⚠️ Hệ thống thiếu thư viện gộp PDF. Hãy chạy lệnh: `pip install pypdf`")
+                            except Exception as e:
+                                st.error(f"Lỗi khi ghép file: {e}")
 
         # THỰC THI KHỐI LỆNH MƯỢT MÀ
     vung_trich_xuat_va_ky_nhan()
