@@ -617,8 +617,7 @@ with tab_ocr_co:
                             st.error("⚠️ Thiếu thư viện PDF. Vui lòng thêm 'fpdf2' vào file requirements.txt")
                             st.stop()
                         
-                        import urllib.request
-                        import os
+                                               
                         import tempfile
 
                         opener = urllib.request.build_opener()
@@ -758,7 +757,7 @@ with tab_ocr_co:
 
             # HIỂN THỊ NÚT TẢI SAU KHI XỬ LÝ XONG (OPTION 2)
             if st.session_state.get("pdf_ready_opt2"):
-                import datetime
+                
                 st.success("✅ Đã tạo file PDF thành công! Nút tải đã sẵn sàng bên dưới.")
                 ten_goc = st.session_state.get("ten_file_goc", "")
                 ten_file_xuat_ra = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.pdf" if ten_goc else f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
