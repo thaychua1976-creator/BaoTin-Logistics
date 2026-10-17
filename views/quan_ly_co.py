@@ -276,25 +276,13 @@ with tab_ocr_co:
         # --- BƯỚC 1: TIÊM CSS ÉP KHOẢNG CÁCH NGAY TỪ ĐẦU ---
         st.markdown("""
             <style>
-                /* Thu hẹp khoảng trống dưới các khối văn bản/nút bấm */
                 div[data-testid="stVerticalBlock"] > div { padding-bottom: 0.1rem !important; }
                 div[data-testid="stHorizontalBlock"] > div { padding-bottom: 0.1rem !important; }
-                /* Thu hẹp viền của Input */
                 .stTextInput > div, .stDateInput > div { margin-bottom: -15px; }
-                /* Ép margin của tiêu đề nhỏ lại */
                 h4, h5 { margin-top: 5px !important; margin-bottom: 5px !important; }
-                
-                /* Thu hẹp khoảng cách của Radio button */
                 div[role="radiogroup"] { margin-bottom: -10px !important; margin-top: -10px !important; }
-                
-                /* 🚀 CHỐNG TRƯỢT MÀN HÌNH TRÊN IPHONE KHI KÝ TÊN */
-                div[data-testid="stWebComponentContainer"] {
-                    touch-action: none !important; 
-                    overscroll-behavior: none !important;
-                }
-                iframe[title="streamlit_drawable_canvas.st_canvas"] {
-                    touch-action: none !important;
-                }
+                div[data-testid="stWebComponentContainer"] { touch-action: none !important; overscroll-behavior: none !important; }
+                iframe[title="streamlit_drawable_canvas.st_canvas"] { touch-action: none !important; }
             </style>
         """, unsafe_allow_html=True)
 
@@ -306,31 +294,28 @@ with tab_ocr_co:
             import pdfplumber
             import easyocr
             import numpy as np
-            
         except ImportError:
-            st.error("⚠️ Server thiếu thư viện. Chạy lệnh: `pip install streamlit-drawable-canvas openpyxl pdfplumber easyocr`")
+            st.error("⚠️ Server thiếu thư viện. Chạy lệnh: `pip install streamlit-drawable-canvas openpyxl pdfplumber easyocr pypdf fpdf2`")
             st.stop()
 
+        # [CẬP NHẬT 1]: THÊM OPTION 3 LÊN TRÊN CÙNG
         che_do_tab3 = st.radio(
             "Lựa chọn luồng công việc:", 
-            ["1️⃣ Quét PDF Mới & Chỉnh Sửa", "2️⃣ Tải File Excel Cũ Lên Để Ký Nhận (Làm tiếp)"],
+            ["1️⃣ Quét PDF Mới & Chỉnh Sửa", "2️⃣ Tải File Excel Cũ Lên (Làm tiếp)", "3️⃣ Ghép Ảnh C/O Vào File Đã Ký"],
             horizontal=True
         )
         
-        # --- BƯỚC 2: THAY THẾ st.divider() BẰNG KẺ NGANG HTML MỎNG NHẸ ---
         st.markdown("<hr style='margin: 10px 0px 5px 0px; border: 1px solid #e0e0e0;'>", unsafe_allow_html=True)
         
         if "ocr_data" not in st.session_state:
             st.session_state["ocr_data"] = []
-            
         if "reset_uploader_key" not in st.session_state:
-                st.session_state["reset_uploader_key"] = 0
+            st.session_state["reset_uploader_key"] = 0
         
         # ---------------------------------------------------------
         # CHẾ ĐỘ 1: QUÉT PDF MỚI VÀ CHỈNH SỬA TRỰC TIẾP
         # ---------------------------------------------------------
         if che_do_tab3 == "1️⃣ Quét PDF Mới & Chỉnh Sửa":
-                # Tạo khóa động thay vì khóa tĩnh
             current_pdf_key = f"upload_pdfs_ocr_{st.session_state['reset_uploader_key']}"
             uploaded_pdfs = st.file_uploader("📂 Kéo thả file PDF C/O vào đây", type=["pdf"], accept_multiple_files=True, key=current_pdf_key)
             
@@ -338,10 +323,6 @@ with tab_ocr_co:
                 if st.button("🚀 Bắt Đầu Quét & Trích Xuất", type="primary"):
                     with st.spinner("⏳ Đang xử lý siêu tốc..."):
                         extracted_data = []
-                        
-                        
-                        
-                        # CẬP NHẬT: Cho phép chữ cái (A-Z) nằm ở phần đuôi số seri của C/O
                         pattern = r'([A-Z0-9.\-\s]{0,20})(\d{2})\s*[-/|17lI\.]\s*(\d{2})\s*[-/|17lI\.]\s*([0-9A-Z\s]{5,15})'
                         
                         for pdf_file in uploaded_pdfs:
@@ -349,76 +330,56 @@ with tab_ocr_co:
                                 with pdfplumber.open(pdf_file) as pdf:
                                     for page in pdf.pages:
                                         co_number = "Không nhận diện được"
-                                        
                                         text_fast = (page.extract_text() or "").upper()
                                         match = re.search(pattern, text_fast)
                                         
                                         if not match:
-                                            # Cắt khu vực góc phải trên cùng (chứa Số C/O) để AI tập trung
                                             bounding_box = (page.width * 0.35, 0, page.width, page.height * 0.35)
                                             micro_crop = page.crop(bounding_box)
                                             pil_img = micro_crop.to_image(resolution=300).original
                                             
-                                            # 🚀 GỌI GEMINI 1.5 FLASH (Tuyệt đối chính xác, Không tốn RAM)
                                             try:
                                                 import google.generativeai as genai
                                                 if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
-                                                            api_key = st.secrets["api_keys"]["gemini"]
+                                                    api_key = st.secrets["api_keys"]["gemini"]
                                                 elif "GEMINI_API_KEY" in st.secrets:
-                                                            api_key = st.secrets["GEMINI_API_KEY"]
+                                                    api_key = st.secrets["GEMINI_API_KEY"]
                                             except Exception:
-                                                        pass
+                                                pass
                                                 
-                                                    # Bước 2: Thử lấy từ biến môi trường của hệ điều hành (Local)
                                             if not api_key:
                                                 api_key = os.getenv("GEMINI_API_KEY")
                                                 
-                                                    # Khởi tạo model nếu tìm thấy key
                                             if api_key:
                                                 genai.configure(api_key=api_key)
-                                                model = genai.GenerativeModel('gemini-3.6-flash')
-                                                
-                                                # Yêu cầu AI đọc chính xác văn bản trong ảnh cắt
+                                                model = genai.GenerativeModel('gemini-1.5-flash')
                                                 prompt = "Đọc và trích xuất nguyên văn tất cả các đoạn văn bản có trong hình ảnh này. Không cần giải thích thêm."
                                                 response = model.generate_content([prompt, pil_img])
-                                                
                                                 text_ai = (response.text or "").upper()
                                                 match = re.search(pattern, text_ai)
                                             else:
-                                                    st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống! Vui lòng kiểm tra lại cấu trúc Secrets trên Cloud.")
-                                                    return None    
+                                                st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống!")
+                                                return None    
                                             
-                                        
                                         if match:
                                             prefix_raw, dd, mm = match.group(1), match.group(2), match.group(3)
                                             raw_suffix = match.group(4)
-                                            
-                                            # Loại bỏ khoảng trắng và chuyển chữ O thành số 0
                                             num_clean = re.sub(r'\s+', '', raw_suffix).replace('O', '0')
                                             
-                                            # BỘ LỌC CỨNG (V2): Siết chặt quy tắc 6 chữ số chuẩn
                                             m_strict = re.match(r'^(\d{5,8})([A-Z]?)', num_clean)
                                             if m_strict:
                                                 digits = m_strict.group(1)
                                                 letter = m_strict.group(2)
-                                                
-                                                # Trường hợp 1: Có >= 7 chữ số và vị trí số thứ 7 là số '8' (AI nhìn nhầm chữ B)
                                                 if len(digits) >= 7 and digits[6] == '8':
-                                                    digits = digits[:6] # Chỉ giữ đúng 6 số đầu
-                                                    letter = 'B'        # Khôi phục chữ B
-                                                
-                                                # Trường hợp 2: Các Form khác bị quét dư thành 7, 8 chữ số -> Ép chặt bỏ số dư
+                                                    digits = digits[:6] 
+                                                    letter = 'B'        
                                                 elif len(digits) > 6:
                                                     digits = digits[:6]
-                                                    
-                                                # Nếu có chữ cái rác dính vào đuôi (A, C, D...) mà không phải Form B -> Vứt bỏ chữ cái
                                                 if letter != 'B':
                                                     letter = ''
-                                                    
                                                 num_clean = digits + letter
                                                 
                                             suffix_clean = f"{dd}/{mm}/{num_clean}"
-                                            
                                             prefix_clean = re.sub(r'[\s.\-]', '', prefix_raw)
                                             for noise in ['EUR1', 'EUR', 'NO', 'NUM']:
                                                 prefix_clean = prefix_clean.replace(noise, '')
@@ -428,10 +389,8 @@ with tab_ocr_co:
                                                 if c in prefix_clean:
                                                     country = c.replace('K2', 'KZ').replace('K7', 'KZ')
                                                     break
-                                                    
                                             if country == "??" and len(prefix_clean) >= 2: country = prefix_clean[-2:]
                                             if country == "??" and prefix_clean.endswith('E'): country = 'DE'
-                                                
                                             co_number = f"VN-{country} {suffix_clean}" if country != "??" else f"VN-?? {suffix_clean}"
                                         
                                         extracted_data.append({"STT": len(extracted_data) + 1, "SỐ C/O BẢN GỐC": co_number, "KÝ NHẬN": "", "NGÀY NHẬN": ""})
@@ -444,8 +403,7 @@ with tab_ocr_co:
         # ---------------------------------------------------------
         # CHẾ ĐỘ 2: TẢI LÊN FILE EXCEL (KHÔI PHỤC PHIÊN LÀM VIỆC)
         # ---------------------------------------------------------
-        elif che_do_tab3 == "2️⃣ Tải File Excel Cũ Lên Để Ký Nhận (Làm tiếp)":
-                # Tạo khóa động thay vì khóa tĩnh
+        elif che_do_tab3 == "2️⃣ Tải File Excel Cũ Lên (Làm tiếp)":
             current_excel_key = f"upload_excel_to_sign_{st.session_state['reset_uploader_key']}"
             uploaded_excel = st.file_uploader("📂 Kéo thả file Excel (Bản chưa ký) vào đây", type=["xlsx", "xls"], key=current_excel_key)
             if uploaded_excel:
@@ -453,331 +411,289 @@ with tab_ocr_co:
                     df_load = pd.read_excel(uploaded_excel, skiprows=3)
                     if 'SỐ C/O BẢN GỐC' in df_load.columns:
                         st.session_state["ocr_data"] = df_load.to_dict('records')
-                        # THÊM DÒNG NÀY ĐỂ NHỚ TÊN FILE GỐC
                         st.session_state["ten_file_goc"] = uploaded_excel.name
-                        
                         st.success("✅ Đã khôi phục dữ liệu từ file Excel thành công!")
                     else:
                         st.error("❌ File Excel không đúng định dạng chuẩn của phần mềm.")
                 except Exception as e:
                     st.error(f"Lỗi đọc file Excel: {e}")
-        # ==========================================
-        # KHU VỰC CHUNG: HIỂN THỊ LƯỚI DATA & KÝ NHẬN (CÓ DỮ LIỆU MỚI HIỆN)
-        # ==========================================
-        if st.session_state.get("ocr_data"):
+
+        # ---------------------------------------------------------
+        # CHẾ ĐỘ 3: GHÉP ẢNH BỔ SUNG VÀO FILE PDF ĐÃ KÝ
+        # ---------------------------------------------------------
+        elif che_do_tab3 == "3️⃣ Ghép Ảnh C/O Vào File Đã Ký":
+            st.info("💡 Mẹo: Ở công ty/cảng anh chỉ cần cho đại lý ký rồi tải file PDF chứa chữ ký về máy. Sau đó về nhà có mạng Wifi mạnh, anh tải ngược file PDF đó lên đây cùng với mớ hình ảnh C/O để hệ thống tự ghép ảnh vào đuôi PDF nhé!")
             
-                            
-                df_current = pd.DataFrame(st.session_state["ocr_data"])
-                
-                # Dùng thẻ HTML thay cho st.markdown mặc định để triệt tiêu margin thừa
-                st.markdown(f"<h5 style='margin-bottom: 0px; margin-top: 0px;'>📝 Danh sách {len(df_current)} mã C/O (Nhấp đúp chuột để sửa)</h5>", unsafe_allow_html=True)
-                
-                edited_df = st.data_editor(
-                    df_current, 
-                    use_container_width=True, 
-                    num_rows="dynamic",
-                    disabled=["STT", "TÊN NGƯỜI NHẬN", "NGÀY NHẬN"],
-                    key="co_data_editor"
-                )
-                
-                st.session_state["ocr_data"] = edited_df.to_dict('records')
-                
-                # OPTION 1: TẢI XUỐNG BẢN NHÁP CHƯA KÝ
-                excel_nhap_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_nhap_buffer, engine='xlsxwriter') as writer:
-                    workbook = writer.book
-                    worksheet = writer.sheets.setdefault('So_Giao_Nhan', workbook.add_worksheet('So_Giao_Nhan'))
-                    worksheet.write('A1', "CÔNG TY FORTUNATE HONGKONG VIỆT NAM")
-                    worksheet.write('A2', "GỞI CÔNG TY: EXPEDITORS")
-                    edited_df.to_excel(writer, sheet_name='So_Giao_Nhan', index=False, startrow=3)
-                    worksheet.set_column('A:A', 10); worksheet.set_column('B:B', 35); worksheet.set_column('C:C', 30); worksheet.set_column('D:D', 25)
-                    
-                st.download_button(
-                    label="📥 OPTION 1: Tải File Nháp (Chưa Ký) Để Lưu Trữ",
-                    data=excel_nhap_buffer.getvalue(),
-                    file_name=f"Ban_Giao_CO_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-
-                # Thay st.divider() bằng thẻ hr mỏng gọn hơn
-                st.markdown("<hr style='margin: 10px 0px; border: 1px solid #ddd;'>", unsafe_allow_html=True)
-                
-                # OPTION 2: KÝ TÊN VÀ XUẤT BẢN CHÍNH THỨC
-                st.markdown("<h4 style='margin-bottom: 5px; margin-top: 0px;'>🤝 OPTION 2: Ký Nhận & Xuất Phiếu Bản Giao</h4>", unsafe_allow_html=True)
-
-                # [CẬP NHẬT]: Cho phép chọn NHIỀU ẤNH bằng chứng C/O cùng lúc
-                st.markdown("<p style='margin-bottom: 0px; margin-top: 5px;'>📸 <b>Chụp/Upload hình ảnh C/O gốc làm bằng chứng (Có thể chọn nhiều ảnh):</b></p>", unsafe_allow_html=True)
-                imgs_bang_chung = st.file_uploader("Tải ảnh chụp tập C/O gốc (Thấy rõ mộc đỏ/số seri)", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="upload_evidence_co", label_visibility="collapsed")
-
-                c_ten, c_ngay = st.columns(2)
-                ten_dai_ly = c_ten.text_input("Tên người nhận (Đại lý):", placeholder="Nhập họ tên...")
-                ngay_nhan = c_ngay.date_input("Ngày nhận:", value=datetime.date.today())
-                
-                st.markdown("<p style='margin-bottom: 0px; margin-top: 10px; font-weight: bold;'>Đại lý vẽ chữ ký xác nhận vào khung bên dưới:</p>", unsafe_allow_html=True)
-                
-                canvas_result = st_canvas(
-                    fill_color="rgba(255, 165, 0, 0.3)", 
-                    stroke_width=2.5, 
-                    stroke_color="#FF0000", # Mực đỏ nổi bật
-                    background_color="#f0f2f6", 
-                    height=150, 
-                    width=350, 
-                    drawing_mode="freedraw",
-                    return_image_data=True, key="canvas_ky_ten_2"
-                )
-                
-                # Thu hẹp khoảng cách nút bấm
-                st.markdown("<div style='margin-top: -10px;'></div>", unsafe_allow_html=True)
-                
-                # ---------------------------------------------------------
-                # NÚT BẤM ĐÃ GỘP: VỪA KÝ XÁC NHẬN, VỪA TỰ ĐỘNG TẢI FILE
-                # ---------------------------------------------------------
-                if st.button("🤝 KÝ VÀ TẢI FILE VỀ", type="primary"):
-                    if not ten_dai_ly.strip():
-                        st.error("Vui lòng nhập Tên người nhận của đại lý.")
-                    elif canvas_result.image_data is None or canvas_result.image_data.sum() == 0:
-                        st.error("Đại lý chưa ký xác nhận vào khung.")
-                    else:
-                        with st.spinner("Đang chèn chữ ký, nối ảnh và chuẩn bị File tải xuống..."):
-                            try:
-                                from audit_logger import ghi_log_he_thong
-                                chi_tiet_log = f"Bàn giao {len(edited_df)} C/O gốc cho đại lý: {ten_dai_ly}"
-                                ghi_log_he_thong(db.pool, "QUAN_LY_CO", None, current_user, "BAN_GIAO_CO", chi_tiet_log)
-                            except Exception as log_err:
-                                pass
-                            
-                            img_data = canvas_result.image_data
-                            img_rgba = Image.fromarray(img_data.astype('uint8'), 'RGBA')
-                            img_bg = Image.new("RGBA", img_rgba.size, "WHITE")
-                            img_bg.paste(img_rgba, mask=img_rgba)
-                            img_rgb = img_bg.convert('RGB')
-                            
-                            img_buffer = io.BytesIO()
-                            img_rgb.save(img_buffer, format="PNG")
-                            img_buffer.seek(0)
-                            
-                            try:
-                                from fpdf import FPDF
-                            except ImportError:
-                                st.error("⚠️ Thiếu thư viện PDF. Vui lòng thêm 'fpdf2' vào file requirements.txt")
-                                st.stop()
-                            
-                            import urllib.request
-                            import os
-                            import tempfile 
-                            import base64
-
-                            opener = urllib.request.build_opener()
-                            opener.addheaders = [('User-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')]
-                            urllib.request.install_opener(opener)
+            col_up1, col_up2 = st.columns(2)
+            file_pdf_da_ky = col_up1.file_uploader("1️⃣ Tải lên Phiếu bàn giao ĐÃ KÝ (PDF)", type=["pdf"], key="upload_pdf_da_ky")
+            imgs_bo_sung = col_up2.file_uploader("2️⃣ Tải lên hình ảnh C/O gốc bổ sung", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="upload_img_bo_sung")
+            
+            if st.button("🚀 NỐI ẢNH VÀ TẢI FILE HOÀN CHỈNH", type="primary"):
+                if not file_pdf_da_ky:
+                    st.error("⚠️ Vui lòng tải lên file PDF Phiếu bàn giao đã ký.")
+                elif not imgs_bo_sung:
+                    st.error("⚠️ Vui lòng tải lên ít nhất 1 hình ảnh C/O.")
+                else:
+                    with st.spinner("⏳ Đang xử lý nối ảnh vào file PDF..."):
+                        try:
+                            import pypdf
+                            from fpdf import FPDF
+                            from PIL import Image as PILImage
+                            import tempfile, os, base64, io
                             
                             temp_dir = tempfile.gettempdir()
-                            font_path = os.path.join(temp_dir, "Roboto-Regular.ttf")
-                            font_bold_path = os.path.join(temp_dir, "Roboto-Bold.ttf")
+                            pdf_imgs = FPDF(orientation="L", unit="mm", format="A4")
                             
+                            font_path = os.path.join(temp_dir, "Roboto-Bold.ttf")
+                            if os.path.exists(font_path):
+                                pdf_imgs.add_font("Roboto", style="B", fname=font_path)
+                                
+                            pdf_imgs.add_page()
                             try:
-                                if not os.path.exists(font_path):
-                                    urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Regular.ttf", font_path)
-                                if not os.path.exists(font_bold_path):
-                                    urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Bold.ttf", font_bold_path)
-                            except Exception as e:
-                                st.error(f"Lỗi tải Font chữ: ({e})")
-                                st.stop()
+                                pdf_imgs.set_font("Roboto", style="B", size=10)
+                            except:
+                                pdf_imgs.set_font("Arial", style="B", size=10)
                                 
-                            pdf = FPDF(orientation="L", unit="mm", format="A4")
-                            pdf.add_page()
+                            pdf_imgs.cell(0, 6, "HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC (BỔ SUNG SAU):", new_x="LMARGIN", new_y="NEXT")
+                            pdf_imgs.ln(4)
                             
-                            pdf.add_font("Roboto", style="", fname=font_path)
-                            pdf.add_font("Roboto", style="B", fname=font_bold_path)
-                            
-                            pdf.set_font("Roboto", style="B", size=18)
-                            pdf.cell(0, 10, "CÔNG TY FORTUNATE HONGKONG VIỆT NAM", align="C", new_x="LMARGIN", new_y="NEXT")
-                            pdf.cell(0, 10, "GỞI CÔNG TY: EXPEDITORS", align="C", new_x="LMARGIN", new_y="NEXT")
-                            pdf.ln(5)
-                            
-                            pdf.set_font("Roboto", style="B", size=11)
-                            pdf.set_fill_color(220, 220, 220)
-                            
-                            col_widths = [20, 100, 80, 50] 
-                            headers = ['STT', 'SỐ C/O BẢN GỐC', 'TÊN NGƯỜI NHẬN', 'NGÀY NHẬN']
-                            
-                            for i, h in enumerate(headers):
-                                pdf.cell(col_widths[i], 8, h, border=1, align="C", fill=True)
-                            pdf.ln(8)
-                            
-                            pdf.set_font("Roboto", style="", size=11)
-                            ngay_format = ngay_nhan.strftime('%d/%m/%Y')
-                            
-                            for r_idx in range(len(edited_df)):
-                                so_dong_con_lai = len(edited_df) - r_idx
-                                space_needed = (so_dong_con_lai * 8) + 55 
-                                
-                                if so_dong_con_lai <= 3 and (pdf.get_y() + space_needed) > 200:
-                                    pdf.add_page()
-                                    pdf.set_font("Roboto", style="B", size=11)
-                                    for i, h in enumerate(headers):
-                                        pdf.cell(col_widths[i], 8, h, border=1, align="C", fill=True)
-                                    pdf.ln(8)
-                                    pdf.set_font("Roboto", style="", size=11)
-                                
-                                pdf.cell(col_widths[0], 8, str(edited_df.iloc[r_idx, 0]).replace('.0', ''), border=1, align="C")
-                                pdf.cell(col_widths[1], 8, str(edited_df.iloc[r_idx, 1]), border=1, align="C")
-                                pdf.cell(col_widths[2], 8, ten_dai_ly, border=1, align="C") 
-                                pdf.cell(col_widths[3], 8, ngay_format, border=1, align="C")
-                                pdf.ln(8)
-                                
-                            if imgs_bang_chung:
-                                try:
-                                    from PIL import Image as PILImage
-                                    if pdf.get_y() > 155:
-                                        pdf.add_page()
-                                    else:
-                                        pdf.ln(4)
-                                        
-                                    pdf.set_font("Roboto", style="B", size=10)
-                                    pdf.cell(0, 6, "HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC THỰC TẾ KHI BÀN GIAO:", new_x="LMARGIN", new_y="NEXT")
+                            img_pairs = [imgs_bo_sung[i:i + 2] for i in range(0, len(imgs_bo_sung), 2)]
+                            for row_idx, pair in enumerate(img_pairs):
+                                row_imgs_info = []
+                                for idx_in_pair, img_file in enumerate(pair):
+                                    eb_img = PILImage.open(img_file).convert('RGB')
+                                    eb_path = os.path.join(temp_dir, f"temp_evidence_bs_{row_idx}_{idx_in_pair}.png")
+                                    eb_img.save(eb_path, format="PNG")
                                     
-                                    img_pairs = [imgs_bang_chung[i:i + 2] for i in range(0, len(imgs_bang_chung), 2)]
-                                    for row_idx, pair in enumerate(img_pairs):
-                                        row_imgs_info = []
-                                        for idx_in_pair, img_file in enumerate(pair):
-                                            global_idx = row_idx * 2 + idx_in_pair
-                                            eb_img = PILImage.open(img_file).convert('RGB')
-                                            eb_path = os.path.join(temp_dir, f"temp_evidence_co_{global_idx}.png")
-                                            eb_img.save(eb_path, format="PNG")
-                                            
-                                            w_img_px, h_img_px = eb_img.size
-                                            render_w = 125.0
-                                            render_h = (h_img_px / w_img_px) * render_w
-                                            if render_h > 75: 
-                                                render_h = 75.0
-                                                render_w = (w_img_px / h_img_px) * render_h
-                                                
-                                            row_imgs_info.append({'path': eb_path, 'w': render_w, 'h': render_h})
+                                    w_img_px, h_img_px = eb_img.size
+                                    render_w = 125.0
+                                    render_h = (h_img_px / w_img_px) * render_w
+                                    if render_h > 75:
+                                        render_h = 75.0
+                                        render_w = (w_img_px / h_img_px) * render_h
                                         
-                                        max_row_h = max(item['h'] for item in row_imgs_info)
-                                        if pdf.get_y() + max_row_h + 6 > 195:
-                                            pdf.add_page()
-                                            
-                                        start_y = pdf.get_y() + 2
-                                        x_positions = [15.0, 148.0]
-                                        for col_idx, item in enumerate(row_imgs_info):
-                                            x_pos = x_positions[col_idx]
-                                            pdf.image(item['path'], x=x_pos, y=start_y, w=item['w'], h=item['h'])
-                                            if os.path.exists(item['path']):
-                                                os.remove(item['path'])
-                                                
-                                        pdf.set_y(start_y + max_row_h + 5)
-                                except Exception as e_img:
-                                    print(f"Lỗi chèn ảnh bằng chứng: {e_img}")
-
-                            if pdf.get_y() + 55 > 195:
-                                pdf.add_page()
-                            else:
-                                pdf.ln(4)
-
-                            pdf.set_font("Roboto", style="", size=9)
-                            pdf.multi_cell(0, 5, "XÁC NHẬN: Đại lý cam kết đã kiểm tra kỹ, đếm và nhận đủ các bản C/O GỐC (có mộc đỏ) ghi trong danh sách trên. Mọi sự thất lạc sau thời điểm ký nhận này hoàn toàn thuộc trách nhiệm của Đại lý.", align="L")
-                            pdf.ln(3)
-
-                            pdf.set_font("Roboto", style="B", size=12)
-                            pdf.cell(135, 8, "ĐẠI DIỆN BÀN GIAO", align="C")
-                            pdf.cell(135, 8, "ĐẠI LÝ KÍ NHẬN - ĐĐ NHẬN ĐỦ", align="C", new_x="LMARGIN", new_y="NEXT")
+                                    row_imgs_info.append({'path': eb_path, 'w': render_w, 'h': render_h})
+                                    
+                                max_row_h = max(item['h'] for item in row_imgs_info)
+                                if pdf_imgs.get_y() + max_row_h + 6 > 195:
+                                    pdf_imgs.add_page()
+                                    
+                                start_y = pdf_imgs.get_y() + 2
+                                x_positions = [15.0, 148.0]
+                                for col_idx, item in enumerate(row_imgs_info):
+                                    x_pos = x_positions[col_idx]
+                                    pdf_imgs.image(item['path'], x=x_pos, y=start_y, w=item['w'], h=item['h'])
+                                    if os.path.exists(item['path']):
+                                        os.remove(item['path'])
+                                        
+                                pdf_imgs.set_y(start_y + max_row_h + 5)
                             
-                            img_temp_path = os.path.join(tempfile.gettempdir(), "temp_signature.png")
-                            img_rgb.save(img_temp_path, format="PNG")
-                            current_y = pdf.get_y() + 2
-                            pdf.image(img_temp_path, x=185, y=current_y, w=55) 
+                            imgs_pdf_buffer = io.BytesIO(pdf_imgs.output())
                             
-                            if os.path.exists(img_temp_path):
-                                os.remove(img_temp_path)
-                                
-                            pdf.ln(20)
-                            pdf.set_font("Roboto", style="B", size=11)
-                            pdf.cell(135, 6, "", align="C")
-                            pdf.cell(135, 6, ten_dai_ly, align="C", new_x="LMARGIN", new_y="NEXT")
+                            merger = pypdf.PdfWriter()
+                            merger.append(file_pdf_da_ky)
+                            merger.append(imgs_pdf_buffer)
                             
-                            pdf_bytes = pdf.output()
+                            final_buffer = io.BytesIO()
+                            merger.write(final_buffer)
+                            final_pdf_bytes = final_buffer.getvalue()
                             
-                            ten_goc = st.session_state.get("ten_file_goc", "")
-                            if ten_goc:
-                                ten_file_xuat_ra = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.pdf"
-                            else:
-                                ten_file_xuat_ra = f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
+                            import datetime
+                            st.success("✅ Đã ghép file thành công! Trình duyệt đang tự động tải xuống...")
                             
-                            st.success("✅ Đã tạo file thành công! Trình duyệt đang tự động tải xuống...")
-                            
-                            # CƠ CHẾ JS TỰ ĐỘNG KÍCH HOẠT DOWNLOAD (Thay thế cho st.download_button)
-                            b64_pdf = base64.b64encode(pdf_bytes).decode()
+                            b64 = base64.b64encode(final_pdf_bytes).decode()
+                            filename = f"Ban_Giao_CO_Kem_Hinh_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
                             href = f'''
-                            <a id="auto_download_pdf" href="data:application/pdf;base64,{b64_pdf}" download="{ten_file_xuat_ra}" style="display:none;">Tải xuống</a>
+                            <a id="download_pdf_bs" href="data:application/pdf;base64,{b64}" download="{filename}" style="display:none;">Tải xuống</a>
                             <script>
                                 setTimeout(function() {{
-                                    document.getElementById("auto_download_pdf").click();
+                                    document.getElementById("download_pdf_bs").click();
                                 }}, 500);
                             </script>
                             '''
                             st.components.v1.html(href, height=0)
-                            st.markdown(f'<a href="data:application/pdf;base64,{b64_pdf}" download="{ten_file_xuat_ra}">🔗 Nhấp vào đây nếu trình duyệt không tự động tải xuống</a>', unsafe_allow_html=True)
-                
-                # Nút Reset Form
-                st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-                if st.button("🔄 Tải Lại Phiên Mới (Xóa Trắng)"):
-                    st.session_state["ocr_data"] = []
-                    st.session_state["ten_file_goc"] = ""
-                    keys_to_reset = ["upload_pdfs_ocr", "upload_excel_to_sign", "co_data_editor", "canvas_ky_ten_2"]
-                    for key in keys_to_reset:
-                        if key in st.session_state:
-                            del st.session_state[key]
-                    st.session_state["reset_uploader_key"] += 1
-                    st.rerun()
+                            st.markdown(f'<a href="data:application/pdf;base64,{b64}" download="{filename}">🔗 Nhấp vào đây nếu trình duyệt không tự động tải xuống</a>', unsafe_allow_html=True)
+                        except ImportError:
+                            st.error("⚠️ Hệ thống thiếu thư viện gộp PDF. Hãy chạy lệnh: `pip install pypdf`")
+                        except Exception as e:
+                            st.error(f"Lỗi khi ghép file: {e}")
 
-                # =========================================================
-                # OPTION 3: BỔ SUNG ẢNH VÀO FILE PDF ĐÃ KÝ (VỀ NHÀ MỚI LÀM)
-                # =========================================================
-                st.markdown("<hr style='margin: 20px 0px 10px 0px; border: 2px dashed #ccc;'>", unsafe_allow_html=True)
-                st.markdown("<h4 style='margin-bottom: 5px; margin-top: 0px;'>📎 OPTION 3: Đính Kèm Thêm Ảnh Vào File PDF Đã Ký</h4>", unsafe_allow_html=True)
-                st.info("💡 Mẹo: Ở công ty/cảng anh chỉ cần cho đại lý ký rồi tải file PDF chứa chữ ký về máy. Sau đó về nhà có mạng Wifi mạnh, anh upload lại file PDF đó vào đây cùng với mớ hình ảnh C/O để hệ thống tự ghép ảnh vào đuôi PDF nhé!")
+        # ==========================================
+        # HIỂN THỊ LƯỚI DATA VÀ KHUNG KÝ (CHỈ DÀNH CHO OPTION 1 & 2)
+        # ==========================================
+        if st.session_state.get("ocr_data") and che_do_tab3 in ["1️⃣ Quét PDF Mới & Chỉnh Sửa", "2️⃣ Tải File Excel Cũ Lên (Làm tiếp)"]:
+            
+            df_current = pd.DataFrame(st.session_state["ocr_data"])
+            st.markdown(f"<h5 style='margin-bottom: 0px; margin-top: 0px;'>📝 Danh sách {len(df_current)} mã C/O (Nhấp đúp chuột để sửa)</h5>", unsafe_allow_html=True)
+            
+            edited_df = st.data_editor(
+                df_current, 
+                use_container_width=True, 
+                num_rows="dynamic",
+                disabled=["STT", "TÊN NGƯỜI NHẬN", "NGÀY NHẬN"],
+                key="co_data_editor"
+            )
+            
+            st.session_state["ocr_data"] = edited_df.to_dict('records')
+            
+            # [TẢI BẢN NHÁP EXCEL]
+            import io
+            excel_nhap_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_nhap_buffer, engine='xlsxwriter') as writer:
+                workbook = writer.book
+                worksheet = writer.sheets.setdefault('So_Giao_Nhan', workbook.add_worksheet('So_Giao_Nhan'))
+                worksheet.write('A1', "CÔNG TY FORTUNATE HONGKONG VIỆT NAM")
+                worksheet.write('A2', "GỞI CÔNG TY: EXPEDITORS")
+                edited_df.to_excel(writer, sheet_name='So_Giao_Nhan', index=False, startrow=3)
+                worksheet.set_column('A:A', 10); worksheet.set_column('B:B', 35); worksheet.set_column('C:C', 30); worksheet.set_column('D:D', 25)
                 
-                col_up1, col_up2 = st.columns(2)
-                file_pdf_da_ky = col_up1.file_uploader("1️⃣ Tải lên Phiếu bàn giao ĐÃ KÝ (PDF)", type=["pdf"], key="upload_pdf_da_ky")
-                imgs_bo_sung = col_up2.file_uploader("2️⃣ Tải lên hình ảnh C/O gốc bổ sung", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="upload_img_bo_sung")
-                
-                if st.button("🚀 NỐI ẢNH VÀ TẢI FILE HOÀN CHỈNH VỀ MÁY", type="primary"):
-                    if not file_pdf_da_ky:
-                        st.error("⚠️ Vui lòng tải lên file PDF Phiếu bàn giao đã ký.")
-                    elif not imgs_bo_sung:
-                        st.error("⚠️ Vui lòng tải lên ít nhất 1 hình ảnh C/O.")
-                    else:
-                        with st.spinner("⏳ Đang xử lý nối ảnh vào file PDF của anh..."):
+            import datetime
+            st.download_button(
+                label="📥 OPTION 1: Tải File Nháp (Chưa Ký) Để Lưu Trữ",
+                data=excel_nhap_buffer.getvalue(),
+                file_name=f"Ban_Giao_CO_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+            st.markdown("<hr style='margin: 10px 0px; border: 1px solid #ddd;'>", unsafe_allow_html=True)
+            
+            # [KHUNG KÝ TÊN VÀ XUẤT PDF]
+            st.markdown("<h4 style='margin-bottom: 5px; margin-top: 0px;'>🤝 OPTION 2: Ký Nhận & Xuất Phiếu Bản Giao</h4>", unsafe_allow_html=True)
+
+            st.markdown("<p style='margin-bottom: 0px; margin-top: 5px;'>📸 <b>Chụp/Upload hình ảnh C/O gốc làm bằng chứng (Không bắt buộc):</b></p>", unsafe_allow_html=True)
+            imgs_bang_chung = st.file_uploader("Tải ảnh chụp tập C/O gốc (Thấy rõ mộc đỏ/số seri)", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="upload_evidence_co", label_visibility="collapsed")
+
+            c_ten, c_ngay = st.columns(2)
+            ten_dai_ly = c_ten.text_input("Tên người nhận (Đại lý):", placeholder="Nhập họ tên...")
+            ngay_nhan = c_ngay.date_input("Ngày nhận:", value=datetime.date.today())
+            
+            st.markdown("<p style='margin-bottom: 0px; margin-top: 10px; font-weight: bold;'>Đại lý vẽ chữ ký xác nhận vào khung bên dưới:</p>", unsafe_allow_html=True)
+            
+            canvas_result = st_canvas(
+                fill_color="rgba(255, 165, 0, 0.3)", 
+                stroke_width=2.5, 
+                stroke_color="#FF0000", 
+                background_color="#f0f2f6", 
+                height=150, 
+                width=350, 
+                drawing_mode="freedraw",
+                return_image_data=True, key="canvas_ky_ten_2"
+            )
+            
+            st.markdown("<div style='margin-top: -10px;'></div>", unsafe_allow_html=True)
+            
+            if st.button("🤝 KÝ VÀ TẢI FILE VỀ", type="primary"):
+                if not ten_dai_ly.strip():
+                    st.error("Vui lòng nhập Tên người nhận của đại lý.")
+                elif canvas_result.image_data is None or canvas_result.image_data.sum() == 0:
+                    st.error("Đại lý chưa ký xác nhận vào khung.")
+                else:
+                    with st.spinner("Đang chèn chữ ký và xử lý File..."):
+                        try:
+                            from audit_logger import ghi_log_he_thong
+                            chi_tiet_log = f"Bàn giao {len(edited_df)} C/O gốc cho đại lý: {ten_dai_ly}"
+                            ghi_log_he_thong(db.pool, "QUAN_LY_CO", None, current_user, "BAN_GIAO_CO", chi_tiet_log)
+                        except Exception as log_err:
+                            pass
+                        
+                        img_data = canvas_result.image_data
+                        img_rgba = Image.fromarray(img_data.astype('uint8'), 'RGBA')
+                        img_bg = Image.new("RGBA", img_rgba.size, "WHITE")
+                        img_bg.paste(img_rgba, mask=img_rgba)
+                        img_rgb = img_bg.convert('RGB')
+                        
+                        img_buffer = io.BytesIO()
+                        img_rgb.save(img_buffer, format="PNG")
+                        img_buffer.seek(0)
+                        
+                        try:
+                            from fpdf import FPDF
+                        except ImportError:
+                            st.error("⚠️ Thiếu thư viện PDF. Vui lòng thêm 'fpdf2' vào file requirements.txt")
+                            st.stop()
+                        
+                        import urllib.request
+                        import os
+                        import tempfile
+                        import base64
+
+                        opener = urllib.request.build_opener()
+                        opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+                        urllib.request.install_opener(opener)
+                        
+                        temp_dir = tempfile.gettempdir()
+                        font_path = os.path.join(temp_dir, "Roboto-Regular.ttf")
+                        font_bold_path = os.path.join(temp_dir, "Roboto-Bold.ttf")
+                        
+                        try:
+                            if not os.path.exists(font_path):
+                                urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Regular.ttf", font_path)
+                            if not os.path.exists(font_bold_path):
+                                urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Bold.ttf", font_bold_path)
+                        except Exception as e:
+                            st.error(f"Lỗi tải Font chữ: ({e})")
+                            st.stop()
+                            
+                        pdf = FPDF(orientation="L", unit="mm", format="A4")
+                        pdf.add_page()
+                        
+                        pdf.add_font("Roboto", style="", fname=font_path)
+                        pdf.add_font("Roboto", style="B", fname=font_bold_path)
+                        
+                        pdf.set_font("Roboto", style="B", size=18)
+                        pdf.cell(0, 10, "CÔNG TY FORTUNATE HONGKONG VIỆT NAM", align="C", new_x="LMARGIN", new_y="NEXT")
+                        pdf.cell(0, 10, "GỞI CÔNG TY: EXPEDITORS", align="C", new_x="LMARGIN", new_y="NEXT")
+                        pdf.ln(5)
+                        
+                        pdf.set_font("Roboto", style="B", size=11)
+                        pdf.set_fill_color(220, 220, 220)
+                        
+                        col_widths = [20, 100, 80, 50] 
+                        headers = ['STT', 'SỐ C/O BẢN GỐC', 'TÊN NGƯỜI NHẬN', 'NGÀY NHẬN']
+                        
+                        for i, h in enumerate(headers):
+                            pdf.cell(col_widths[i], 8, h, border=1, align="C", fill=True)
+                        pdf.ln(8)
+                        
+                        pdf.set_font("Roboto", style="", size=11)
+                        ngay_format = ngay_nhan.strftime('%d/%m/%Y')
+                        
+                        for r_idx in range(len(edited_df)):
+                            so_dong_con_lai = len(edited_df) - r_idx
+                            space_needed = (so_dong_con_lai * 8) + 55 
+                            
+                            if so_dong_con_lai <= 3 and (pdf.get_y() + space_needed) > 200:
+                                pdf.add_page()
+                                pdf.set_font("Roboto", style="B", size=11)
+                                for i, h in enumerate(headers):
+                                    pdf.cell(col_widths[i], 8, h, border=1, align="C", fill=True)
+                                pdf.ln(8)
+                                pdf.set_font("Roboto", style="", size=11)
+                            
+                            pdf.cell(col_widths[0], 8, str(edited_df.iloc[r_idx, 0]).replace('.0', ''), border=1, align="C")
+                            pdf.cell(col_widths[1], 8, str(edited_df.iloc[r_idx, 1]), border=1, align="C")
+                            pdf.cell(col_widths[2], 8, ten_dai_ly, border=1, align="C") 
+                            pdf.cell(col_widths[3], 8, ngay_format, border=1, align="C")
+                            pdf.ln(8)
+                            
+                        if imgs_bang_chung:
                             try:
-                                import pypdf
-                                from fpdf import FPDF
                                 from PIL import Image as PILImage
-                                import tempfile, os, base64
-                                
-                                temp_dir = tempfile.gettempdir()
-                                pdf_imgs = FPDF(orientation="L", unit="mm", format="A4")
-                                
-                                font_path = os.path.join(temp_dir, "Roboto-Bold.ttf")
-                                if os.path.exists(font_path):
-                                    pdf_imgs.add_font("Roboto", style="B", fname=font_path)
+                                if pdf.get_y() > 155:
+                                    pdf.add_page()
+                                else:
+                                    pdf.ln(4)
                                     
-                                pdf_imgs.add_page()
-                                try:
-                                    pdf_imgs.set_font("Roboto", style="B", size=10)
-                                except:
-                                    pdf_imgs.set_font("Arial", style="B", size=10)
-                                    
-                                pdf_imgs.cell(0, 6, "HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC (BỔ SUNG SAU):", new_x="LMARGIN", new_y="NEXT")
-                                pdf_imgs.ln(4)
+                                pdf.set_font("Roboto", style="B", size=10)
+                                pdf.cell(0, 6, "HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC THỰC TẾ KHI BÀN GIAO:", new_x="LMARGIN", new_y="NEXT")
                                 
-                                img_pairs = [imgs_bo_sung[i:i + 2] for i in range(0, len(imgs_bo_sung), 2)]
+                                img_pairs = [imgs_bang_chung[i:i + 2] for i in range(0, len(imgs_bang_chung), 2)]
                                 for row_idx, pair in enumerate(img_pairs):
                                     row_imgs_info = []
                                     for idx_in_pair, img_file in enumerate(pair):
+                                        global_idx = row_idx * 2 + idx_in_pair
                                         eb_img = PILImage.open(img_file).convert('RGB')
-                                        eb_path = os.path.join(temp_dir, f"temp_evidence_bs_{row_idx}_{idx_in_pair}.png")
+                                        eb_path = os.path.join(temp_dir, f"temp_evidence_co_{global_idx}.png")
                                         eb_img.save(eb_path, format="PNG")
                                         
                                         w_img_px, h_img_px = eb_img.size
@@ -788,52 +704,81 @@ with tab_ocr_co:
                                             render_w = (w_img_px / h_img_px) * render_h
                                             
                                         row_imgs_info.append({'path': eb_path, 'w': render_w, 'h': render_h})
-                                        
-                                    max_row_h = max(item['h'] for item in row_imgs_info)
                                     
-                                    if pdf_imgs.get_y() + max_row_h + 6 > 195:
-                                        pdf_imgs.add_page()
+                                    max_row_h = max(item['h'] for item in row_imgs_info)
+                                    if pdf.get_y() + max_row_h + 6 > 195:
+                                        pdf.add_page()
                                         
-                                    start_y = pdf_imgs.get_y() + 2
+                                    start_y = pdf.get_y() + 2
                                     x_positions = [15.0, 148.0]
                                     for col_idx, item in enumerate(row_imgs_info):
                                         x_pos = x_positions[col_idx]
-                                        pdf_imgs.image(item['path'], x=x_pos, y=start_y, w=item['w'], h=item['h'])
+                                        pdf.image(item['path'], x=x_pos, y=start_y, w=item['w'], h=item['h'])
                                         if os.path.exists(item['path']):
                                             os.remove(item['path'])
                                             
-                                    pdf_imgs.set_y(start_y + max_row_h + 5)
-                                
-                                # Đưa cụm ảnh vừa tạo vào RAM (Không cần lưu ra ổ cứng)
-                                imgs_pdf_buffer = io.BytesIO(pdf_imgs.output())
-                                
-                                # Dùng PyPDF ghép nối PDF gốc và trang ảnh mới
-                                merger = pypdf.PdfWriter()
-                                merger.append(file_pdf_da_ky)
-                                merger.append(imgs_pdf_buffer)
-                                
-                                final_buffer = io.BytesIO()
-                                merger.write(final_buffer)
-                                final_pdf_bytes = final_buffer.getvalue()
-                                
-                                st.success("✅ Đã ghép file thành công! Trình duyệt đang tự động tải xuống...")
-                                
-                                b64 = base64.b64encode(final_pdf_bytes).decode()
-                                filename = f"Ban_Giao_CO_Kem_Hinh_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
-                                href = f'''
-                                <a id="download_pdf_bs" href="data:application/pdf;base64,{b64}" download="{filename}" style="display:none;">Tải xuống</a>
-                                <script>
-                                    setTimeout(function() {{
-                                        document.getElementById("download_pdf_bs").click();
-                                    }}, 500);
-                                </script>
-                                '''
-                                st.components.v1.html(href, height=0)
-                                st.markdown(f'<a href="data:application/pdf;base64,{b64}" download="{filename}">🔗 Nhấp vào đây nếu trình duyệt không tự động tải xuống</a>', unsafe_allow_html=True)
-                            except ImportError:
-                                st.error("⚠️ Hệ thống thiếu thư viện gộp PDF. Hãy chạy lệnh: `pip install pypdf`")
-                            except Exception as e:
-                                st.error(f"Lỗi khi ghép file: {e}")
+                                    pdf.set_y(start_y + max_row_h + 5)
+                            except Exception as e_img:
+                                print(f"Lỗi chèn ảnh bằng chứng: {e_img}")
+
+                        if pdf.get_y() + 55 > 195:
+                            pdf.add_page()
+                        else:
+                            pdf.ln(4)
+
+                        pdf.set_font("Roboto", style="", size=9)
+                        pdf.multi_cell(0, 5, "XÁC NHẬN: Đại lý cam kết đã kiểm tra kỹ, đếm và nhận đủ các bản C/O GỐC (có mộc đỏ) ghi trong danh sách trên. Mọi sự thất lạc sau thời điểm ký nhận này hoàn toàn thuộc trách nhiệm của Đại lý.", align="L")
+                        pdf.ln(3)
+
+                        pdf.set_font("Roboto", style="B", size=12)
+                        pdf.cell(135, 8, "ĐẠI DIỆN BÀN GIAO", align="C")
+                        pdf.cell(135, 8, "ĐẠI LÝ KÍ NHẬN - ĐÃ NHẬN ĐỦ", align="C", new_x="LMARGIN", new_y="NEXT")
+                        
+                        img_temp_path = os.path.join(tempfile.gettempdir(), "temp_signature.png")
+                        img_rgb.save(img_temp_path, format="PNG")
+                        current_y = pdf.get_y() + 2
+                        pdf.image(img_temp_path, x=185, y=current_y, w=55) 
+                        
+                        if os.path.exists(img_temp_path):
+                            os.remove(img_temp_path)
+                            
+                        pdf.ln(20)
+                        pdf.set_font("Roboto", style="B", size=11)
+                        pdf.cell(135, 6, "", align="C")
+                        pdf.cell(135, 6, ten_dai_ly, align="C", new_x="LMARGIN", new_y="NEXT")
+                        
+                        pdf_bytes = pdf.output()
+                        
+                        ten_goc = st.session_state.get("ten_file_goc", "")
+                        if ten_goc:
+                            ten_file_xuat_ra = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.pdf"
+                        else:
+                            ten_file_xuat_ra = f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
+                        
+                        st.success("✅ Đã tạo file thành công! Trình duyệt đang tự động tải xuống...")
+                        
+                        b64_pdf = base64.b64encode(pdf_bytes).decode()
+                        href = f'''
+                        <a id="auto_download_pdf" href="data:application/pdf;base64,{b64_pdf}" download="{ten_file_xuat_ra}" style="display:none;">Tải xuống</a>
+                        <script>
+                            setTimeout(function() {{
+                                document.getElementById("auto_download_pdf").click();
+                            }}, 500);
+                        </script>
+                        '''
+                        st.components.v1.html(href, height=0)
+                        st.markdown(f'<a href="data:application/pdf;base64,{b64_pdf}" download="{ten_file_xuat_ra}">🔗 Nhấp vào đây nếu trình duyệt không tự động tải xuống</a>', unsafe_allow_html=True)
+            
+            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+            if st.button("🔄 Tải Lại Phiên Mới (Xóa Trắng)"):
+                st.session_state["ocr_data"] = []
+                st.session_state["ten_file_goc"] = ""
+                keys_to_reset = ["upload_pdfs_ocr", "upload_excel_to_sign", "co_data_editor", "canvas_ky_ten_2"]
+                for key in keys_to_reset:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.session_state["reset_uploader_key"] += 1
+                st.rerun()
 
         # THỰC THI KHỐI LỆNH MƯỢT MÀ
     vung_trich_xuat_va_ky_nhan()
