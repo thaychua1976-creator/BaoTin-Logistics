@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
-import datetime, time, io, re
+import datetime, time, re
+import tempfile, os, io
 import urllib.request
-import os
+
 from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 from co_manager import save_co_transaction, delete_co_transaction, get_don_gia_co_theo_khach_hang
 from dotenv import load_dotenv
@@ -444,7 +445,7 @@ with tab_ocr_co:
                             import pypdf
                             from fpdf import FPDF
                             from PIL import Image as PILImage
-                            import tempfile, os, io
+                           
                             
                             temp_dir = tempfile.gettempdir()
                             pdf_imgs = FPDF(orientation="L", unit="mm", format="A4")
@@ -512,7 +513,7 @@ with tab_ocr_co:
 
             # HIỂN THỊ NÚT TẢI SAU KHI XỬ LÝ
             if st.session_state.get("pdf_ready_opt3"):
-                import datetime
+               # import datetime
                 st.success("✅ Đã xử lý ghép ảnh thành công! Nút tải đã sẵn sàng.")
                 filename = f"Ban_Giao_CO_Kem_Hinh_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
                 st.download_button(
@@ -542,7 +543,7 @@ with tab_ocr_co:
             st.session_state["ocr_data"] = edited_df.to_dict('records')
             
             # [TẢI BẢN NHÁP EXCEL]
-            import io
+          #  import io
             excel_nhap_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_nhap_buffer, engine='xlsxwriter') as writer:
                 workbook = writer.book
@@ -552,7 +553,7 @@ with tab_ocr_co:
                 edited_df.to_excel(writer, sheet_name='So_Giao_Nhan', index=False, startrow=3)
                 worksheet.set_column('A:A', 10); worksheet.set_column('B:B', 35); worksheet.set_column('C:C', 30); worksheet.set_column('D:D', 25)
                 
-            import datetime
+          #  import datetime
             st.download_button(
                 label="📥 OPTION 1: Tải File Nháp (Chưa Ký) Để Lưu Trữ",
                 data=excel_nhap_buffer.getvalue(),
@@ -618,7 +619,7 @@ with tab_ocr_co:
                             st.stop()
                         
                                                
-                        import tempfile
+                        
 
                         opener = urllib.request.build_opener()
                         opener.addheaders = [('User-agent', 'Mozilla/5.0')]
