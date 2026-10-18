@@ -300,6 +300,7 @@ with tab_ocr_co:
             st.error("⚠️ Server thiếu thư viện. Chạy lệnh: `pip install streamlit-drawable-canvas openpyxl pdfplumber easyocr pypdf fpdf2`")
             st.stop()
 
+        # [CẬP NHẬT 1]: THÊM OPTION 3 LÊN TRÊN CÙNG
         che_do_tab3 = st.radio(
             "Lựa chọn luồng công việc:", 
             ["1️⃣ Quét PDF Mới & Chỉnh Sửa", "2️⃣ Tải File Excel Cũ Lên (Làm tiếp)", "3️⃣ Ghép Ảnh C/O Vào File Đã Ký"],
@@ -308,15 +309,10 @@ with tab_ocr_co:
         
         st.markdown("<hr style='margin: 10px 0px 5px 0px; border: 1px solid #e0e0e0;'>", unsafe_allow_html=True)
         
-        # KHỞI TẠO CÁC BIẾN SESSION STATE
         if "ocr_data" not in st.session_state:
             st.session_state["ocr_data"] = []
         if "reset_uploader_key" not in st.session_state:
             st.session_state["reset_uploader_key"] = 0
-        if "pdf_ready_opt2" not in st.session_state:
-            st.session_state["pdf_ready_opt2"] = None
-        if "pdf_ready_opt3" not in st.session_state:
-            st.session_state["pdf_ready_opt3"] = None
         
         # ---------------------------------------------------------
         # CHẾ ĐỘ 1: QUÉT PDF MỚI VÀ CHỈNH SỬA TRỰC TIẾP
@@ -434,18 +430,18 @@ with tab_ocr_co:
             file_pdf_da_ky = col_up1.file_uploader("1️⃣ Tải lên Phiếu bàn giao ĐÃ KÝ (PDF)", type=["pdf"], key="upload_pdf_da_ky")
             imgs_bo_sung = col_up2.file_uploader("2️⃣ Tải lên hình ảnh C/O gốc bổ sung", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="upload_img_bo_sung")
             
-            if st.button("⚙️ BẮT ĐẦU GHÉP ẢNH VÀO PDF", type="primary"):
+            if st.button("🚀 NỐI ẢNH VÀ TẢI FILE HOÀN CHỈNH", type="primary"):
                 if not file_pdf_da_ky:
                     st.error("⚠️ Vui lòng tải lên file PDF Phiếu bàn giao đã ký.")
                 elif not imgs_bo_sung:
                     st.error("⚠️ Vui lòng tải lên ít nhất 1 hình ảnh C/O.")
                 else:
-                    with st.spinner("⏳ Đang xử lý nối ảnh, vui lòng chờ trong giây lát..."):
+                    with st.spinner("⏳ Đang xử lý nối ảnh vào file PDF..."):
                         try:
                             import pypdf
                             from fpdf import FPDF
                             from PIL import Image as PILImage
-                           
+                            import tempfile, os, base64, io
                             
                             temp_dir = tempfile.gettempdir()
                             pdf_imgs = FPDF(orientation="L", unit="mm", format="A4")
@@ -502,27 +498,27 @@ with tab_ocr_co:
                             
                             final_buffer = io.BytesIO()
                             merger.write(final_buffer)
+                            final_pdf_bytes = final_buffer.getvalue()
                             
-                            st.session_state["pdf_ready_opt3"] = final_buffer.getvalue()
-                            st.rerun()
-
+                            import datetime
+                            st.success("✅ Đã ghép file thành công! Trình duyệt đang tự động tải xuống...")
+                            
+                            b64 = base64.b64encode(final_pdf_bytes).decode()
+                            filename = f"Ban_Giao_CO_Kem_Hinh_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
+                            href = f'''
+                            <a id="download_pdf_bs" href="data:application/pdf;base64,{b64}" download="{filename}" style="display:none;">Tải xuống</a>
+                            <script>
+                                setTimeout(function() {{
+                                    document.getElementById("download_pdf_bs").click();
+                                }}, 500);
+                            </script>
+                            '''
+                            st.components.v1.html(href, height=0)
+                            st.markdown(f'<a href="data:application/pdf;base64,{b64}" download="{filename}">🔗 Nhấp vào đây nếu trình duyệt không tự động tải xuống</a>', unsafe_allow_html=True)
                         except ImportError:
                             st.error("⚠️ Hệ thống thiếu thư viện gộp PDF. Hãy chạy lệnh: `pip install pypdf`")
                         except Exception as e:
                             st.error(f"Lỗi khi ghép file: {e}")
-
-            # HIỂN THỊ NÚT TẢI SAU KHI XỬ LÝ
-            if st.session_state.get("pdf_ready_opt3"):
-               # import datetime
-                st.success("✅ Đã xử lý ghép ảnh thành công! Nút tải đã sẵn sàng.")
-                filename = f"Ban_Giao_CO_Kem_Hinh_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
-                st.download_button(
-                    label="📥 BẤM VÀO ĐÂY ĐỂ TẢI FILE ĐÃ GHÉP ẢNH VỀ MÁY",
-                    data=st.session_state["pdf_ready_opt3"],
-                    file_name=filename,
-                    mime="application/pdf",
-                    type="primary"
-                )
 
         # ==========================================
         # HIỂN THỊ LƯỚI DATA VÀ KHUNG KÝ (CHỈ DÀNH CHO OPTION 1 & 2)
@@ -543,7 +539,7 @@ with tab_ocr_co:
             st.session_state["ocr_data"] = edited_df.to_dict('records')
             
             # [TẢI BẢN NHÁP EXCEL]
-          #  import io
+            import io
             excel_nhap_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_nhap_buffer, engine='xlsxwriter') as writer:
                 workbook = writer.book
@@ -553,7 +549,7 @@ with tab_ocr_co:
                 edited_df.to_excel(writer, sheet_name='So_Giao_Nhan', index=False, startrow=3)
                 worksheet.set_column('A:A', 10); worksheet.set_column('B:B', 35); worksheet.set_column('C:C', 30); worksheet.set_column('D:D', 25)
                 
-          #  import datetime
+            import datetime
             st.download_button(
                 label="📥 OPTION 1: Tải File Nháp (Chưa Ký) Để Lưu Trữ",
                 data=excel_nhap_buffer.getvalue(),
@@ -588,7 +584,7 @@ with tab_ocr_co:
             
             st.markdown("<div style='margin-top: -10px;'></div>", unsafe_allow_html=True)
             
-            if st.button("⚙️ XỬ LÝ VÀ CHÈN CHỮ KÝ VÀO PDF", type="primary"):
+            if st.button("🤝 KÝ VÀ TẢI FILE VỀ", type="primary"):
                 if not ten_dai_ly.strip():
                     st.error("Vui lòng nhập Tên người nhận của đại lý.")
                 elif canvas_result.image_data is None or canvas_result.image_data.sum() == 0:
@@ -618,8 +614,10 @@ with tab_ocr_co:
                             st.error("⚠️ Thiếu thư viện PDF. Vui lòng thêm 'fpdf2' vào file requirements.txt")
                             st.stop()
                         
-                                               
-                        
+                        import urllib.request
+                        import os
+                        import tempfile
+                        import base64
 
                         opener = urllib.request.build_opener()
                         opener.addheaders = [('User-agent', 'Mozilla/5.0')]
@@ -753,29 +751,31 @@ with tab_ocr_co:
                         
                         pdf_bytes = pdf.output()
                         
-                        st.session_state["pdf_ready_opt2"] = bytes(pdf_bytes)
-                        st.rerun()
-
-            # HIỂN THỊ NÚT TẢI SAU KHI XỬ LÝ XONG (OPTION 2)
-            if st.session_state.get("pdf_ready_opt2"):
-                
-                st.success("✅ Đã tạo file PDF thành công! Nút tải đã sẵn sàng bên dưới.")
-                ten_goc = st.session_state.get("ten_file_goc", "")
-                ten_file_xuat_ra = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.pdf" if ten_goc else f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
-                
-                st.download_button(
-                    label="📥 BẤM VÀO ĐÂY ĐỂ TẢI BẢN GIAO ĐÃ KÝ VỀ MÁY",
-                    data=st.session_state["pdf_ready_opt2"],
-                    file_name=ten_file_xuat_ra,
-                    mime="application/pdf",
-                    type="primary"
-                )
+                        ten_goc = st.session_state.get("ten_file_goc", "")
+                        if ten_goc:
+                            ten_file_xuat_ra = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.pdf"
+                        else:
+                            ten_file_xuat_ra = f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
+                        
+                        st.success("✅ Đã tạo file thành công! Trình duyệt đang tự động tải xuống...")
+                        
+                        b64_pdf = base64.b64encode(pdf_bytes).decode()
+                        href = f'''
+                        <a id="auto_download_pdf" href="data:application/pdf;base64,{b64_pdf}" download="{ten_file_xuat_ra}" style="display:none;">Tải xuống</a>
+                        <script>
+                            setTimeout(function() {{
+                                document.getElementById("auto_download_pdf").click();
+                            }}, 500);
+                        </script>
+                        '''
+                        st.components.v1.html(href, height=0)
+                        st.markdown(f'<a href="data:application/pdf;base64,{b64_pdf}" download="{ten_file_xuat_ra}">🔗 Nhấp vào đây nếu trình duyệt không tự động tải xuống</a>', unsafe_allow_html=True)
             
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
             if st.button("🔄 Tải Lại Phiên Mới (Xóa Trắng)"):
                 st.session_state["ocr_data"] = []
                 st.session_state["ten_file_goc"] = ""
-                keys_to_reset = ["upload_pdfs_ocr", "upload_excel_to_sign", "co_data_editor", "canvas_ky_ten_2", "pdf_ready_opt2", "pdf_ready_opt3"]
+                keys_to_reset = ["upload_pdfs_ocr", "upload_excel_to_sign", "co_data_editor", "canvas_ky_ten_2"]
                 for key in keys_to_reset:
                     if key in st.session_state:
                         del st.session_state[key]
