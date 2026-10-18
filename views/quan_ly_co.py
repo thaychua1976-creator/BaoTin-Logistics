@@ -427,8 +427,13 @@ with tab_ocr_co:
             st.info("💡 Mẹo: Ở công ty/cảng anh chỉ cần cho đại lý ký rồi tải file PDF chứa chữ ký về máy. Sau đó về nhà có mạng Wifi mạnh, anh tải ngược file PDF đó lên đây cùng với mớ hình ảnh C/O để hệ thống tự ghép ảnh vào đuôi PDF nhé!")
             
             col_up1, col_up2 = st.columns(2)
-            file_pdf_da_ky = col_up1.file_uploader("1️⃣ Tải lên Phiếu bàn giao ĐÃ KÝ (PDF)", type=["pdf"], key="upload_pdf_da_ky")
-            imgs_bo_sung = col_up2.file_uploader("2️⃣ Tải lên hình ảnh C/O gốc bổ sung", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="upload_img_bo_sung")
+            
+            # [CẬP NHẬT 1] - Đổi key tĩnh thành key động để dễ dàng xóa trắng
+            current_pdf_key = f"upload_pdf_da_ky_{st.session_state['reset_uploader_key']}"
+            current_img_key = f"upload_img_bo_sung_{st.session_state['reset_uploader_key']}"
+            
+            file_pdf_da_ky = col_up1.file_uploader("1️⃣ Tải lên Phiếu bàn giao ĐÃ KÝ (PDF)", type=["pdf"], key=current_pdf_key)
+            imgs_bo_sung = col_up2.file_uploader("2️⃣ Tải lên hình ảnh C/O gốc bổ sung", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key=current_img_key)
             
             if st.button("⚙️ BẮT ĐẦU GHÉP ẢNH VÀO PDF", type="primary"):
                 if not file_pdf_da_ky:
@@ -560,20 +565,32 @@ with tab_ocr_co:
                             st.error(f"Lỗi khi ghép file: {e}")
             # ================= ĐOẠN CẦN BỔ SUNG LẠI =================
             # HIỂN THỊ NÚT TẢI SAU KHI XỬ LÝ (DÀNH CHO OPTION 3)
+            # =========================================================
+            # [CẬP NHẬT 2] - HIỂN THỊ NÚT TẢI VÀ NÚT TIẾP TỤC SONG SONG
             if st.session_state.get("pdf_ready_opt3"):
                 import datetime
                 
                 st.success("✅ Đã xử lý phân tích và ghép ảnh thành công! Nút tải đã sẵn sàng.")
                 filename = f"Ban_Giao_CO_Kem_Hinh_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
                 
-                st.download_button(
-                    label="📥 BẤM VÀO ĐÂY ĐỂ TẢI FILE ĐÃ GHÉP ẢNH VỀ MÁY",
-                    data=st.session_state["pdf_ready_opt3"],
-                    file_name=filename,
-                    mime="application/pdf",
-                    type="primary"
-                )
-            # =========================================================    
+                col_btn1, col_btn2 = st.columns([1, 1])
+                
+                with col_btn1:
+                    st.download_button(
+                        label="📥 BẤM VÀO ĐÂY ĐỂ TẢI FILE",
+                        data=st.session_state["pdf_ready_opt3"],
+                        file_name=filename,
+                        mime="application/pdf",
+                        type="primary",
+                        use_container_width=True # Kéo dãn nút cho đẹp
+                    )
+                    
+                with col_btn2:
+                    if st.button("🔄 Tiếp Tục: Xóa form để ghép file khác", use_container_width=True):
+                        st.session_state["pdf_ready_opt3"] = None       # Ẩn nút tải
+                        st.session_state["reset_uploader_key"] += 1     # Ép Streamlit làm mới file_uploader
+                        st.rerun()                                      # Tải lại giao diện tức thì
+            # =========================================================
 
         # ==========================================
         # HIỂN THỊ LƯỚI DATA VÀ KHUNG KÝ (CHỈ DÀNH CHO OPTION 1 & 2)
