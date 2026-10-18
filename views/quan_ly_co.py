@@ -430,19 +430,45 @@ with tab_ocr_co:
             file_pdf_da_ky = col_up1.file_uploader("1️⃣ Tải lên Phiếu bàn giao ĐÃ KÝ (PDF)", type=["pdf"], key="upload_pdf_da_ky")
             imgs_bo_sung = col_up2.file_uploader("2️⃣ Tải lên hình ảnh C/O gốc bổ sung", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="upload_img_bo_sung")
             
-            if st.button("🚀 NỐI ẢNH VÀ TẢI FILE HOÀN CHỈNH", type="primary"):
+            if st.button("⚙️ BẮT ĐẦU GHÉP ẢNH VÀO PDF", type="primary"):
                 if not file_pdf_da_ky:
                     st.error("⚠️ Vui lòng tải lên file PDF Phiếu bàn giao đã ký.")
                 elif not imgs_bo_sung:
                     st.error("⚠️ Vui lòng tải lên ít nhất 1 hình ảnh C/O.")
                 else:
-                    with st.spinner("⏳ Đang xử lý nối ảnh vào file PDF..."):
+                    with st.spinner("⏳ Đang tính toán không gian và nối ảnh, vui lòng chờ trong giây lát..."):
                         try:
                             import pypdf
                             from fpdf import FPDF
                             from PIL import Image as PILImage
-                            import tempfile, os, base64, io
+                            import tempfile, os, io
+                            import pdfplumber
                             
+                            # --- 1. PHÂN TÍCH KHÔNG GIAN TRỐNG CỦA TRANG CUỐI BẰNG PDFPLUMBER ---
+                            file_bytes = file_pdf_da_ky.getvalue()
+                            lowest_y_mm = 0
+                            try:
+                                with pdfplumber.open(io.BytesIO(file_bytes)) as p_pdf:
+                                    last_page = p_pdf.pages[-1]
+                                    # Lấy tất cả đối tượng (chữ, hình ảnh chữ ký, đường kẻ) trên trang cuối
+                                    all_objs = last_page.chars + last_page.images + last_page.rects + last_page.curves
+                                    if all_objs:
+                                        # Tìm tọa độ điểm thấp nhất (tính từ trên xuống dưới theo point)
+                                        max_bottom_pt = max([obj['bottom'] for obj in all_objs if 'bottom' in obj], default=0)
+                                        lowest_y_mm = max_bottom_pt / 2.83465 # Đổi từ point (72dpi) sang mm
+                            except Exception as e:
+                                print("Lỗi quét không gian PDF:", e)
+
+                            # Chiều cao A4 ngang là 210mm. Một hàng ảnh cao tối đa 75mm + Tiêu đề = ~85mm
+                            # Nếu điểm kết thúc nhỏ hơn 125mm -> Đủ không gian để chèn nối tiếp cùng trang
+                            if 0 < lowest_y_mm < 125: 
+                                start_y = lowest_y_mm + 15
+                                is_overlay = True
+                            else:
+                                start_y = 10
+                                is_overlay = False
+
+                            # --- 2. TẠO LỚP ẢNH BỔ SUNG BẰNG FPDF ---
                             temp_dir = tempfile.gettempdir()
                             pdf_imgs = FPDF(orientation="L", unit="mm", format="A4")
                             
@@ -451,6 +477,9 @@ with tab_ocr_co:
                                 pdf_imgs.add_font("Roboto", style="B", fname=font_path)
                                 
                             pdf_imgs.add_page()
+                            # Bắt đầu vẽ từ tọa độ thông minh vừa tính toán
+                            pdf_imgs.set_y(start_y) 
+                            
                             try:
                                 pdf_imgs.set_font("Roboto", style="B", size=10)
                             except:
@@ -477,46 +506,56 @@ with tab_ocr_co:
                                     row_imgs_info.append({'path': eb_path, 'w': render_w, 'h': render_h})
                                     
                                 max_row_h = max(item['h'] for item in row_imgs_info)
+                                
+                                # Nếu bị tràn trang thì tự động tạo trang mới
                                 if pdf_imgs.get_y() + max_row_h + 6 > 195:
                                     pdf_imgs.add_page()
                                     
-                                start_y = pdf_imgs.get_y() + 2
+                                current_y = pdf_imgs.get_y() + 2
                                 x_positions = [15.0, 148.0]
                                 for col_idx, item in enumerate(row_imgs_info):
                                     x_pos = x_positions[col_idx]
-                                    pdf_imgs.image(item['path'], x=x_pos, y=start_y, w=item['w'], h=item['h'])
+                                    pdf_imgs.image(item['path'], x=x_pos, y=current_y, w=item['w'], h=item['h'])
                                     if os.path.exists(item['path']):
                                         os.remove(item['path'])
                                         
-                                pdf_imgs.set_y(start_y + max_row_h + 5)
+                                pdf_imgs.set_y(current_y + max_row_h + 5)
                             
                             imgs_pdf_buffer = io.BytesIO(pdf_imgs.output())
                             
+                            # --- 3. GHÉP/XẾP CHỒNG (OVERLAY) LỚP ẢNH VÀO PDF GỐC ---
                             merger = pypdf.PdfWriter()
-                            merger.append(file_pdf_da_ky)
-                            merger.append(imgs_pdf_buffer)
+                            original_pdf = pypdf.PdfReader(io.BytesIO(file_bytes))
+                            new_imgs_pdf = pypdf.PdfReader(imgs_pdf_buffer)
                             
+                            if is_overlay:
+                                # Chép nguyên xi các trang trước đó
+                                for i in range(len(original_pdf.pages) - 1):
+                                    merger.add_page(original_pdf.pages[i])
+                                    
+                                # Trộn lớp ảnh (trang 1) đè lên phần khoảng trắng của trang cuối file gốc
+                                last_page = original_pdf.pages[-1]
+                                last_page.merge_page(new_imgs_pdf.pages[0])
+                                merger.add_page(last_page)
+                                
+                                # Nếu ảnh vượt qua 1 trang, chép tiếp các trang sau của file ảnh như bình thường
+                                for i in range(1, len(new_imgs_pdf.pages)):
+                                    merger.add_page(new_imgs_pdf.pages[i])
+                            else:
+                                # Nếu không đủ không gian, chép nối đuôi bình thường
+                                for page in original_pdf.pages:
+                                    merger.add_page(page)
+                                for page in new_imgs_pdf.pages:
+                                    merger.add_page(page)
+                                    
                             final_buffer = io.BytesIO()
                             merger.write(final_buffer)
-                            final_pdf_bytes = final_buffer.getvalue()
                             
-                            import datetime
-                            st.success("✅ Đã ghép file thành công! Trình duyệt đang tự động tải xuống...")
-                            
-                            b64 = base64.b64encode(final_pdf_bytes).decode()
-                            filename = f"Ban_Giao_CO_Kem_Hinh_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
-                            href = f'''
-                            <a id="download_pdf_bs" href="data:application/pdf;base64,{b64}" download="{filename}" style="display:none;">Tải xuống</a>
-                            <script>
-                                setTimeout(function() {{
-                                    document.getElementById("download_pdf_bs").click();
-                                }}, 500);
-                            </script>
-                            '''
-                            st.components.v1.html(href, height=0)
-                            st.markdown(f'<a href="data:application/pdf;base64,{b64}" download="{filename}">🔗 Nhấp vào đây nếu trình duyệt không tự động tải xuống</a>', unsafe_allow_html=True)
+                            st.session_state["pdf_ready_opt3"] = final_buffer.getvalue()
+                            st.rerun()
+
                         except ImportError:
-                            st.error("⚠️ Hệ thống thiếu thư viện gộp PDF. Hãy chạy lệnh: `pip install pypdf`")
+                            st.error("⚠️ Hệ thống thiếu thư viện. Hãy đảm bảo đã cài đặt: `pip install pypdf pdfplumber`")
                         except Exception as e:
                             st.error(f"Lỗi khi ghép file: {e}")
 
