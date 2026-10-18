@@ -558,6 +558,22 @@ with tab_ocr_co:
                             st.error("⚠️ Hệ thống thiếu thư viện. Hãy đảm bảo đã cài đặt: `pip install pypdf pdfplumber`")
                         except Exception as e:
                             st.error(f"Lỗi khi ghép file: {e}")
+            # ================= ĐOẠN CẦN BỔ SUNG LẠI =================
+            # HIỂN THỊ NÚT TẢI SAU KHI XỬ LÝ (DÀNH CHO OPTION 3)
+            if st.session_state.get("pdf_ready_opt3"):
+                import datetime
+                
+                st.success("✅ Đã xử lý phân tích và ghép ảnh thành công! Nút tải đã sẵn sàng.")
+                filename = f"Ban_Giao_CO_Kem_Hinh_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
+                
+                st.download_button(
+                    label="📥 BẤM VÀO ĐÂY ĐỂ TẢI FILE ĐÃ GHÉP ẢNH VỀ MÁY",
+                    data=st.session_state["pdf_ready_opt3"],
+                    file_name=filename,
+                    mime="application/pdf",
+                    type="primary"
+                )
+            # =========================================================    
 
         # ==========================================
         # HIỂN THỊ LƯỚI DATA VÀ KHUNG KÝ (CHỈ DÀNH CHO OPTION 1 & 2)
