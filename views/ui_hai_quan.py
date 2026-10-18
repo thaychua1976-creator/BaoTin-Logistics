@@ -33,7 +33,7 @@ def clear_master_cache():
 # ---------------------------------
 
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>🏢 NHẬP SỐ LIỆU BÁO GIÁ THỦ TỤC HẢI QUAN </h3>", unsafe_allow_html=True)
-st.toast("✅ Đang lưu số liệu bạn vui lòng đợi nha:")
+st.toast("✅ Đang load số liệu bạn vui lòng đợi nha:")
 st.divider()
 
 st.title("🚢 Quản Lý Nghiệp Vụ Hải Quan")

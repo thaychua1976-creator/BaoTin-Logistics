@@ -34,7 +34,7 @@ def clear_master_cache():
 # ---------------------------------
 
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>💸 QUẢN LÝ BIỂU CƯỚC & PHỤ PHÍ KHÁCH HÀNG (RATE CARDS & SURCHARGES)</h3>", unsafe_allow_html=True)
-st.toast("✅ Đang lưu số liệu bạn vui lòng đợi nha:")
+st.toast("✅ Đang load số liệu bạn vui lòng đợi nha:")
 st.divider()
 
 # Khai báo giải nén chính xác 4 Tabs giao diện

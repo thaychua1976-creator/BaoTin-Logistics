@@ -640,4 +640,5 @@ def main_app():
     else:
         st.info("Chưa có dữ liệu Excel nào được xuất ra trên hệ thống.")
 if __name__ == "__main__":
+    st.toast("✅ Đang load số liệu bạn vui lòng đợi nha:")
     main_app()

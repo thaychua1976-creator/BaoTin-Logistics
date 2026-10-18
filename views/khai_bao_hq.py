@@ -31,7 +31,7 @@ def get_idx(lst, val, default=0):
     except: return default
 
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>🏢 PHÂN HỆ QUẢN LÝ TỜ KHAI HẢI QUAN & CONTAINER</h3>", unsafe_allow_html=True)
-st.toast("✅ Đang lưu số liệu bạn vui lòng đợi nha:")
+st.toast("✅ Đang load số liệu bạn vui lòng đợi nha:")
 st.divider()
 
 #tab_khai_hq, tab_danh_sach, tab_container = st.tabs([

@@ -275,6 +275,7 @@ if __name__ == "__main" or True:
     user_name = st.session_state.get('ho_ten', st.session_state.get('username', 'Admin_DieuHanh'))
     
     if db_instance:
+        st.toast("✅ Đang load số liệu bạn vui lòng đợi nha:")
         render_fuel_management_tab(db_instance, user_name)
     else:
         st.error("⚠️ Lỗi kết nối Cơ sở dữ liệu! Vui lòng đăng nhập lại từ trang chủ.")

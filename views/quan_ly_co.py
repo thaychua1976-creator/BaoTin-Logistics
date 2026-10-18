@@ -38,7 +38,7 @@ def get_idx(lst, val, default=0):
     except: return default
 
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>📄 PHÂN HỆ QUẢN LÝ CHỨNG TỪ C/O (XUẤT KHẨU)</h3>", unsafe_allow_html=True)
-st.toast("✅ Đang lưu số liệu bạn vui lòng đợi nha:")
+st.toast("✅ Đang load số liệu bạn vui lòng đợi nha:")
 st.divider()
 
 # Thêm tab OCR vào danh sách tabs
