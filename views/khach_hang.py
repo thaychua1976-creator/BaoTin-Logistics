@@ -265,6 +265,7 @@ def render_quan_ly_khach_hang():
                 st.warning("⚠️ Không có dữ liệu khách hàng để cập nhật.")
 
 if __name__ == "__main__":
+    st.toast("✅ Đang lưu số liệu bạn vui lòng đợi nha:")
     render_quan_ly_khach_hang()
 else:
     render_quan_ly_khach_hang()

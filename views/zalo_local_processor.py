@@ -444,6 +444,7 @@ def process_offline_zalo_files():
     
     return {"status": "warning", "message": "⚠️ Không tìm thấy dữ liệu hợp lệ.", "unprocessed": unprocessed_files}
 def main_app():
+    st.toast("✅ Đang lưu số liệu bạn vui lòng đợi nha:")
     # [CẬP NHẬT]: Tự động quét và xóa file của phiên làm việc trước khi mở App
     if "auto_cleaned_files" not in st.session_state:
         clear_files_only() # CHỈ XÓA FILE - GIỮ LẠI CÁC THƯ MỤC NHÓM

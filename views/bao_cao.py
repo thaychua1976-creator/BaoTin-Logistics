@@ -50,6 +50,7 @@ hide_enter_submit_css = """
 </style>
 """
 st.markdown(hide_enter_submit_css, unsafe_allow_html=True)
+st.toast("✅ Đang lưu số liệu bạn vui lòng đợi nha:")
 
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>📊 BÁO CÁO THỐNG KÊ & XUẤT DỮ LIỆU EXCEL</h3>", unsafe_allow_html=True)
 

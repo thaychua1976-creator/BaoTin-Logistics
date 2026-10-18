@@ -21,6 +21,7 @@ if not db:
     st.stop()
 
 st.markdown("### 💰 BẢNG CẤU HÌNH PHỤ CẤP SẢN LƯỢNG TÀI XẾ")
+st.toast("✅ Đang lưu số liệu bạn vui lòng đợi nha:")
 st.info("💡 Hướng dẫn: Click đúp vào ô số tiền để sửa trực tiếp (như dùng Excel). Nhấn nút LƯU ở dưới cùng để chốt dữ liệu.")
 
 # 🔄 NÚT LÀM MỚI DỮ LIỆU TỔNG THỂ (XÓA CACHE CHỦ ĐỘNG)

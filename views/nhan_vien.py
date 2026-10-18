@@ -36,6 +36,7 @@ hide_enter_submit_css = """
 </style>
 """
 st.markdown(hide_enter_submit_css, unsafe_allow_html=True)
+st.toast("✅ Đang lưu số liệu bạn vui lòng đợi nha:")
 current_user = st.session_state.get('username', 'Admin')
 
 
