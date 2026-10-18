@@ -95,6 +95,7 @@ hide_enter_submit_css = """
 </style>
 """
 st.markdown(hide_enter_submit_css, unsafe_allow_html=True)
+st.toast("✅ Đang load số liệu bạn vui lòng đợi nha:")
 
 STATUS_MAP = {"Tạo Mới": "Tao_Moi", "Đang Đi": "Dang_Di", "Quyết Toán": "Quyet_Toan", "Hoàn Thành": "Hoan_Thanh", "Hủy Chuyến": "Huy_Chuyen"}
 
