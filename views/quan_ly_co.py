@@ -586,7 +586,7 @@ with tab_ocr_co:
                     )
                     
                 with col_btn2:
-                    if st.button("🔄 Tiếp Tục: Xóa form để ghép file khác", use_container_width=True):
+                    if st.button("🔄 Tiếp Tục: Chèn ảnh vào file khác", use_container_width=True):
                         st.session_state["pdf_ready_opt3"] = None       # Ẩn nút tải
                         st.session_state["reset_uploader_key"] += 1     # Ép Streamlit làm mới file_uploader
                         st.rerun()                                      # Tải lại giao diện tức thì

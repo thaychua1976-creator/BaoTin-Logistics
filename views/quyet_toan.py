@@ -945,6 +945,7 @@ with tab1:
 
                     if submit_chot:
                         try:
+                            st.toast("✅ Đang lưu số liệu bạn vui lòng đợi nha:")
                             doanh_thu_tinh_phi = 0.0
                             if is_chuyen_phu: 
                                 doanh_thu_val = 0.0
