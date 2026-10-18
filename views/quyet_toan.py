@@ -57,7 +57,7 @@ STATUS_MAP = {
 }
 
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>📝 PHÂN HỆ QUYẾT TOÁN CHUYẾN ĐI</h3>", unsafe_allow_html=True)
-st.toast("✅ Đang lưu số liệu bạn vui lòng đợi nha:")
+st.toast("✅ Đang load số liệu bạn vui lòng đợi nha:")
 tab1, tab2, tab3,tab4 = st.tabs([
     "🏁 Quyết toán đơn chuyến",
     "🏁 Sửa chuyến đi đã quyết toán", 
