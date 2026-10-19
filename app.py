@@ -143,14 +143,12 @@ def show_page():
                     st.session_state.clear()
                     st.query_params.clear()
                     
-                    js_home = """
+                    # Dùng Javascript thuần túy để reload top window
+                    st.components.v1.html("""
                     <script>
-                        var baseUrl = window.location.protocol + "//" + window.location.host;
-                        window.top.history.replaceState(null, null, baseUrl + "/?page=home");
-                        window.top.location.href = baseUrl + "/?page=home";
+                        window.top.location.replace("/?page=home");
                     </script>
-                    """
-                    st.components.v1.html(js_home, height=0)
+                    """, height=0)
                     st.stop()
                     
             if submit or st.session_state.get('do_login', False):
@@ -193,6 +191,13 @@ def show_page():
     # 6. Khởi tạo danh sách các trang
     # [CHÌA KHÓA 1]: KHÔNG ĐẶT default=True ở đây. Để Streamlit tự do phân bổ
     page_login = st.Page(login_ui, title="Đăng nhập", icon="🔐", url_path="dang-nhap")
+    if st.session_state.get('logged_in') and 'username' not in st.session_state:
+        st.session_state.clear()
+        st.session_state['logged_in'] = False
+        st.query_params.clear()
+        st.warning("⚠️ Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại!")
+        time.sleep(1)
+        st.switch_page(page_login) # Chuyển hướng nội bộ an toàn của Streamlit
     
     page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", url_path="quan-ly-chuyen-di")
     page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝", url_path="quyet-toan-chuyen-di")
@@ -256,26 +261,15 @@ def show_page():
             ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
             st.markdown(f"<div style='text-align: center; color: #0b5394; font-weight: bold;'>👋 Xin chào, {ten_hien_thi}</div><br>", unsafe_allow_html=True)
             if st.button("🚪 Đăng xuất", type="primary", use_container_width=True):
-                # 1. Dọn dẹp dữ liệu nội bộ
-                st.session_state.clear()
-                st.query_params.clear()
+                # 1. Chuyển hướng người dùng về trang chủ TRƯỚC KHI dọn dẹp
+                # (Điều này giúp Streamlit cập nhật lại URL trên trình duyệt)
+                st.switch_page(page_login) 
                 
-                # 2. Xóa sạch mọi đường dẫn rác (như ~/+/quan-ly-co)
-                # và ép trình duyệt tải lại hoàn toàn ở trang gốc /?page=app
-                js_logout = """
-                <script>
-                    // Lấy gốc domain hiện tại (ví dụ: https://truckingbaotin.streamlit.app)
-                    var baseUrl = window.location.protocol + "//" + window.location.host;
-                    
-                    // Ghi đè trực tiếp lên lịch sử duyệt web để xóa sạch tàn dư
-                    window.top.history.replaceState(null, null, baseUrl + "/?page=app");
-                    
-                    // Ép F5 làm mới hoàn toàn
-                    window.top.location.href = baseUrl + "/?page=app";
-                </script>
-                """
-                st.components.v1.html(js_logout, height=0)
-                st.stop() # Dừng luồng Streamlit lập tức
+                # 2. Xóa các query parameter
+                st.query_params.clear() 
+
+                # 3. Dọn dẹp trạng thái
+                st.session_state.clear()
                 
     # Chạy trang hiện tại
     pg.run()
