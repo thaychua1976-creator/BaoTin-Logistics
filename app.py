@@ -141,9 +141,21 @@ def show_page():
             with col_btn2:
                 if st.button("⬅️ Trở về trang chủ", use_container_width=True):
                     st.session_state.clear()
-                    # Sử dụng API chuẩn của Streamlit để thiết lập URL query parameters
-                    st.query_params["page"] = "home"
-                    st.rerun()
+                    st.query_params.clear()
+                    
+                    st.markdown(
+                        """
+                        <script>
+                            window.parent.history.replaceState({}, document.title, "/?page=home");
+                            window.parent.location.reload(true);
+                        </script>
+                        <div style="text-align: center; color: green; font-weight: bold; margin-top: 10px;">
+                            Đang chuyển hướng về trang chủ...
+                        </div>
+                        """, 
+                        unsafe_allow_html=True
+                    )
+                    st.stop()
                     
             if submit or st.session_state.get('do_login', False):
                 st.session_state['do_login'] = False
@@ -255,9 +267,28 @@ def show_page():
             ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
             st.markdown(f"<div style='text-align: center; color: #0b5394; font-weight: bold;'>👋 Xin chào, {ten_hien_thi}</div><br>", unsafe_allow_html=True)
             if st.button("🚪 Đăng xuất", type="primary", use_container_width=True):
+                # 1. Xóa sạch Session State
                 st.session_state.clear()
-                # Xóa sạch các query parameters có thể gây nhiễu
-                st.query_params.clear() 
-                st.rerun()
+                
+                # 2. Xóa Query Parameters của Streamlit
+                st.query_params.clear()
+                
+                # 3. Tiêm Javascript trực tiếp để gỡ bỏ URL cũ và đẩy về trang chủ
+                # Khác với st.components.v1, cách này tiêm thẳng JS vào DOM chính
+                st.markdown(
+                    """
+                    <script>
+                        window.parent.history.replaceState({}, document.title, "/?page=app");
+                        window.parent.location.reload(true);
+                    </script>
+                    <div style="text-align: center; color: green; font-weight: bold; margin-top: 10px;">
+                        Đang đăng xuất và làm sạch đường dẫn...
+                    </div>
+                    """, 
+                    unsafe_allow_html=True
+                )
+                
+                # 4. Ngừng thực thi các lệnh phía dưới
+                st.stop()
                 
     pg.run()
