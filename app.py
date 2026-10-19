@@ -176,14 +176,17 @@ def show_page():
     # =========================================================================
     # [CẬP NHẬT MỚI]: BẢO VỆ PHIÊN LÀM VIỆC (SESSION TIMEOUT PROTECTION)
     # =========================================================================
-    # Nếu hệ thống ghi nhận 'logged_in' = True nhưng bị mất biến 'username' 
-    # (do hết timeout hoặc Streamlit tự reset worker), sẽ ép về màn hình Đăng nhập
+    # Bắt cờ timeout để xử lý chuyển hướng URL tức thì
+    is_timeout = False
     if st.session_state.get('logged_in') and 'username' not in st.session_state:
         st.session_state.clear()
         st.session_state['logged_in'] = False
-        st.warning("⚠️ Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại!")
-    # 6. Khởi tạo danh sách các trang
-    page_login = st.Page(login_ui, title="Đăng nhập", icon="🔐", url_path="dang-nhap")
+        is_timeout = True
+        
+    # 6. Khởi tạo danh sách các trang 
+    # [QUAN TRỌNG]: Thêm tham số default=True vào trang login để làm bến đỗ an toàn khi mất trang
+    page_login = st.Page(login_ui, title="Đăng nhập", icon="🔐", url_path="dang-nhap", default=True)
+    
     page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", url_path="quan-ly-chuyen-di")
     page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝", url_path="quyet-toan-chuyen-di")
     page_bao_cao   = st.Page("views/bao_cao.py", title="Thông kê lương & Công Nợ KH", icon="📊", url_path="thong-ke-luong")
@@ -207,11 +210,18 @@ def show_page():
     # =========================================================================
     # CẤU HÌNH ĐIỀU HƯỚNG BÊN TRÁI CHUYÊN NGHIỆP CỦA ERP
     # =========================================================================
-    if not st.session_state['logged_in']:
+    if not st.session_state.get('logged_in', False):
         def trang_cho():
             pass
         page_dummy = st.Page(trang_cho, title="Vui lòng đăng nhập", icon="👉", url_path="trang-cho")
         pg = st.navigation({"HỆ THỐNG ERP": [page_login, page_dummy]})
+        
+        # [FIX LỖI PAGE NOT FOUND]: Bẻ lái URL ngay lập tức nếu phát hiện timeout
+        if is_timeout:
+            st.warning("⚠️ Phiên làm việc đã hết hạn. Hệ thống đang đưa bạn về trang đăng nhập...")
+            time.sleep(0.5)
+            st.switch_page(page_login)
+            
     else:
         role = st.session_state.get('role', 'User')
         
