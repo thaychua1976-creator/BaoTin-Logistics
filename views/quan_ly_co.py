@@ -598,6 +598,23 @@ with tab_ocr_co:
         # ==========================================
         if st.session_state.get("ocr_data") and che_do_tab3 in ["1️⃣ Quét PDF Mới & Chỉnh Sửa", "2️⃣ Tải File Excel Cũ Lên (Làm tiếp)"]:
             
+            # --- [CẬP NHẬT MỚI]: BỘ CHỌN CÔNG TY ĐẠI LÝ ---
+            st.markdown("<h4 style='margin-bottom: 5px; margin-top: 0px;'>🏢 Thông tin Đại lý nhận bàn giao</h4>", unsafe_allow_html=True)
+            col_dl1, col_dl2 = st.columns([2, 3])
+            
+            cong_ty_dai_ly_chon = col_dl1.selectbox(
+                "Chọn Công ty Đại lý:",
+                options=["EXPEDITORS", "DSV AIR & SEA CO. LTD", "KUEHNE+NAGEL", "DHL", "KHÁC (Tự nhập tay)"]
+            )
+            
+            if cong_ty_dai_ly_chon == "KHÁC (Tự nhập tay)":
+                ten_cong_ty_dai_ly = col_dl2.text_input("Nhập tên công ty đại lý:", placeholder="VD: CÔNG TY LOGISTICS ABC...")
+            else:
+                ten_cong_ty_dai_ly = cong_ty_dai_ly_chon
+                
+            st.markdown("<hr style='margin: 10px 0px; border: 1px solid #ddd;'>", unsafe_allow_html=True)
+            # ----------------------------------------------
+            
             df_current = pd.DataFrame(st.session_state["ocr_data"])
             st.markdown(f"<h5 style='margin-bottom: 0px; margin-top: 0px;'>📝 Danh sách {len(df_current)} mã C/O (Nhấp đúp chuột để sửa)</h5>", unsafe_allow_html=True)
             
@@ -618,7 +635,7 @@ with tab_ocr_co:
                 workbook = writer.book
                 worksheet = writer.sheets.setdefault('So_Giao_Nhan', workbook.add_worksheet('So_Giao_Nhan'))
                 worksheet.write('A1', "CÔNG TY FORTUNATE HONGKONG VIỆT NAM")
-                worksheet.write('A2', "GỞI CÔNG TY: EXPEDITORS")
+                worksheet.write('A2', f"GỞI CÔNG TY: {ten_cong_ty_dai_ly}") # Gắn biến động vào file Excel
                 edited_df.to_excel(writer, sheet_name='So_Giao_Nhan', index=False, startrow=3)
                 worksheet.set_column('A:A', 10); worksheet.set_column('B:B', 35); worksheet.set_column('C:C', 30); worksheet.set_column('D:D', 25)
                 
@@ -639,7 +656,7 @@ with tab_ocr_co:
             imgs_bang_chung = st.file_uploader("Tải ảnh chụp tập C/O gốc (Thấy rõ mộc đỏ/số seri)", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="upload_evidence_co", label_visibility="collapsed")
 
             c_ten, c_ngay = st.columns(2)
-            ten_dai_ly = c_ten.text_input("Tên người nhận (Đại lý):", placeholder="Nhập họ tên...")
+            ten_dai_ly = c_ten.text_input("Tên nhân viên nhận (Đại lý):", placeholder="Nhập họ tên nhân viên nhận...")
             ngay_nhan = c_ngay.date_input("Ngày nhận:", value=datetime.date.today())
             
             st.markdown("<p style='margin-bottom: 0px; margin-top: 10px; font-weight: bold;'>Đại lý vẽ chữ ký xác nhận vào khung bên dưới:</p>", unsafe_allow_html=True)
@@ -658,15 +675,17 @@ with tab_ocr_co:
             st.markdown("<div style='margin-top: -10px;'></div>", unsafe_allow_html=True)
             
             if st.button("🤝 KÝ VÀ TẢI FILE VỀ", type="primary"):
-                if not ten_dai_ly.strip():
-                    st.error("Vui lòng nhập Tên người nhận của đại lý.")
+                if not ten_cong_ty_dai_ly.strip():
+                    st.error("Vui lòng nhập Tên công ty đại lý.")
+                elif not ten_dai_ly.strip():
+                    st.error("Vui lòng nhập Tên nhân viên nhận của đại lý.")
                 elif canvas_result.image_data is None or canvas_result.image_data.sum() == 0:
                     st.error("Đại lý chưa ký xác nhận vào khung.")
                 else:
                     with st.spinner("Đang chèn chữ ký và xử lý File..."):
                         try:
                             from audit_logger import ghi_log_he_thong
-                            chi_tiet_log = f"Bàn giao {len(edited_df)} C/O gốc cho đại lý: {ten_dai_ly}"
+                            chi_tiet_log = f"Bàn giao {len(edited_df)} C/O gốc cho đại lý: {ten_cong_ty_dai_ly} (Nhân viên: {ten_dai_ly})"
                             ghi_log_he_thong(db.pool, "QUAN_LY_CO", None, current_user, "BAN_GIAO_CO", chi_tiet_log)
                         except Exception as log_err:
                             pass
@@ -717,7 +736,7 @@ with tab_ocr_co:
                         
                         pdf.set_font("Roboto", style="B", size=18)
                         pdf.cell(0, 10, "CÔNG TY FORTUNATE HONGKONG VIỆT NAM", align="C", new_x="LMARGIN", new_y="NEXT")
-                        pdf.cell(0, 10, "GỞI CÔNG TY: EXPEDITORS", align="C", new_x="LMARGIN", new_y="NEXT")
+                        pdf.cell(0, 10, f"GỞI CÔNG TY: {ten_cong_ty_dai_ly}", align="C", new_x="LMARGIN", new_y="NEXT") # Gắn biến động vào PDF
                         pdf.ln(5)
                         
                         pdf.set_font("Roboto", style="B", size=11)
