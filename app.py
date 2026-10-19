@@ -140,9 +140,9 @@ def show_page():
             with col_btn1: submit = st.button("Đăng Nhập", type="primary", use_container_width=True)
             with col_btn2:
                 if st.button("⬅️ Trở về trang chủ", use_container_width=True):
-                    st.session_state['in_erp'] = False
-                    st.query_params["page"] = "home"
-                    st.rerun()
+                    st.session_state.clear()
+                    # F5 trình duyệt và trỏ thẳng về biến query page=home của giao diện website ngoài
+                    st.components.v1.html("<script>window.parent.location.href = '/?page=home';</script>", height=0)
                     
             if submit or st.session_state.get('do_login', False):
                 st.session_state['do_login'] = False
@@ -256,6 +256,7 @@ def show_page():
             st.markdown(f"<div style='text-align: center; color: #0b5394; font-weight: bold;'>👋 Xin chào, {ten_hien_thi}</div><br>", unsafe_allow_html=True)
             if st.button("🚪 Đăng xuất", type="primary", use_container_width=True):
                 st.session_state.clear()
-                st.rerun()
+                # Kéo trình duyệt ra khỏi mớ bòng bong URL ảo của st.navigation và làm sạch hoàn toàn
+                st.components.v1.html("<script>window.parent.location.href = '/';</script>", height=0)
                 
     pg.run()
