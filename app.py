@@ -140,22 +140,11 @@ def show_page():
             with col_btn1: submit = st.button("Đăng Nhập", type="primary", use_container_width=True)
             with col_btn2:
                 if st.button("⬅️ Trở về trang chủ", use_container_width=True):
+                    # Xóa phiên đăng nhập (nếu có rác)
                     st.session_state.clear()
-                    st.query_params.clear()
-                    
-                    st.markdown(
-                        """
-                        <script>
-                            window.parent.history.replaceState({}, document.title, "/?page=home");
-                            window.parent.location.reload(true);
-                        </script>
-                        <div style="text-align: center; color: green; font-weight: bold; margin-top: 10px;">
-                            Đang chuyển hướng về trang chủ...
-                        </div>
-                        """, 
-                        unsafe_allow_html=True
-                    )
-                    st.stop()
+                    # Trả query về cho hệ thống frontend gốc (file chính) xử lý
+                    st.query_params["page"] = "home"
+                    st.rerun()
                     
             if submit or st.session_state.get('do_login', False):
                 st.session_state['do_login'] = False
@@ -187,18 +176,16 @@ def show_page():
                         else: st.error("❌ Tài khoản không tồn tại!")
                     except Exception as e: st.error(f"❌ Lỗi xác thực: {e}")
     # =========================================================================
-    # [CẬP NHẬT MỚI]: BẢO VỆ PHIÊN LÀM VIỆC (SESSION TIMEOUT PROTECTION)
+    # [CẬP NHẬT MỚI]: BẢO VỆ PHIÊN LÀM VIỆC VÀ DỌN DẸP URL
     # =========================================================================
-    # Bắt cờ timeout để xử lý chuyển hướng URL tức thì
-    is_timeout = False
     if st.session_state.get('logged_in') and 'username' not in st.session_state:
         st.session_state.clear()
         st.session_state['logged_in'] = False
-        is_timeout = True
+        st.warning("⚠️ Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại!")
         
-    # 6. Khởi tạo danh sách các trang 
-    # [QUAN TRỌNG]: Thêm tham số default=True vào trang login để làm bến đỗ an toàn khi mất trang
-    page_login = st.Page(login_ui, title="Đăng nhập", icon="🔐", url_path="dang-nhap", default=True)
+    # 6. Khởi tạo danh sách các trang
+    # [CHÌA KHÓA 1]: KHÔNG ĐẶT default=True ở đây. Để Streamlit tự do phân bổ
+    page_login = st.Page(login_ui, title="Đăng nhập", icon="🔐", url_path="dang-nhap")
     
     page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", url_path="quan-ly-chuyen-di")
     page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝", url_path="quyet-toan-chuyen-di")
@@ -223,18 +210,13 @@ def show_page():
     # =========================================================================
     # CẤU HÌNH ĐIỀU HƯỚNG BÊN TRÁI CHUYÊN NGHIỆP CỦA ERP
     # =========================================================================
+    
+    # [CHÌA KHÓA 2]: TẠO CẤU TRÚC ĐIỀU HƯỚNG SẠCH
     if not st.session_state.get('logged_in', False):
-        def trang_cho():
-            pass
-        page_dummy = st.Page(trang_cho, title="Vui lòng đăng nhập", icon="👉", url_path="trang-cho")
-        # Khởi tạo navigation chỉ với trang đăng nhập
-        pg = st.navigation({"HỆ THỐNG ERP": [page_login, page_dummy]})
-        
-        if is_timeout:
-            st.warning("⚠️ Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.")
-            
+        # Khi chưa đăng nhập (hoặc vừa đăng xuất), ép hệ thống chỉ còn 1 trang duy nhất
+        # Streamlit sẽ BẮT BUỘC phải xả bỏ mọi URL path cũ và trỏ về trang này.
+        pg = st.navigation({"HỆ THỐNG ERP": [page_login]})
     else:
-        # (Giữ nguyên cấu trúc các trang như cũ)
         role = st.session_state.get('role', 'User')
         
         if role == 'Admin':
@@ -261,34 +243,16 @@ def show_page():
             
         pg = st.navigation(pages_structure, position="sidebar")
         
-       # Chèn Nút Đăng xuất vào cuối Sidebar
+        # Chèn Nút Đăng xuất vào cuối Sidebar
         with st.sidebar:
             st.divider()
             ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
             st.markdown(f"<div style='text-align: center; color: #0b5394; font-weight: bold;'>👋 Xin chào, {ten_hien_thi}</div><br>", unsafe_allow_html=True)
             if st.button("🚪 Đăng xuất", type="primary", use_container_width=True):
-                # 1. Xóa sạch Session State
+                # [CHÌA KHÓA 3]: DỌN DẸP SẠCH SẼ VÀ RERUN THUẦN TÚY
                 st.session_state.clear()
+                st.query_params.clear() # Quét sạch query param trên thanh URL (nếu có)
+                st.rerun() # Không dùng JS, không dùng Meta Refresh. Trả lại quyền cho Streamlit
                 
-                # 2. Xóa Query Parameters của Streamlit
-                st.query_params.clear()
-                
-                # 3. Tiêm Javascript trực tiếp để gỡ bỏ URL cũ và đẩy về trang chủ
-                # Khác với st.components.v1, cách này tiêm thẳng JS vào DOM chính
-                st.markdown(
-                    """
-                    <script>
-                        window.parent.history.replaceState({}, document.title, "/?page=app");
-                        window.parent.location.reload(true);
-                    </script>
-                    <div style="text-align: center; color: green; font-weight: bold; margin-top: 10px;">
-                        Đang đăng xuất và làm sạch đường dẫn...
-                    </div>
-                    """, 
-                    unsafe_allow_html=True
-                )
-                
-                # 4. Ngừng thực thi các lệnh phía dưới
-                st.stop()
-                
+    # Chạy trang hiện tại
     pg.run()
