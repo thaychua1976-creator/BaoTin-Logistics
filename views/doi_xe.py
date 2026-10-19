@@ -189,18 +189,8 @@ with tab3:
         if isinstance(df_xe_active, pd.DataFrame) and not df_xe_active.empty:
             dict_xe = {row['id']: f"{row['bien_so_xe']} - {row['nhan_hieu_xe'] or ''}" for _, row in df_xe_active.iterrows()}
             
-            # Xử lý cập nhật ID khi người dùng thay đổi lựa chọn (Reset Data)
-            xe_id_chon_truoc = st.session_state.get(f"sel_edit_xe_{ec}_last", None)
+            # Bỏ đi đoạn code xóa state rườm rà, chỉ giữ lại selectbox gọn nhẹ
             xe_id = st.selectbox("🔍 Chọn xe cần sửa:", options=list(dict_xe.keys()), index=None, format_func=lambda x: dict_xe[x], key=f"sel_edit_xe_{ec}")
-            
-            if xe_id != xe_id_chon_truoc:
-                st.session_state[f"sel_edit_xe_{ec}_last"] = xe_id
-                keys_to_clear = [f"upd_bs_{ec}", f"upd_nh_{ec}", f"upd_tt_{ec}", f"upd_dt_{ec}", f"upd_dmbd_{ec}", f"upd_gc_{ec}", f"upd_tx_{ec}"]
-                for k in keys_to_clear:
-                    if k in st.session_state:
-                        del st.session_state[k]
-                if xe_id is not None:
-                    st.rerun()
                     
             if xe_id:
                 xe_data = df_xe_active[df_xe_active['id'] == xe_id].iloc[0]
@@ -219,29 +209,31 @@ with tab3:
                     except: return default
 
                 c_ed1, c_ed2, c_ed3, c_ed4, c_ed5, c_ed6 = st.columns(6)
-                upd_bs = c_ed1.text_input("Biển số", value=str(get_safe_val('bien_so_xe', '')), key=f"upd_bs_{ec}")
-                upd_nh = c_ed2.text_input("Nhãn hiệu", value=str(get_safe_val('nhan_hieu_xe', '')), key=f"upd_nh_{ec}")
-                upd_tt = c_ed3.number_input("Tải trọng TK(Tấn)", value=get_safe_float('tai_trong_thiet_ke', 0.0), key=f"upd_tt_{ec}")
-                upd_dt = c_ed4.number_input("Dung tích (CBM)", value=get_safe_float('dung_tich_cbm', 0.0), key=f"upd_dt_{ec}")
-                upd_dinhmuc_bd = c_ed5.number_input("Định mức BD (Km)", value=get_safe_float('dinh_muc_bao_duong', 0.0), key=f"upd_dmbd_{ec}")
+                
+                # [CẬP NHẬT CỐT LÕI]: Gắn thêm _{xe_id} vào cuối tất cả các key để ép Form làm mới
+                upd_bs = c_ed1.text_input("Biển số", value=str(get_safe_val('bien_so_xe', '')), key=f"upd_bs_{ec}_{xe_id}")
+                upd_nh = c_ed2.text_input("Nhãn hiệu", value=str(get_safe_val('nhan_hieu_xe', '')), key=f"upd_nh_{ec}_{xe_id}")
+                upd_tt = c_ed3.number_input("Tải trọng TK(Tấn)", value=get_safe_float('tai_trong_thiet_ke', 0.0), key=f"upd_tt_{ec}_{xe_id}")
+                upd_dt = c_ed4.number_input("Dung tích (CBM)", value=get_safe_float('dung_tich_cbm', 0.0), key=f"upd_dt_{ec}_{xe_id}")
+                upd_dinhmuc_bd = c_ed5.number_input("Định mức BD (Km)", value=get_safe_float('dinh_muc_bao_duong', 0.0), key=f"upd_dmbd_{ec}_{xe_id}")
                 
                 ghi_chu_hien_thi = str(get_safe_val('ghi_chu', ''))
-                upd_ghi_chu = c_ed6.text_input("Ghi chú thêm", value=ghi_chu_hien_thi, key=f"upd_gc_{ec}")
+                upd_ghi_chu = c_ed6.text_input("Ghi chú thêm", value=ghi_chu_hien_thi, key=f"upd_gc_{ec}_{xe_id}")
                 gc_update = upd_ghi_chu.strip()
                 
                 danh_sach_tx = [None] + list(tx_dict.keys())
                 current_tx_id = xe_data['tai_xe_co_dinh_id']
                 default_index = danh_sach_tx.index(current_tx_id) if current_tx_id in danh_sach_tx else 0
                 
-                upd_tx = st.selectbox("Thay đổi Tài xế cố định", options=danh_sach_tx, index=default_index, format_func=lambda x: tx_dict[x] if x else "Chưa gán tài xế", key=f"upd_tx_{ec}")
+                upd_tx = st.selectbox("Thay đổi Tài xế cố định", options=danh_sach_tx, index=default_index, format_func=lambda x: tx_dict[x] if x else "Chưa gán tài xế", key=f"upd_tx_{ec}_{xe_id}")
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.markdown("##### ⚠️ Khu vực nguy hiểm")
-                xac_nhan_xoa = st.checkbox("Tôi chắc chắn muốn XÓA (Ngừng hoạt động) chiếc xe này.", key=f"del_chk_{ec}")
+                xac_nhan_xoa = st.checkbox("Tôi chắc chắn muốn XÓA (Ngừng hoạt động) chiếc xe này.", key=f"del_chk_{ec}_{xe_id}")
                 
                 btn1, btn2 = st.columns(2)
                 
-                if btn1.button("🔄 Lưu Cập Nhật", type="primary", use_container_width=True, key=f"btn_upd_{ec}"):
+                if btn1.button("🔄 Lưu Cập Nhật", type="primary", use_container_width=True, key=f"btn_upd_{ec}_{xe_id}"):
                     if not upd_bs:
                         st.error("Biển số xe không được để trống!")
                     else:
@@ -267,7 +259,7 @@ with tab3:
                         else:
                             st.error(f"❌ Lỗi cập nhật. Database trả về: {msg}")
                             
-                if btn2.button("🗑️ Xóa phương tiện xe", use_container_width=True, key=f"btn_del_{ec}"):
+                if btn2.button("🗑️ Xóa phương tiện xe", use_container_width=True, key=f"btn_del_{ec}_{xe_id}"):
                     if not xac_nhan_xoa:
                         st.error("✋ HỆ THỐNG ĐÃ CHẶN: Vui lòng tick vào ô xác nhận trước khi thực hiện xóa xe!")
                     else:
