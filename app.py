@@ -141,8 +141,13 @@ def show_page():
             with col_btn2:
                 if st.button("⬅️ Trở về trang chủ", use_container_width=True):
                     st.session_state.clear()
-                    # F5 trình duyệt và trỏ thẳng về biến query page=home của giao diện website ngoài
-                    st.components.v1.html("<script>window.parent.location.href = '/?page=home';</script>", height=0)
+                    st.query_params.clear()
+                    redirect_html = """
+                        <meta http-equiv="refresh" content="0; url=/?page=home" />
+                        <div style="text-align: center; color: green;">Đang chuyển hướng về trang chủ...</div>
+                    """
+                    st.markdown(redirect_html, unsafe_allow_html=True)
+                    st.stop()
                     
             if submit or st.session_state.get('do_login', False):
                 st.session_state['do_login'] = False
@@ -216,8 +221,9 @@ def show_page():
         page_dummy = st.Page(trang_cho, title="Vui lòng đăng nhập", icon="👉", url_path="trang-cho")
         pg = st.navigation({"HỆ THỐNG ERP": [page_login, page_dummy]})
         
-        # [FIX LỖI PAGE NOT FOUND]: Bẻ lái URL ngay lập tức nếu phát hiện timeout
+        # [FIX DÍNH URL KHI TIMEOUT]: Xóa sạch query parameters trước khi bẻ lái
         if is_timeout:
+            st.query_params.clear() # Quét sạch tàn dư URL của Streamlit
             st.warning("⚠️ Phiên làm việc đã hết hạn. Hệ thống đang đưa bạn về trang đăng nhập...")
             time.sleep(0.5)
             st.switch_page(page_login)
@@ -256,7 +262,13 @@ def show_page():
             st.markdown(f"<div style='text-align: center; color: #0b5394; font-weight: bold;'>👋 Xin chào, {ten_hien_thi}</div><br>", unsafe_allow_html=True)
             if st.button("🚪 Đăng xuất", type="primary", use_container_width=True):
                 st.session_state.clear()
-                # Kéo trình duyệt ra khỏi mớ bòng bong URL ảo của st.navigation và làm sạch hoàn toàn
-                st.components.v1.html("<script>window.parent.location.href = '/';</script>", height=0)
+                st.query_params.clear()
+                # [FIX DÍNH URL KHI ĐĂNG XUẤT]: Dùng Meta Refresh để ép trình duyệt tải lại toàn trang một cách thô bạo
+                redirect_html = """
+                    <meta http-equiv="refresh" content="0; url=/?page=app" />
+                    <div style="text-align: center; color: green;">Đang đăng xuất và làm mới đường dẫn...</div>
+                """
+                st.markdown(redirect_html, unsafe_allow_html=True)
+                st.stop() # Cắt đứt hoàn toàn luồng chạy của Streamlit tại đây
                 
     pg.run()
