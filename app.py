@@ -140,11 +140,18 @@ def show_page():
             with col_btn1: submit = st.button("Đăng Nhập", type="primary", use_container_width=True)
             with col_btn2:
                 if st.button("⬅️ Trở về trang chủ", use_container_width=True):
-                    # Xóa phiên đăng nhập (nếu có rác)
                     st.session_state.clear()
-                    # Trả query về cho hệ thống frontend gốc (file chính) xử lý
-                    st.query_params["page"] = "home"
-                    st.rerun()
+                    st.query_params.clear()
+                    
+                    js_home = """
+                    <script>
+                        var baseUrl = window.location.protocol + "//" + window.location.host;
+                        window.top.history.replaceState(null, null, baseUrl + "/?page=home");
+                        window.top.location.href = baseUrl + "/?page=home";
+                    </script>
+                    """
+                    st.components.v1.html(js_home, height=0)
+                    st.stop()
                     
             if submit or st.session_state.get('do_login', False):
                 st.session_state['do_login'] = False
@@ -249,10 +256,26 @@ def show_page():
             ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
             st.markdown(f"<div style='text-align: center; color: #0b5394; font-weight: bold;'>👋 Xin chào, {ten_hien_thi}</div><br>", unsafe_allow_html=True)
             if st.button("🚪 Đăng xuất", type="primary", use_container_width=True):
-                # [CHÌA KHÓA 3]: DỌN DẸP SẠCH SẼ VÀ RERUN THUẦN TÚY
+                # 1. Dọn dẹp dữ liệu nội bộ
                 st.session_state.clear()
-                st.query_params.clear() # Quét sạch query param trên thanh URL (nếu có)
-                st.rerun() # Không dùng JS, không dùng Meta Refresh. Trả lại quyền cho Streamlit
+                st.query_params.clear()
+                
+                # 2. Xóa sạch mọi đường dẫn rác (như ~/+/quan-ly-co)
+                # và ép trình duyệt tải lại hoàn toàn ở trang gốc /?page=app
+                js_logout = """
+                <script>
+                    // Lấy gốc domain hiện tại (ví dụ: https://truckingbaotin.streamlit.app)
+                    var baseUrl = window.location.protocol + "//" + window.location.host;
+                    
+                    // Ghi đè trực tiếp lên lịch sử duyệt web để xóa sạch tàn dư
+                    window.top.history.replaceState(null, null, baseUrl + "/?page=app");
+                    
+                    // Ép F5 làm mới hoàn toàn
+                    window.top.location.href = baseUrl + "/?page=app";
+                </script>
+                """
+                st.components.v1.html(js_logout, height=0)
+                st.stop() # Dừng luồng Streamlit lập tức
                 
     # Chạy trang hiện tại
     pg.run()
