@@ -141,13 +141,9 @@ def show_page():
             with col_btn2:
                 if st.button("⬅️ Trở về trang chủ", use_container_width=True):
                     st.session_state.clear()
-                    st.query_params.clear()
-                    redirect_html = """
-                        <meta http-equiv="refresh" content="0; url=/?page=home" />
-                        <div style="text-align: center; color: green;">Đang chuyển hướng về trang chủ...</div>
-                    """
-                    st.markdown(redirect_html, unsafe_allow_html=True)
-                    st.stop()
+                    # Sử dụng API chuẩn của Streamlit để thiết lập URL query parameters
+                    st.query_params["page"] = "home"
+                    st.rerun()
                     
             if submit or st.session_state.get('do_login', False):
                 st.session_state['do_login'] = False
@@ -219,16 +215,14 @@ def show_page():
         def trang_cho():
             pass
         page_dummy = st.Page(trang_cho, title="Vui lòng đăng nhập", icon="👉", url_path="trang-cho")
+        # Khởi tạo navigation chỉ với trang đăng nhập
         pg = st.navigation({"HỆ THỐNG ERP": [page_login, page_dummy]})
         
-        # [FIX DÍNH URL KHI TIMEOUT]: Xóa sạch query parameters trước khi bẻ lái
         if is_timeout:
-            st.query_params.clear() # Quét sạch tàn dư URL của Streamlit
-            st.warning("⚠️ Phiên làm việc đã hết hạn. Hệ thống đang đưa bạn về trang đăng nhập...")
-            time.sleep(0.5)
-            st.switch_page(page_login)
+            st.warning("⚠️ Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.")
             
     else:
+        # (Giữ nguyên cấu trúc các trang như cũ)
         role = st.session_state.get('role', 'User')
         
         if role == 'Admin':
@@ -255,20 +249,15 @@ def show_page():
             
         pg = st.navigation(pages_structure, position="sidebar")
         
-        # Chèn Nút Đăng xuất vào cuối Sidebar
+       # Chèn Nút Đăng xuất vào cuối Sidebar
         with st.sidebar:
             st.divider()
             ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
             st.markdown(f"<div style='text-align: center; color: #0b5394; font-weight: bold;'>👋 Xin chào, {ten_hien_thi}</div><br>", unsafe_allow_html=True)
             if st.button("🚪 Đăng xuất", type="primary", use_container_width=True):
                 st.session_state.clear()
-                st.query_params.clear()
-                # [FIX DÍNH URL KHI ĐĂNG XUẤT]: Dùng Meta Refresh để ép trình duyệt tải lại toàn trang một cách thô bạo
-                redirect_html = """
-                    <meta http-equiv="refresh" content="0; url=/?page=app" />
-                    <div style="text-align: center; color: green;">Đang đăng xuất và làm mới đường dẫn...</div>
-                """
-                st.markdown(redirect_html, unsafe_allow_html=True)
-                st.stop() # Cắt đứt hoàn toàn luồng chạy của Streamlit tại đây
+                # Xóa sạch các query parameters có thể gây nhiễu
+                st.query_params.clear() 
+                st.rerun()
                 
     pg.run()
