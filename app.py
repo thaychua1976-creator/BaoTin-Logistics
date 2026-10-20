@@ -142,8 +142,11 @@ def show_page():
                 if st.button("⬅️ Trở về trang chủ", use_container_width=True):
                     st.session_state.clear()
                     st.query_params.clear()
-                    st.query_params["page"] = "home"
-                    st.rerun()
+                    
+                    # Dùng JS tương tự để URL luôn sạch sẽ
+                    js_redirect = "window.parent.location.href = window.parent.location.origin + '/?page=home';"
+                    st.components.v1.html(f"<script>{js_redirect}</script>", height=0)
+                    st.stop()
                     
             if submit or st.session_state.get('do_login', False):
                 st.session_state['do_login'] = False
@@ -252,11 +255,19 @@ def show_page():
             ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
             st.markdown(f"<div style='text-align: center; color: #0b5394; font-weight: bold;'>👋 Xin chào, {ten_hien_thi}</div><br>", unsafe_allow_html=True)
             if st.button("🚪 Đăng xuất", type="primary", use_container_width=True):
-                # Khi xóa logged_in và rerun, mã nguồn sẽ chạy vào nhánh `if not logged_in:` ở trên.
-                # Khi đó toàn bộ danh sách trang nội bộ bốc hơi, URL tự động sạch sẽ.
-                st.session_state.clear()
-                st.query_params.clear()
-                st.rerun()
+                with st.spinner("Đang dọn dẹp hệ thống và đăng xuất..."):
+                    # 1. Xóa sạch mọi session và tham số
+                    st.session_state.clear()
+                    st.query_params.clear()
+                    
+                    # 2. Bắn JavaScript để force trình duyệt thoát hẳn khỏi URL /quan-ly-co, 
+                    # đưa về gốc domain + ?page=home (Tương thích với cơ chế header của bạn)
+                    js_redirect = "window.parent.location.href = window.parent.location.origin + '/?page=home';"
+                    st.components.v1.html(f"<script>{js_redirect}</script>", height=0)
+                    
+                    # 3. DỪNG thực thi ngay tại đây. TUYỆT ĐỐI không dùng st.rerun() 
+                    # Ngăn luồng chạy xuống lệnh pg.run() để tránh lỗi Page Not Found
+                    st.stop()
                 
     # Chạy trang hiện tại
     pg.run()
