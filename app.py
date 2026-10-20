@@ -143,7 +143,7 @@ def show_page():
                     st.session_state.clear()
                     st.query_params.clear()
                     
-                    # Dùng JS tương tự để URL luôn sạch sẽ
+                    # Dùng JS điều hướng dứt điểm về trang chủ marketing
                     js_redirect = "window.parent.location.href = window.parent.location.origin + '/?page=home';"
                     st.components.v1.html(f"<script>{js_redirect}</script>", height=0)
                     st.stop()
@@ -178,60 +178,55 @@ def show_page():
                         else: st.error("❌ Tài khoản không tồn tại!")
                     except Exception as e: st.error(f"❌ Lỗi xác thực: {e}")
     # =========================================================================
-    # [CẬP NHẬT MỚI NHẤT]: CẤU TRÚC ĐIỀU HƯỚNG SẠCH
+    # [CẬP NHẬT MỚI]: BẢO VỆ PHIÊN LÀM VIỆC (SESSION TIMEOUT PROTECTION)
     # =========================================================================
-    
-    # 1. BẮT LỖI TIMEOUT VÀ XỬ LÝ SỚM NHẤT
-    is_timeout = False
+    # Nếu hệ thống ghi nhận 'logged_in' = True nhưng bị mất biến 'username' 
+    # (do hết timeout hoặc Streamlit tự reset worker), sẽ ép về màn hình Đăng nhập
     if st.session_state.get('logged_in') and 'username' not in st.session_state:
         st.session_state.clear()
         st.session_state['logged_in'] = False
-        is_timeout = True
         st.warning("⚠️ Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại!")
+    # 6. Khởi tạo danh sách các trang
+    # NẾU CHƯA ĐĂNG NHẬP (HOẶC BỊ TIMEOUT/ĐĂNG XUẤT)
+    page_login = st.Page(login_ui, title="Đăng nhập", icon="🔐", default=True)
+    page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", url_path="quan-ly-chuyen-di")
+    page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝", url_path="quyet-toan-chuyen-di")
+    page_bao_cao   = st.Page("views/bao_cao.py", title="Thông kê lương & Công Nợ KH", icon="📊", url_path="thong-ke-luong")
+    page_nhan_vien = st.Page("views/nhan_vien.py", title="Quản lý Nhân viên", icon="🧑‍✈️", url_path="quan-ly-nhan-vien")
+    page_khach_hang = st.Page("views/khach_hang.py", title="Quản lý Khách hàng", icon="🧑", url_path="quan-ly-khach-hang")
+    page_to_khai_hq = st.Page("views/khai_bao_hq.py", title="Khai báo Hải Quan", icon="🧑‍✈️", url_path="khai-bao-hai-quan")
+    page_quan_ly_co = st.Page("views/quan_ly_co.py", title="Quản lý CO", icon="🧑‍✈️", url_path="quan-ly-co")
+    page_doi_xe    = st.Page("views/doi_xe.py", title="Quản lý Đội xe", icon="🚛", url_path="quan-ly-doi-xe")
+    page_phap_ly_xe    = st.Page("views/phap_ly_xe.py", title="Quản lý pháp lý xe", icon="🚛", url_path="quan-ly-phap-ly-xe")
+    page_tai_khoan = st.Page("views/tai_khoan.py", title="Quản lý tài khoản user", icon="👤", url_path="quan-ly-tai-khoan")
+    page_doi_mat_khau = st.Page("views/doi_mat_khau.py", title="Đổi mật khẩu", icon="🔑", url_path="doi-mat-khau") 
+    page_kinh_doanh_result= st.Page("views/kinh_doanh_result.py", title="Kết quả Kinh doanh", icon="📈", url_path="ket-qua-kinh-doanh")
+    page_app_tai_xe = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", url_path="cap-nhat-lich-trinh")
+    page_tool_zalo= st.Page("views/zalo_local_processor.py", title="Lấy thông tin book từ Zalo", icon="🚛", url_path="lay-thong-tin-tu-zalo")
+    page_tool_import_pricing= st.Page("views/import_pricing_ui_2.py", title="Thiết lập bảng giá", icon="📈", url_path="thiet-lap-bang-gia")
+    page_tool_import_phu_cap= st.Page("views/config_phu_cap.py", title="Thiết lập phụ cấp", icon="📈", url_path="thiet-lap-phu-cap")
+    page_tool_import_pricing_haiquan= st.Page("views/ui_hai_quan.py", title="Thiết lập giá HQ", icon="📈", url_path="thiet-lap-gia-hq")
+    page_tool_fuel_manager= st.Page("views/fuel_manager_ui.py", title="Quản lý nhiên liệu", icon="🚛", url_path="quan-ly-nhien-lieu")
+    page_tool_backup_database= st.Page("views/backup_database.py", title="Backup Database", icon="🚛", url_path="backup-database")
 
-    # 2. KHỞI TẠO CÁC TRANG CÓ ĐIỀU KIỆN
-    # CHÌA KHÓA: Chỉ khởi tạo các trang nội bộ KHI VÀ CHỈ KHI đã đăng nhập
-    if not st.session_state.get('logged_in', False):
-        # NẾU CHƯA ĐĂNG NHẬP (HOẶC BỊ TIMEOUT/ĐĂNG XUẤT)
-        page_login = st.Page(login_ui, title="Đăng nhập", icon="🔐", url_path="dang-nhap")
-        
-        # Chỉ có duy nhất 1 trang này tồn tại trong hệ thống Streamlit lúc này.
-        # Streamlit sẽ BẮT BUỘC phải xả mọi URL khác và dồn về đây.
-        pg = st.navigation({"HỆ THỐNG ERP": [page_login]})
-        
-        # Xóa sạch param nếu bị kẹt
-        if is_timeout:
-            st.query_params.clear()
-
+    # =========================================================================
+    # CẤU HÌNH ĐIỀU HƯỚNG BÊN TRÁI CHUYÊN NGHIỆP CỦA ERP
+    # =========================================================================
+    if not st.session_state['logged_in']:
+        def trang_cho():
+            pass
+        page_dummy = st.Page(trang_cho, title="Vui lòng đăng nhập", icon="👉", url_path="trang-cho")
+        pg = st.navigation({"HỆ THỐNG ERP": [page_login, page_dummy]})
     else:
-        # NẾU ĐÃ ĐĂNG NHẬP: Lúc này mới cho phép khai báo các trang nội bộ
-        page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", url_path="quan-ly-chuyen-di")
-        page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝", url_path="quyet-toan-chuyen-di")
-        page_bao_cao   = st.Page("views/bao_cao.py", title="Thông kê lương & Công Nợ KH", icon="📊", url_path="thong-ke-luong")
-        page_nhan_vien = st.Page("views/nhan_vien.py", title="Quản lý Nhân viên", icon="🧑‍✈️", url_path="quan-ly-nhan-vien")
-        page_khach_hang = st.Page("views/khach_hang.py", title="Quản lý Khách hàng", icon="🧑", url_path="quan-ly-khach-hang")
-        page_to_khai_hq = st.Page("views/khai_bao_hq.py", title="Khai báo Hải Quan", icon="🧑‍✈️", url_path="khai-bao-hai-quan")
-        page_quan_ly_co = st.Page("views/quan_ly_co.py", title="Quản lý CO", icon="🧑‍✈️", url_path="quan-ly-co")
-        page_doi_xe    = st.Page("views/doi_xe.py", title="Quản lý Đội xe", icon="🚛", url_path="quan-ly-doi-xe")
-        page_phap_ly_xe    = st.Page("views/phap_ly_xe.py", title="Quản lý pháp lý xe", icon="🚛", url_path="quan-ly-phap-ly-xe")
-        page_tai_khoan = st.Page("views/tai_khoan.py", title="Quản lý tài khoản user", icon="👤", url_path="quan-ly-tai-khoan")
-        page_doi_mat_khau = st.Page("views/doi_mat_khau.py", title="Đổi mật khẩu", icon="🔑", url_path="doi-mat-khau") 
-        page_kinh_doanh_result= st.Page("views/kinh_doanh_result.py", title="Kết quả Kinh doanh", icon="📈", url_path="ket-qua-kinh-doanh")
-        page_app_tai_xe = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", url_path="cap-nhat-lich-trinh")
-        page_tool_zalo= st.Page("views/zalo_local_processor.py", title="Lấy thông tin book từ Zalo", icon="🚛", url_path="lay-thong-tin-tu-zalo")
-        page_tool_import_pricing= st.Page("views/import_pricing_ui_2.py", title="Thiết lập bảng giá", icon="📈", url_path="thiet-lap-bang-gia")
-        page_tool_import_phu_cap= st.Page("views/config_phu_cap.py", title="Thiết lập phụ cấp", icon="📈", url_path="thiet-lap-phu-cap")
-        page_tool_import_pricing_haiquan= st.Page("views/ui_hai_quan.py", title="Thiết lập giá HQ", icon="📈", url_path="thiet-lap-gia-hq")
-        page_tool_fuel_manager= st.Page("views/fuel_manager_ui.py", title="Quản lý nhiên liệu", icon="🚛", url_path="quan-ly-nhien-lieu")
-        page_tool_backup_database= st.Page("views/backup_database.py", title="Backup Database", icon="🚛", url_path="backup-database")
-
         role = st.session_state.get('role', 'User')
         
-        # Cấu hình menu Sidebar như cũ
         if role == 'Admin':
             pages_structure = {
                 "📦 NGHIỆP VỤ HẰNG NGÀY": [page_chuyen_di, page_to_khai_hq, page_quan_ly_co, page_tool_fuel_manager, page_phap_ly_xe],
-                # ... (Giữ nguyên các menu khác)
+                "📦 TÀI CHÍNH KẾ TOÁN": [page_quyet_toan, page_bao_cao],
+                "📦 THIẾT LẬP CẤU HÌNH": [page_tool_import_pricing, page_tool_import_phu_cap, page_tool_import_pricing_haiquan, page_tool_zalo],
+                "📦 QUẢN LÝ DANH MỤC": [page_nhan_vien, page_doi_xe, page_khach_hang, page_tai_khoan],
+                "📦 BÁO CÁO QUẢN TRỊ": [page_kinh_doanh_result],
                 "📦 CÁ NHÂN": [page_doi_mat_khau, page_tool_backup_database]
             }
         elif role == 'Tai_Xe':
@@ -255,19 +250,15 @@ def show_page():
             ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
             st.markdown(f"<div style='text-align: center; color: #0b5394; font-weight: bold;'>👋 Xin chào, {ten_hien_thi}</div><br>", unsafe_allow_html=True)
             if st.button("🚪 Đăng xuất", type="primary", use_container_width=True):
-                with st.spinner("Đang dọn dẹp hệ thống và đăng xuất..."):
-                    # 1. Xóa sạch mọi session và tham số
-                    st.session_state.clear()
-                    st.query_params.clear()
-                    
-                    # 2. Bắn JavaScript để force trình duyệt thoát hẳn khỏi URL /quan-ly-co, 
-                    # đưa về gốc domain + ?page=home (Tương thích với cơ chế header của bạn)
-                    js_redirect = "window.parent.location.href = window.parent.location.origin + '/?page=home';"
-                    st.components.v1.html(f"<script>{js_redirect}</script>", height=0)
-                    
-                    # 3. DỪNG thực thi ngay tại đây. TUYỆT ĐỐI không dùng st.rerun() 
-                    # Ngăn luồng chạy xuống lệnh pg.run() để tránh lỗi Page Not Found
-                    st.stop()
+                # 1. Xóa sạch dữ liệu phiên làm việc
+                st.session_state.clear()
+                st.query_params.clear()
                 
-    # Chạy trang hiện tại
+                # 2. Dùng JavaScript ép trình duyệt tải lại hoàn toàn về trang gốc ERP
+                js_redirect = "window.parent.location.href = window.parent.location.origin + '/?page=app';"
+                st.components.v1.html(f"<script>{js_redirect}</script>", height=0)
+                
+                # 3. Dừng ngay luồng thực thi để Streamlit không kịp check URL cũ
+                st.stop()
+                
     pg.run()
