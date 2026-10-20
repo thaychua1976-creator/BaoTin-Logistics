@@ -125,11 +125,11 @@ def show_page():
             col_btn1, col_btn2 = st.columns(2)
             with col_btn1: submit = st.button("Đăng Nhập", type="primary", use_container_width=True)
             with col_btn2:
-                # Thẻ <a> giúp thoát hoàn toàn ra trang chủ tiếp thị mà không bị Javascript chặn
-                st.markdown(
-                    '''<a href="/?page=home" target="_top" style="display: block; text-align: center; background-color: white; color: #31333F; padding: 7px 15px; border-radius: 8px; text-decoration: none; border: 1px solid #d3d4d6; font-weight: 500; font-size: 15px;">⬅️ Trở về trang chủ</a>''', 
-                    unsafe_allow_html=True
-                )
+                if st.button("⬅️ Trở về trang chủ", use_container_width=True):
+                    st.session_state.clear()
+                    st.query_params.clear()
+                    st.query_params["page"] = "home"
+                    st.rerun()
                     
             if submit or st.session_state.get('do_login', False):
                 st.session_state['do_login'] = False
@@ -168,34 +168,17 @@ def show_page():
         st.warning("⚠️ Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại!")
 
     # =========================================================================
-    # 6. KHỞI TẠO DANH SÁCH TRANG & CẤU HÌNH ĐIỀU HƯỚNG
+    # 6. KHỞI TẠO ĐIỀU HƯỚNG THEO TRẠNG THÁI DỰA TRÊN ĐUÔI DEFAULT
     # =========================================================================
     if not st.session_state.get('logged_in', False):
-        # --- KHI CHƯA ĐĂNG NHẬP (Hoặc vừa Đăng xuất) ---
+        # NẾU CHƯA ĐĂNG NHẬP: Chỉ khai báo 1 trang duy nhất và đặt làm default=True.
+        # Khi đăng xuất khỏi /quan-ly-co, Streamlit tự động xả URL về mặc định mà KHÔNG bị kẹt.
         page_login = st.Page(login_ui, title="Đăng nhập", icon="🔐", default=True)
-        
-        # Tạo danh sách "trang bóng ma" (Phantom Pages) hứng tất cả URL bị kẹt
-        # Khi bạn ở /quan-ly-co rồi bấm đăng xuất, Streamlit vẫn nhận diện được route /quan-ly-co
-        # và hiển thị thẳng form Đăng nhập mà không báo lỗi 404.
-        ket_urls = [
-            "quan-ly-chuyen-di", "quyet-toan-chuyen-di", "thong-ke-luong", 
-            "quan-ly-nhan-vien", "quan-ly-khach-hang", "khai-bao-hai-quan", 
-            "quan-ly-co", "quan-ly-doi-xe", "quan-ly-phap-ly-xe", 
-            "quan-ly-tai-khoan", "doi-mat-khau", "ket-qua-kinh-doanh", 
-            "cap-nhat-lich-trinh", "lay-thong-tin-tu-zalo", "thiet-lap-bang-gia", 
-            "thiet-lap-phu-cap", "thiet-lap-gia-hq", "quan-ly-nhien-lieu", "backup-database"
-        ]
-        
-        pages_to_load = [page_login]
-        for url in ket_urls:
-            pages_to_load.append(st.Page(login_ui, title="Đăng nhập", url_path=url))
-            
-        # Ẩn thanh Sidebar khi chưa đăng nhập
-        pg = st.navigation(pages_to_load, position="hidden")
+        pg = st.navigation([page_login], position="hidden")
 
     else:
-        # --- KHI ĐÃ ĐĂNG NHẬP THÀNH CÔNG ---
-        page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", url_path="quan-ly-chuyen-di")
+        # NẾU ĐÃ ĐĂNG NHẬP: Khai báo các trang nghiệp vụ
+        page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", url_path="quan-ly-chuyen-di", default=True)
         page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝", url_path="quyet-toan-chuyen-di")
         page_bao_cao   = st.Page("views/bao_cao.py", title="Thông kê lương & Công Nợ KH", icon="📊", url_path="thong-ke-luong")
         page_nhan_vien = st.Page("views/nhan_vien.py", title="Quản lý Nhân viên", icon="🧑‍✈️", url_path="quan-ly-nhan-vien")
@@ -241,7 +224,7 @@ def show_page():
             
         pg = st.navigation(pages_structure, position="sidebar")
         
-        # Nút đăng xuất gọn nhẹ
+        # Nút Đăng xuất
         with st.sidebar:
             st.divider()
             ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
@@ -252,5 +235,5 @@ def show_page():
                 st.query_params.clear()
                 st.rerun()
 
-    # 7. CHẠY TRANG HIỆN TẠI
+    # 7. THỰC THI TRANG HIỆN TẠI
     pg.run()
