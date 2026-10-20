@@ -5,7 +5,7 @@ import bcrypt
 
 def show_page():
     # 1. Cấu hình giao diện chuẩn cho Desktop & Mobile
-    #st.set_page_config(layout="wide", initial_sidebar_state="auto")
+    # st.set_page_config(layout="wide", initial_sidebar_state="auto")
     
     with st.spinner("🔄 Đang tải chương trình và đồng bộ dữ liệu hệ thống, vui lòng đợi..."):
         time.sleep(0.3) 
@@ -21,10 +21,6 @@ def show_page():
                 max-width: 98% !important;
             }
             
-            /* ========================================================= */
-            /* 🚀 ÉP BUỘC HIỂN THỊ NÚT >>> BẰNG MỌI GIÁ                  */
-            /* ========================================================= */
-            /* Đảm bảo thanh Header chứa nút >>> không bị chìm xuống dưới */
             header[data-testid="stHeader"] {
                 display: flex !important;
                 visibility: visible !important;
@@ -32,28 +28,22 @@ def show_page():
                 z-index: 9999998 !important;
             }
             
-            /* Tóm cổ nút >>> trên mọi phiên bản Streamlit */
             [data-testid="collapsedControl"],
             [data-testid="stSidebarCollapsedControl"],
             button[kind="headerNoPadding"] {
                 display: flex !important;
                 visibility: visible !important;
                 opacity: 1 !important;
-                
-                /* ĐỔI MÀU NỀN TẠI ĐÂY: Xanh dương sáng (Light Blue) cho dễ nhìn */
                 background-color: #3b82f6 !important; 
                 border-radius: 8px !important;
                 padding: 6px !important;
                 margin-left: 10px !important;
                 margin-top: 10px !important;
                 box-shadow: 0px 4px 6px rgba(0,0,0,0.4) !important;
-                
                 position: fixed !important; 
                 z-index: 9999999 !important; 
             }
             
-            
-            /* Đổi màu biểu tượng >>> bên trong thành Trắng tinh */
             [data-testid="collapsedControl"] svg,
             [data-testid="stSidebarCollapsedControl"] svg,
             button[kind="headerNoPadding"] svg {
@@ -63,9 +53,6 @@ def show_page():
                 height: 1.6rem !important;
             }
 
-            /* ========================================================= */
-            /* CSS GỐC CỦA THANH SIDEBAR CHUYÊN NGHIỆP                   */
-            /* ========================================================= */
             section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
                 border-right: 2px solid #e2e8f0 !important;
@@ -95,7 +82,6 @@ def show_page():
                 background-color: #dbeafe !important; border-left: 3px solid #0b5394 !important;
             }
             
-            /* CHỈ ẨN ICON ĐANG CHẠY VÀ FOOTER (KHÔNG ẨN TOOLBAR TRÁNH LỖI MẠNG) */
             [data-testid="stStatusWidget"], footer {
                 display: none !important;
                 visibility: hidden !important;
@@ -139,15 +125,11 @@ def show_page():
             col_btn1, col_btn2 = st.columns(2)
             with col_btn1: submit = st.button("Đăng Nhập", type="primary", use_container_width=True)
             with col_btn2:
-                if st.button("⬅️ Trở về trang chủ", use_container_width=True):
-                    # Bật cờ yêu cầu điều hướng dứt điểm thay vì clear ngay
-                    st.session_state['do_redirect'] = True
-                    st.rerun()
-                    
-                    # Dùng JS điều hướng dứt điểm về trang chủ marketing
-                    js_redirect = "window.parent.location.href = window.parent.location.origin + '/?page=home';"
-                    st.components.v1.html(f"<script>{js_redirect}</script>", height=0)
-                    st.stop()
+                # Thẻ <a> giúp thoát hoàn toàn ra trang chủ tiếp thị mà không bị Javascript chặn
+                st.markdown(
+                    '''<a href="/?page=home" target="_top" style="display: block; text-align: center; background-color: white; color: #31333F; padding: 7px 15px; border-radius: 8px; text-decoration: none; border: 1px solid #d3d4d6; font-weight: 500; font-size: 15px;">⬅️ Trở về trang chủ</a>''', 
+                    unsafe_allow_html=True
+                )
                     
             if submit or st.session_state.get('do_login', False):
                 st.session_state['do_login'] = False
@@ -178,47 +160,61 @@ def show_page():
                             else: st.error("❌ Sai mật khẩu!")
                         else: st.error("❌ Tài khoản không tồn tại!")
                     except Exception as e: st.error(f"❌ Lỗi xác thực: {e}")
-    # =========================================================================
-    # [CẬP NHẬT MỚI]: BẢO VỆ PHIÊN LÀM VIỆC (SESSION TIMEOUT PROTECTION)
-    # =========================================================================
-    # Nếu hệ thống ghi nhận 'logged_in' = True nhưng bị mất biến 'username' 
-    # (do hết timeout hoặc Streamlit tự reset worker), sẽ ép về màn hình Đăng nhập
+
+    # 5. BẢO VỆ PHIÊN LÀM VIỆC (SESSION TIMEOUT PROTECTION)
     if st.session_state.get('logged_in') and 'username' not in st.session_state:
         st.session_state.clear()
         st.session_state['logged_in'] = False
         st.warning("⚠️ Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại!")
-    # 6. Khởi tạo danh sách các trang
-    # NẾU CHƯA ĐĂNG NHẬP (HOẶC BỊ TIMEOUT/ĐĂNG XUẤT)
-    page_login = st.Page(login_ui, title="Đăng nhập", icon="🔐", default=True)
-    page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", url_path="quan-ly-chuyen-di")
-    page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝", url_path="quyet-toan-chuyen-di")
-    page_bao_cao   = st.Page("views/bao_cao.py", title="Thông kê lương & Công Nợ KH", icon="📊", url_path="thong-ke-luong")
-    page_nhan_vien = st.Page("views/nhan_vien.py", title="Quản lý Nhân viên", icon="🧑‍✈️", url_path="quan-ly-nhan-vien")
-    page_khach_hang = st.Page("views/khach_hang.py", title="Quản lý Khách hàng", icon="🧑", url_path="quan-ly-khach-hang")
-    page_to_khai_hq = st.Page("views/khai_bao_hq.py", title="Khai báo Hải Quan", icon="🧑‍✈️", url_path="khai-bao-hai-quan")
-    page_quan_ly_co = st.Page("views/quan_ly_co.py", title="Quản lý CO", icon="🧑‍✈️", url_path="quan-ly-co")
-    page_doi_xe    = st.Page("views/doi_xe.py", title="Quản lý Đội xe", icon="🚛", url_path="quan-ly-doi-xe")
-    page_phap_ly_xe    = st.Page("views/phap_ly_xe.py", title="Quản lý pháp lý xe", icon="🚛", url_path="quan-ly-phap-ly-xe")
-    page_tai_khoan = st.Page("views/tai_khoan.py", title="Quản lý tài khoản user", icon="👤", url_path="quan-ly-tai-khoan")
-    page_doi_mat_khau = st.Page("views/doi_mat_khau.py", title="Đổi mật khẩu", icon="🔑", url_path="doi-mat-khau") 
-    page_kinh_doanh_result= st.Page("views/kinh_doanh_result.py", title="Kết quả Kinh doanh", icon="📈", url_path="ket-qua-kinh-doanh")
-    page_app_tai_xe = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", url_path="cap-nhat-lich-trinh")
-    page_tool_zalo= st.Page("views/zalo_local_processor.py", title="Lấy thông tin book từ Zalo", icon="🚛", url_path="lay-thong-tin-tu-zalo")
-    page_tool_import_pricing= st.Page("views/import_pricing_ui_2.py", title="Thiết lập bảng giá", icon="📈", url_path="thiet-lap-bang-gia")
-    page_tool_import_phu_cap= st.Page("views/config_phu_cap.py", title="Thiết lập phụ cấp", icon="📈", url_path="thiet-lap-phu-cap")
-    page_tool_import_pricing_haiquan= st.Page("views/ui_hai_quan.py", title="Thiết lập giá HQ", icon="📈", url_path="thiet-lap-gia-hq")
-    page_tool_fuel_manager= st.Page("views/fuel_manager_ui.py", title="Quản lý nhiên liệu", icon="🚛", url_path="quan-ly-nhien-lieu")
-    page_tool_backup_database= st.Page("views/backup_database.py", title="Backup Database", icon="🚛", url_path="backup-database")
 
     # =========================================================================
-    # CẤU HÌNH ĐIỀU HƯỚNG BÊN TRÁI CHUYÊN NGHIỆP CỦA ERP
+    # 6. KHỞI TẠO DANH SÁCH TRANG & CẤU HÌNH ĐIỀU HƯỚNG
     # =========================================================================
-    if not st.session_state['logged_in']:
-        def trang_cho():
-            pass
-        page_dummy = st.Page(trang_cho, title="Vui lòng đăng nhập", icon="👉", url_path="trang-cho")
-        pg = st.navigation({"HỆ THỐNG ERP": [page_login, page_dummy]})
+    if not st.session_state.get('logged_in', False):
+        # --- KHI CHƯA ĐĂNG NHẬP (Hoặc vừa Đăng xuất) ---
+        page_login = st.Page(login_ui, title="Đăng nhập", icon="🔐", default=True)
+        
+        # Tạo danh sách "trang bóng ma" (Phantom Pages) hứng tất cả URL bị kẹt
+        # Khi bạn ở /quan-ly-co rồi bấm đăng xuất, Streamlit vẫn nhận diện được route /quan-ly-co
+        # và hiển thị thẳng form Đăng nhập mà không báo lỗi 404.
+        ket_urls = [
+            "quan-ly-chuyen-di", "quyet-toan-chuyen-di", "thong-ke-luong", 
+            "quan-ly-nhan-vien", "quan-ly-khach-hang", "khai-bao-hai-quan", 
+            "quan-ly-co", "quan-ly-doi-xe", "quan-ly-phap-ly-xe", 
+            "quan-ly-tai-khoan", "doi-mat-khau", "ket-qua-kinh-doanh", 
+            "cap-nhat-lich-trinh", "lay-thong-tin-tu-zalo", "thiet-lap-bang-gia", 
+            "thiet-lap-phu-cap", "thiet-lap-gia-hq", "quan-ly-nhien-lieu", "backup-database"
+        ]
+        
+        pages_to_load = [page_login]
+        for url in ket_urls:
+            pages_to_load.append(st.Page(login_ui, title="Đăng nhập", url_path=url))
+            
+        # Ẩn thanh Sidebar khi chưa đăng nhập
+        pg = st.navigation(pages_to_load, position="hidden")
+
     else:
+        # --- KHI ĐÃ ĐĂNG NHẬP THÀNH CÔNG ---
+        page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", url_path="quan-ly-chuyen-di")
+        page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝", url_path="quyet-toan-chuyen-di")
+        page_bao_cao   = st.Page("views/bao_cao.py", title="Thông kê lương & Công Nợ KH", icon="📊", url_path="thong-ke-luong")
+        page_nhan_vien = st.Page("views/nhan_vien.py", title="Quản lý Nhân viên", icon="🧑‍✈️", url_path="quan-ly-nhan-vien")
+        page_khach_hang = st.Page("views/khach_hang.py", title="Quản lý Khách hàng", icon="🧑", url_path="quan-ly-khach-hang")
+        page_to_khai_hq = st.Page("views/khai_bao_hq.py", title="Khai báo Hải Quan", icon="🧑‍✈️", url_path="khai-bao-hai-quan")
+        page_quan_ly_co = st.Page("views/quan_ly_co.py", title="Quản lý CO", icon="🧑‍✈️", url_path="quan-ly-co")
+        page_doi_xe    = st.Page("views/doi_xe.py", title="Quản lý Đội xe", icon="🚛", url_path="quan-ly-doi-xe")
+        page_phap_ly_xe    = st.Page("views/phap_ly_xe.py", title="Quản lý pháp lý xe", icon="🚛", url_path="quan-ly-phap-ly-xe")
+        page_tai_khoan = st.Page("views/tai_khoan.py", title="Quản lý tài khoản user", icon="👤", url_path="quan-ly-tai-khoan")
+        page_doi_mat_khau = st.Page("views/doi_mat_khau.py", title="Đổi mật khẩu", icon="🔑", url_path="doi-mat-khau") 
+        page_kinh_doanh_result= st.Page("views/kinh_doanh_result.py", title="Kết quả Kinh doanh", icon="📈", url_path="ket-qua-kinh-doanh")
+        page_app_tai_xe = st.Page("views/app_tai_xe.py", title="Cập nhật Lịch trình", icon="📱", url_path="cap-nhat-lich-trinh")
+        page_tool_zalo= st.Page("views/zalo_local_processor.py", title="Lấy thông tin book từ Zalo", icon="🚛", url_path="lay-thong-tin-tu-zalo")
+        page_tool_import_pricing= st.Page("views/import_pricing_ui_2.py", title="Thiết lập bảng giá", icon="📈", url_path="thiet-lap-bang-gia")
+        page_tool_import_phu_cap= st.Page("views/config_phu_cap.py", title="Thiết lập phụ cấp", icon="📈", url_path="thiet-lap-phu-cap")
+        page_tool_import_pricing_haiquan= st.Page("views/ui_hai_quan.py", title="Thiết lập giá HQ", icon="📈", url_path="thiet-lap-gia-hq")
+        page_tool_fuel_manager= st.Page("views/fuel_manager_ui.py", title="Quản lý nhiên liệu", icon="🚛", url_path="quan-ly-nhien-lieu")
+        page_tool_backup_database= st.Page("views/backup_database.py", title="Backup Database", icon="🚛", url_path="backup-database")
+
         role = st.session_state.get('role', 'User')
         
         if role == 'Admin':
@@ -245,42 +241,16 @@ def show_page():
             
         pg = st.navigation(pages_structure, position="sidebar")
         
+        # Nút đăng xuất gọn nhẹ
         with st.sidebar:
             st.divider()
             ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
             st.markdown(f"<div style='text-align: center; color: #0b5394; font-weight: bold;'>👋 Xin chào, {ten_hien_thi}</div><br>", unsafe_allow_html=True)
             
             if st.button("🚪 Đăng xuất", type="primary", use_container_width=True):
-                # Bật cờ yêu cầu điều hướng và làm mới luồng chạy
-                st.session_state['do_redirect'] = True
+                st.session_state.clear()
+                st.query_params.clear()
                 st.rerun()
-        # =====================================================================
-    # XỬ LÝ CHUYỂN HƯỚNG DỨT ĐIỂM VÀ NÉ LỖI PAGE NOT FOUND
-    # =====================================================================
-    if st.session_state.get('do_redirect', False):
-        # 1. Xóa toàn bộ dữ liệu phiên an toàn
-        st.session_state.clear()
-        st.query_params.clear()
-        
-        # 2. Bắn JS ép trình duyệt tải lại từ gốc (dùng window.top để xuyên thủng iframe)
-        st.components.v1.html("<script>window.top.location.href = '/?page=home';</script>", height=0, width=0)
-        
-        # 3. GIAO DIỆN DỰ PHÒNG CHỐNG ĐÓNG BĂNG (BẮT BUỘC)
-        # Nếu trình duyệt bảo mật quá cao chặn JS, UI này sẽ xuất hiện để người dùng tự bấm thoát
-        st.markdown(
-            '''
-            <div style="text-align: center; margin-top: 60px;">
-                <h3 style="color: #0b5394;">Đang dọn dẹp hệ thống...</h3>
-                <p style="font-size: 16px;">Trình duyệt của bạn đang kiểm duyệt bảo mật. Vui lòng bấm nút bên dưới để hoàn tất thoát:</p>
-                <a href="/?page=home" target="_parent" style="display: inline-block; padding: 12px 24px; background-color: #d32f2f; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; margin-top: 15px; box-shadow: 0px 4px 6px rgba(0,0,0,0.2);">🚪 Xác nhận Thoát về Trang chủ</a>
-            </div>
-            ''', 
-            unsafe_allow_html=True
-        )
-        
-        # TUYỆT ĐỐI KHÔNG GỌI lệnh pg.run() ở nhánh này để Streamlit không quét URL báo lỗi 404
-        
-    else:
-        # Nếu không có cờ yêu cầu chuyển hướng, chạy ứng dụng bình thường
-        pg.run()        
-    #pg.run()
+
+    # 7. CHẠY TRANG HIỆN TẠI
+    pg.run()
