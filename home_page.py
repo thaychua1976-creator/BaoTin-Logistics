@@ -12,22 +12,26 @@ st.set_page_config(
 import header
 import footer
 
-# 2. CƠ CHẾ KHÓA TRẠNG THÁI (ISOLATE ERP ZONE)
+# 2. CƠ CHẾ PHÂN LUỒNG & BẢO VỆ ERP ZONE (ĐÃ SỬA LỖI NEW TAB)
 query_params = st.query_params
 url_page = query_params.get("page", None)
 
-# Nếu người dùng click vào "Điều hành nội bộ", bật chốt khóa ERP
-if url_page == "app":
-    st.session_state['in_erp'] = True
-# Nếu người dùng click vào các menu public, tắt chốt khóa ERP
-elif url_page in ["home", "dich_vu", "doi_xe", "tuyen_cambodia", "lien_he"]:
-    st.session_state['in_erp'] = False
+# Danh sách các trang Public Tiếp thị công khai
+PUBLIC_PAGES = ["home", "dich_vu", "doi_xe", "tuyen_cambodia", "lien_he"]
 
-# Quyết định file được load dựa trên chốt khóa
-if st.session_state.get('in_erp', False):
+# Phân luồng chính xác:
+if url_page in PUBLIC_PAGES:
+    # Nếu truy cập đích danh các trang public -> Tắt chốt ERP
+    st.session_state['in_erp'] = False
+    current_page = url_page
+elif url_page is not None or st.session_state.get('in_erp', False):
+    # Nếu URL chứa bất kỳ đường dẫn nội bộ nào (app, quan-ly-co,...) HOẶC đang trong phiên làm việc ERP -> Bật chốt ERP
+    st.session_state['in_erp'] = True
     current_page = "app"
 else:
-    current_page = url_page if url_page else "home"
+    # Mặc định truy cập địa chỉ gốc (https://truckingbaotin.streamlit.app/) -> Mở Trang chủ Public
+    st.session_state['in_erp'] = False
+    current_page = "home"
 
 # 3. ROUTING
 if current_page == "dich_vu":
@@ -44,7 +48,7 @@ elif current_page == "lien_he":
     lien_he.show_page()
 elif current_page == "app":
     import app
-    # Gọi ERP nội bộ (Đã được cách ly hoàn toàn)
+    # Chuyển giao toàn bộ cho ERP nội bộ (app.py tiếp quản st.navigation)
     app.show_page()
 else:
     # ==========================================
