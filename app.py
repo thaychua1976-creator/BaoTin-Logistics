@@ -4,9 +4,6 @@ import pandas as pd
 import bcrypt
 
 def show_page():
-    # Import hàm hiển thị Trang chủ Public để sử dụng làm trang mặc định khi chưa đăng nhập
-    from home_page import render_home_page
-
     with st.spinner("🔄 Đang tải chương trình và đồng bộ dữ liệu hệ thống, vui lòng đợi..."):
         time.sleep(0.3) 
 
@@ -135,7 +132,7 @@ def show_page():
         st.warning("⚠️ Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại!")
 
     # =========================================================================
-    # QUẢN LÝ CÁC DÒNG ROUTING CHUẨN ĐỘC LẬP
+    # CẤU HÌNH ROUTING ERP
     # =========================================================================
     erp_urls = [
         "app", "quan-ly-chuyen-di", "quyet-toan-chuyen-di", "thong-ke-luong", 
@@ -147,18 +144,18 @@ def show_page():
     ]
 
     if not st.session_state.get('logged_in', False):
-        # 1. Trang mặc định ở địa chỉ gốc '/' là Trang chủ Public (gọi từ home_page.py)
-        page_home = st.Page(render_home_page, title="Trang chủ", icon="🏠", default=True)
+        # 1. TRANG MẶC ĐỊNH KHI CHƯA ĐĂNG NHẬP LÀ FORM ĐĂNG NHẬP ERP (default=True)
+        page_login = st.Page(login_ui, title="Đăng nhập ERP", icon="🔐", default=True)
         
-        # 2. Tạo các trang ảo hứng URL ERP khi mở New Tab -> Trỏ trực tiếp vào Form Đăng nhập ERP
-        phantom_pages = [page_home]
+        # 2. Tạo các trang ảo hứng đường dẫn ERP khi mở New Tab
+        phantom_pages = [page_login]
         for url in erp_urls:
             phantom_pages.append(st.Page(login_ui, title="Đăng nhập ERP", url_path=url))
             
         pg = st.navigation(phantom_pages, position="hidden")
 
     else:
-        # KHI ĐÃ ĐĂNG NHẬP: Nạp các view nội bộ đầy đủ
+        # KHI ĐÃ ĐĂNG NHẬP: Nạp các trang nghiệp vụ đầy đủ
         page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", url_path="quan-ly-chuyen-di")
         page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝", url_path="quyet-toan-chuyen-di")
         page_bao_cao   = st.Page("views/bao_cao.py", title="Thông kê lương & Công Nợ KH", icon="📊", url_path="thong-ke-luong")

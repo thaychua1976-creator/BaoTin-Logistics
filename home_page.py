@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 
-# 1. ĐẶT CẤU HÌNH TRANG LÊN TRÊN CÙNG
+# 1. ĐẶT CẤU HÌNH TRANG LÊN TRÊN CÙNG (CHỈ ĐẶT 1 LẦN)
 st.set_page_config(
     page_title="BẢO TÍN LOGISTICS", 
     page_icon="🚚", 
@@ -12,7 +12,7 @@ st.set_page_config(
 import header
 import footer
 
-# 2. HÀM RENDER TRANG CHỦ PUBLIC (GIỮ NGUYÊN VẸN FULL GIAO DIỆN CỦA BẠN)
+# 2. HÀM RENDER TRANG CHỦ PUBLIC (ĐẦY ĐỦ 100% GIAO DIỆN)
 def render_home_page():
     header.render_header("home")
 
@@ -106,7 +106,7 @@ def render_home_page():
 
     footer.render_footer()
 
-# 3. ĐIỀU HƯỚNG TRANG PUBLIC
+# 3. PHÂN LUỒNG TRANG PUBLIC VÀ ERP
 url_page = st.query_params.get("page", None)
 
 if url_page == "dich_vu":
@@ -125,10 +125,10 @@ elif url_page == "lien_he":
     import lien_he
     lien_he.show_page()
 
-elif url_page == "home":
+elif url_page == "home" or (url_page is None and not st.session_state.get('in_erp', False)):
     render_home_page()
 
 else:
-    # TẤT CẢ TRƯỜNG HỢP CÒN LẠI (Trang gốc "/" hoặc các đường dẫn ERP như "/quan-ly-co", "/thiet-lap-bang-gia" ở New Tab)
+    # Trường hợp ?page=app HOẶC mở link New Tab /quan-ly-co... -> Gọi app.py
     import app
     app.show_page()
