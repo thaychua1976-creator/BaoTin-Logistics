@@ -235,7 +235,7 @@ def show_page():
             # - Muốn đăng xuất về Trang Chủ Tiếp Thị: href="/?page=home"
             st.markdown(
                 '''
-                <a href="/" target="_top" style="
+                <a href="/?page=app" target="_top" style="
                     display: block;
                     width: 100%;
                     background-color: #ff4b4b;
