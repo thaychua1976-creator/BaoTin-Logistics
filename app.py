@@ -224,16 +224,33 @@ def show_page():
             
         pg = st.navigation(pages_structure, position="sidebar")
         
-        # Nút Đăng xuất
+        # Nút Đăng xuất dùng thẻ HTML target="_top" để giải phóng thanh URL trên Streamlit Cloud
         with st.sidebar:
             st.divider()
             ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
             st.markdown(f"<div style='text-align: center; color: #0b5394; font-weight: bold;'>👋 Xin chào, {ten_hien_thi}</div><br>", unsafe_allow_html=True)
             
-            if st.button("🚪 Đăng xuất", type="primary", use_container_width=True):
-                st.session_state.clear()
-                st.query_params.clear()
-                st.rerun()
+            # Chọn 1 trong 2 đường dẫn bên dưới tùy mục đích của bạn:
+            # - Muốn đăng xuất về Trang Đăng Nhập ERP: href="/"
+            # - Muốn đăng xuất về Trang Chủ Tiếp Thị: href="/?page=home"
+            st.markdown(
+                '''
+                <a href="/" target="_top" style="
+                    display: block;
+                    width: 100%;
+                    background-color: #ff4b4b;
+                    color: white !important;
+                    text-align: center;
+                    padding: 10px 0px;
+                    border-radius: 8px;
+                    font-weight: bold;
+                    text-decoration: none !important;
+                    box-shadow: 0px 2px 4px rgba(0,0,0,0.2);
+                    font-family: sans-serif;
+                ">🚪 Đăng xuất</a>
+                ''',
+                unsafe_allow_html=True
+            )
 
     # 7. THỰC THI TRANG HIỆN TẠI
     pg.run()
