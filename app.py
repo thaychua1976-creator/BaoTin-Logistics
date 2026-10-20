@@ -4,13 +4,12 @@ import pandas as pd
 import bcrypt
 
 def show_page():
-    # 1. Cấu hình giao diện chuẩn cho Desktop & Mobile
-    # st.set_page_config(layout="wide", initial_sidebar_state="auto")
-    
+    # Import hàm hiển thị Trang chủ Public để sử dụng làm trang mặc định khi chưa đăng nhập
+    from home_page import render_home_page
+
     with st.spinner("🔄 Đang tải chương trình và đồng bộ dữ liệu hệ thống, vui lòng đợi..."):
         time.sleep(0.3) 
 
-    # 2. CSS ÉP BUỘC HIỂN THỊ NÚT >>> (MỞ SIDEBAR) TRÊN MOBILE
     st.markdown("""
         <style>
             .block-container {
@@ -20,14 +19,12 @@ def show_page():
                 padding-right: 1rem !important;
                 max-width: 98% !important;
             }
-            
             header[data-testid="stHeader"] {
                 display: flex !important;
                 visibility: visible !important;
                 background-color: transparent !important;
                 z-index: 9999998 !important;
             }
-            
             [data-testid="collapsedControl"],
             [data-testid="stSidebarCollapsedControl"],
             button[kind="headerNoPadding"] {
@@ -43,7 +40,6 @@ def show_page():
                 position: fixed !important; 
                 z-index: 9999999 !important; 
             }
-            
             [data-testid="collapsedControl"] svg,
             [data-testid="stSidebarCollapsedControl"] svg,
             button[kind="headerNoPadding"] svg {
@@ -52,36 +48,10 @@ def show_page():
                 width: 1.6rem !important;
                 height: 1.6rem !important;
             }
-
             section[data-testid="stSidebar"] {
                 background-color: #f8fafc !important; 
                 border-right: 2px solid #e2e8f0 !important;
             }
-            [data-testid="stSidebarNav"] ul li div {
-                font-size: 16px !important; font-weight: 800 !important;
-                color: #0b5394 !important; text-transform: uppercase !important;
-                padding-bottom: 5px; margin-top: 5px !important; 
-                border-bottom: 2px solid #cbd5e1;
-            }
-            [data-testid="stSidebarNav"] > ul > li:nth-child(2) > div {
-                color: #d32f2f !important; font-size: 17px !important;
-                border-bottom: 2px solid #d32f2f !important;
-                padding-bottom: 8px !important; margin-top: 15px !important; 
-            }
-            [data-testid="stSidebarNav"] ul li ul li {
-                margin-left: 25px !important; border-left: 2px solid #e2e8f0;
-            }
-            [data-testid="stSidebarNav"] ul li ul li a span {
-                font-size: 16px !important; font-weight: 600 !important;  
-                color: #334155 !important; text-transform: none !important; border-bottom: none !important;
-            }
-            [data-testid="stSidebarNav"] ul li ul li:hover {
-                background-color: #e2e8f0 !important; border-left: 3px solid #0b5394 !important; border-radius: 0 6px 6px 0;
-            }
-            [data-testid="stSidebarNav"] ul li ul li[data-checked="true"] {
-                background-color: #dbeafe !important; border-left: 3px solid #0b5394 !important;
-            }
-            
             [data-testid="stStatusWidget"], footer {
                 display: none !important;
                 visibility: hidden !important;
@@ -90,7 +60,7 @@ def show_page():
         </style>
     """, unsafe_allow_html=True)
 
-    # 3. Khởi tạo DB
+    # Khởi tạo DB
     if 'db_config' in sys.modules: del sys.modules['db_config']
     @st.cache_resource
     def init_database_pool():
@@ -99,7 +69,6 @@ def show_page():
     db = init_database_pool()
     st.session_state['db'] = db
 
-    # 4. Trạng thái Đăng nhập
     if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
     if 'hien_mat_khau' not in st.session_state: st.session_state['hien_mat_khau'] = False
 
@@ -125,11 +94,10 @@ def show_page():
             col_btn1, col_btn2 = st.columns(2)
             with col_btn1: submit = st.button("Đăng Nhập", type="primary", use_container_width=True)
             with col_btn2:
-                if st.button("⬅️ Trở về trang chủ", use_container_width=True):
-                    st.session_state.clear()
-                    st.query_params.clear()
-                    st.query_params["page"] = "home"
-                    st.rerun()
+                st.markdown(
+                    '''<a href="/?page=home" target="_top" style="display: block; text-align: center; background-color: white; color: #31333F; padding: 7px 15px; border-radius: 8px; text-decoration: none; border: 1px solid #d3d4d6; font-weight: 500; font-size: 15px;">⬅️ Trở về trang chủ</a>''', 
+                    unsafe_allow_html=True
+                )
                     
             if submit or st.session_state.get('do_login', False):
                 st.session_state['do_login'] = False
@@ -161,24 +129,37 @@ def show_page():
                         else: st.error("❌ Tài khoản không tồn tại!")
                     except Exception as e: st.error(f"❌ Lỗi xác thực: {e}")
 
-    # 5. BẢO VỆ PHIÊN LÀM VIỆC (SESSION TIMEOUT PROTECTION)
     if st.session_state.get('logged_in') and 'username' not in st.session_state:
         st.session_state.clear()
         st.session_state['logged_in'] = False
         st.warning("⚠️ Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại!")
 
     # =========================================================================
-    # 6. KHỞI TẠO ĐIỀU HƯỚNG THEO TRẠNG THÁI DỰA TRÊN ĐUÔI DEFAULT
+    # QUẢN LÝ CÁC DÒNG ROUTING CHUẨN ĐỘC LẬP
     # =========================================================================
+    erp_urls = [
+        "app", "quan-ly-chuyen-di", "quyet-toan-chuyen-di", "thong-ke-luong", 
+        "quan-ly-nhan-vien", "quan-ly-khach-hang", "khai-bao-hai-quan", 
+        "quan-ly-co", "quan-ly-doi-xe", "quan-ly-phap-ly-xe", 
+        "quan-ly-tai-khoan", "doi-mat-khau", "ket-qua-kinh-doanh", 
+        "cap-nhat-lich-trinh", "lay-thong-tin-tu-zalo", "thiet-lap-bang-gia", 
+        "thiet-lap-phu-cap", "thiet-lap-gia-hq", "quan-ly-nhien-lieu", "backup-database"
+    ]
+
     if not st.session_state.get('logged_in', False):
-        # NẾU CHƯA ĐĂNG NHẬP: Chỉ khai báo 1 trang duy nhất và đặt làm default=True.
-        # Khi đăng xuất khỏi /quan-ly-co, Streamlit tự động xả URL về mặc định mà KHÔNG bị kẹt.
-        page_login = st.Page(login_ui, title="Đăng nhập", icon="🔐", default=True)
-        pg = st.navigation([page_login], position="hidden")
+        # 1. Trang mặc định ở địa chỉ gốc '/' là Trang chủ Public (gọi từ home_page.py)
+        page_home = st.Page(render_home_page, title="Trang chủ", icon="🏠", default=True)
+        
+        # 2. Tạo các trang ảo hứng URL ERP khi mở New Tab -> Trỏ trực tiếp vào Form Đăng nhập ERP
+        phantom_pages = [page_home]
+        for url in erp_urls:
+            phantom_pages.append(st.Page(login_ui, title="Đăng nhập ERP", url_path=url))
+            
+        pg = st.navigation(phantom_pages, position="hidden")
 
     else:
-        # NẾU ĐÃ ĐĂNG NHẬP: Khai báo các trang nghiệp vụ
-        page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", url_path="quan-ly-chuyen-di", default=True)
+        # KHI ĐÃ ĐĂNG NHẬP: Nạp các view nội bộ đầy đủ
+        page_chuyen_di = st.Page("views/chuyen_di.py", title="Quản lý Chuyến đi", icon="📝", url_path="quan-ly-chuyen-di")
         page_quyet_toan = st.Page("views/quyet_toan.py", title="Quyết toán chuyến đi", icon="📝", url_path="quyet-toan-chuyen-di")
         page_bao_cao   = st.Page("views/bao_cao.py", title="Thông kê lương & Công Nợ KH", icon="📊", url_path="thong-ke-luong")
         page_nhan_vien = st.Page("views/nhan_vien.py", title="Quản lý Nhân viên", icon="🧑‍✈️", url_path="quan-ly-nhan-vien")
@@ -224,21 +205,17 @@ def show_page():
             
         pg = st.navigation(pages_structure, position="sidebar")
         
-        # Nút Đăng xuất dùng thẻ HTML target="_top" để giải phóng thanh URL trên Streamlit Cloud
         with st.sidebar:
             st.divider()
             ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
             st.markdown(f"<div style='text-align: center; color: #0b5394; font-weight: bold;'>👋 Xin chào, {ten_hien_thi}</div><br>", unsafe_allow_html=True)
             
-            # Chọn 1 trong 2 đường dẫn bên dưới tùy mục đích của bạn:
-            # - Muốn đăng xuất về Trang Đăng Nhập ERP: href="/"
-            # - Muốn đăng xuất về Trang Chủ Tiếp Thị: href="/?page=home"
             st.markdown(
                 '''
                 <a href="/?page=app" target="_top" style="
                     display: block;
                     width: 100%;
-                    background-color: #ff4b4b;
+                    background-color: #d32f2f;
                     color: white !important;
                     text-align: center;
                     padding: 10px 0px;
@@ -252,5 +229,4 @@ def show_page():
                 unsafe_allow_html=True
             )
 
-    # 7. THỰC THI TRANG HIỆN TẠI
     pg.run()
