@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 
-# 1. ĐẶT CẤU HÌNH TRANG LÊN TRÊN CÙNG (CHỈ ĐẶT 1 LẦN)
+# 1. ĐẶT CẤU HÌNH TRANG LÊN TRÊN CÙNG
 st.set_page_config(
     page_title="BẢO TÍN LOGISTICS", 
     page_icon="🚚", 
@@ -11,9 +11,45 @@ st.set_page_config(
 
 import header
 import footer
+import app
 
-# 2. HÀM RENDER TRANG CHỦ PUBLIC (ĐẦY ĐỦ 100% GIAO DIỆN)
-def render_home_page():
+# 2. XỬ LÝ QUERY PARAMS & PHÂN LUỒNG
+query_params = st.query_params
+url_page = query_params.get("page", None)
+
+# Danh sách các trang thuộc Website Tiếp thị công khai
+PUBLIC_PAGES = ["home", "dich_vu", "doi_xe", "tuyen_cambodia", "lien_he"]
+
+# Bật / Tắt chốt ERP dựa trên URL
+if url_page == "app":
+    st.session_state['in_erp'] = True
+elif url_page in PUBLIC_PAGES:
+    st.session_state['in_erp'] = False
+
+# 3. ROUTING
+# Nếu thuộc khu vực ERP (có chốt in_erp = True HOẶC url_page là trang ERP nội bộ)
+if st.session_state.get('in_erp', False) or (url_page and url_page not in PUBLIC_PAGES):
+    st.session_state['in_erp'] = True
+    app.show_page()
+
+elif url_page == "dich_vu":
+    import dich_vu
+    dich_vu.show_page()
+
+elif url_page == "doi_xe":
+    import doi_xe_homepage
+    doi_xe_homepage.show_page()
+
+elif url_page == "tuyen_cambodia":
+    import tuyen_cambodia
+    tuyen_cambodia.show_page()
+
+elif url_page == "lien_he":
+    import lien_he
+    lien_he.show_page()
+
+else:
+    # GIAO DIỆN TRANG CHỦ PUBLIC (Khi url_page == "home" hoặc mở trang gốc "/")
     header.render_header("home")
 
     st.markdown("""
@@ -105,30 +141,3 @@ def render_home_page():
         """, unsafe_allow_html=True)
 
     footer.render_footer()
-
-# 3. PHÂN LUỒNG TRANG PUBLIC VÀ ERP
-url_page = st.query_params.get("page", None)
-
-if url_page == "dich_vu":
-    import dich_vu
-    dich_vu.show_page()
-
-elif url_page == "doi_xe":
-    import doi_xe_homepage
-    doi_xe_homepage.show_page()
-
-elif url_page == "tuyen_cambodia":
-    import tuyen_cambodia
-    tuyen_cambodia.show_page()
-
-elif url_page == "lien_he":
-    import lien_he
-    lien_he.show_page()
-
-elif url_page == "home" or (url_page is None and not st.session_state.get('in_erp', False)):
-    render_home_page()
-
-else:
-    # Trường hợp ?page=app HOẶC mở link New Tab /quan-ly-co... -> Gọi app.py
-    import app
-    app.show_page()
