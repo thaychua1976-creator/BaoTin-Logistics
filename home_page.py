@@ -13,10 +13,43 @@ import header
 import footer
 import app
 
-# ==========================================
-# CÁC HÀM RENDER TRANG PUBLIC MARKETING
-# ==========================================
-def show_home():
+# 2. XỬ LÝ QUERY PARAMS & PHÂN LUỒNG
+query_params = st.query_params
+url_page = query_params.get("page", None)
+
+# Danh sách các trang thuộc Website Tiếp thị công khai
+PUBLIC_PAGES = ["home", "dich_vu", "doi_xe", "tuyen_cambodia", "lien_he"]
+
+# Bật / Tắt chốt ERP dựa trên URL
+if url_page == "app":
+    st.session_state['in_erp'] = True
+elif url_page in PUBLIC_PAGES:
+    st.session_state['in_erp'] = False
+
+# 3. ROUTING
+# Nếu thuộc khu vực ERP (có chốt in_erp = True HOẶC url_page là trang ERP nội bộ)
+if st.session_state.get('in_erp', False) or (url_page and url_page not in PUBLIC_PAGES):
+    st.session_state['in_erp'] = True
+    app.show_page()
+
+elif url_page == "dich_vu":
+    import dich_vu
+    dich_vu.show_page()
+
+elif url_page == "doi_xe":
+    import doi_xe_homepage
+    doi_xe_homepage.show_page()
+
+elif url_page == "tuyen_cambodia":
+    import tuyen_cambodia
+    tuyen_cambodia.show_page()
+
+elif url_page == "lien_he":
+    import lien_he
+    lien_he.show_page()
+
+else:
+    # GIAO DIỆN TRANG CHỦ PUBLIC (Khi url_page == "home" hoặc mở trang gốc "/")
     header.render_header("home")
 
     st.markdown("""
@@ -108,63 +141,3 @@ def show_home():
         """, unsafe_allow_html=True)
 
     footer.render_footer()
-
-def show_dich_vu():
-    import dich_vu
-    dich_vu.show_page()
-
-def show_doi_xe():
-    import doi_xe_homepage
-    doi_xe_homepage.show_page()
-
-def show_tuyen_cambodia():
-    import tuyen_cambodia
-    tuyen_cambodia.show_page()
-
-def show_lien_he():
-    import lien_he
-    lien_he.show_page()
-
-
-# ==========================================
-# CẤU HÌNH BỘ ĐỊNH TUYẾN (ROUTER)
-# ==========================================
-url_page = st.query_params.get("page", None)
-
-# 1. Khai báo các trang Public
-page_home = st.Page(show_home, title="Trang chủ", icon="🏠", default=True)
-page_dich_vu = st.Page(show_dich_vu, title="Dịch vụ", icon="🚛", url_path="dich_vu")
-page_doi_xe = st.Page(show_doi_xe, title="Đội xe", icon="🚚", url_path="doi_xe")
-page_tuyen_cam = st.Page(show_tuyen_cambodia, title="Tuyến Cambodia", icon="🇰🇭", url_path="tuyen_cambodia")
-page_lien_he = st.Page(show_lien_he, title="Liên hệ", icon="📞", url_path="lien_he")
-
-# 2. Phân luồng thực thi chuẩn xác
-if st.session_state.get('logged_in', False):
-    # NẾU ĐÃ ĐĂNG NHẬP ERP: Nhường toàn bộ quyền điều hướng cho app.py
-    app.show_page()
-else:
-    # NẾU CHƯA ĐĂNG NHẬP:
-    # Khai báo tất cả đường dẫn ERP nội bộ để hứng các liên kết mở ở New Tab
-    erp_urls = [
-        "app", "quan-ly-chuyen-di", "quyet-toan-chuyen-di", "thong-ke-luong", 
-        "quan-ly-nhan-vien", "quan-ly-khach-hang", "khai-bao-hai-quan", 
-        "quan-ly-co", "quan-ly-doi-xe", "quan-ly-phap-ly-xe", 
-        "quan-ly-tai-khoan", "doi-mat-khau", "ket-qua-kinh-doanh", 
-        "cap-nhat-lich-trinh", "lay-thong-tin-tu-zalo", "thiet-lap-bang-gia", 
-        "thiet-lap-phu-cap", "thiet-lap-gia-hq", "quan-ly-nhien-lieu", "backup-database"
-    ]
-    
-    if url_page in ["dich_vu", "doi_xe", "tuyen_cambodia", "lien_he"]:
-        # Người dùng click cụ thể các menu Public trên Navbar
-        pg = st.navigation([page_home, page_dich_vu, page_doi_xe, page_tuyen_cam, page_lien_he], position="hidden")
-        pg.run()
-    else:
-        # Tải bộ định tuyến tổng thể (Public + ERP URLs):
-        # - Mở trang gốc "/" -> Tự động chạy page_home (Trang chủ Marketing)
-        # - Mở link New Tab "/quan-ly-co" -> Tự động chạy app.show_page (Form Đăng nhập ERP trực tiếp tại URL đó)
-        erp_phantom_pages = []
-        for u in erp_urls:
-            erp_phantom_pages.append(st.Page(app.show_page, title="Điều hành nội bộ", url_path=u))
-            
-        pg = st.navigation([page_home, page_dich_vu, page_doi_xe, page_tuyen_cam, page_lien_he] + erp_phantom_pages, position="hidden")
-        pg.run()
