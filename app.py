@@ -140,8 +140,9 @@ def show_page():
             with col_btn1: submit = st.button("Đăng Nhập", type="primary", use_container_width=True)
             with col_btn2:
                 if st.button("⬅️ Trở về trang chủ", use_container_width=True):
-                    st.session_state.clear()
-                    st.query_params.clear()
+                    # Bật cờ yêu cầu điều hướng dứt điểm thay vì clear ngay
+                    st.session_state['do_redirect'] = True
+                    st.rerun()
                     
                     # Dùng JS điều hướng dứt điểm về trang chủ marketing
                     js_redirect = "window.parent.location.href = window.parent.location.origin + '/?page=home';"
@@ -244,21 +245,42 @@ def show_page():
             
         pg = st.navigation(pages_structure, position="sidebar")
         
-        # Chèn Nút Đăng xuất vào cuối Sidebar
         with st.sidebar:
             st.divider()
             ten_hien_thi = st.session_state.get('ho_ten', st.session_state.get('username', 'Người dùng'))
             st.markdown(f"<div style='text-align: center; color: #0b5394; font-weight: bold;'>👋 Xin chào, {ten_hien_thi}</div><br>", unsafe_allow_html=True)
+            
             if st.button("🚪 Đăng xuất", type="primary", use_container_width=True):
-                # 1. Xóa sạch dữ liệu phiên làm việc
-                st.session_state.clear()
-                st.query_params.clear()
-                
-                # 2. Dùng JavaScript ép trình duyệt tải lại hoàn toàn về trang gốc ERP
-                js_redirect = "window.parent.location.href = window.parent.location.origin + '/?page=app';"
-                st.components.v1.html(f"<script>{js_redirect}</script>", height=0)
-                
-                # 3. Dừng ngay luồng thực thi để Streamlit không kịp check URL cũ
-                st.stop()
-                
-    pg.run()
+                # Bật cờ yêu cầu điều hướng và làm mới luồng chạy
+                st.session_state['do_redirect'] = True
+                st.rerun()
+        # =====================================================================
+    # XỬ LÝ CHUYỂN HƯỚNG DỨT ĐIỂM VÀ NÉ LỖI PAGE NOT FOUND
+    # =====================================================================
+    if st.session_state.get('do_redirect', False):
+        # 1. Xóa toàn bộ dữ liệu phiên an toàn
+        st.session_state.clear()
+        st.query_params.clear()
+        
+        # 2. Bắn JS ép trình duyệt tải lại từ gốc (dùng window.top để xuyên thủng iframe)
+        st.components.v1.html("<script>window.top.location.href = '/?page=home';</script>", height=0, width=0)
+        
+        # 3. GIAO DIỆN DỰ PHÒNG CHỐNG ĐÓNG BĂNG (BẮT BUỘC)
+        # Nếu trình duyệt bảo mật quá cao chặn JS, UI này sẽ xuất hiện để người dùng tự bấm thoát
+        st.markdown(
+            '''
+            <div style="text-align: center; margin-top: 60px;">
+                <h3 style="color: #0b5394;">Đang dọn dẹp hệ thống...</h3>
+                <p style="font-size: 16px;">Trình duyệt của bạn đang kiểm duyệt bảo mật. Vui lòng bấm nút bên dưới để hoàn tất thoát:</p>
+                <a href="/?page=home" target="_parent" style="display: inline-block; padding: 12px 24px; background-color: #d32f2f; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; margin-top: 15px; box-shadow: 0px 4px 6px rgba(0,0,0,0.2);">🚪 Xác nhận Thoát về Trang chủ</a>
+            </div>
+            ''', 
+            unsafe_allow_html=True
+        )
+        
+        # TUYỆT ĐỐI KHÔNG GỌI lệnh pg.run() ở nhánh này để Streamlit không quét URL báo lỗi 404
+        
+    else:
+        # Nếu không có cờ yêu cầu chuyển hướng, chạy ứng dụng bình thường
+        pg.run()        
+    #pg.run()
