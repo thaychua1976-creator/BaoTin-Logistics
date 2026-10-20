@@ -13,43 +13,10 @@ import header
 import footer
 import app
 
-# 2. XỬ LÝ QUERY PARAMS & PHÂN LUỒNG
-query_params = st.query_params
-url_page = query_params.get("page", None)
-
-# Danh sách các trang thuộc Website Tiếp thị công khai
-PUBLIC_PAGES = ["home", "dich_vu", "doi_xe", "tuyen_cambodia", "lien_he"]
-
-# Bật / Tắt chốt ERP dựa trên URL
-if url_page == "app":
-    st.session_state['in_erp'] = True
-elif url_page in PUBLIC_PAGES:
-    st.session_state['in_erp'] = False
-
-# 3. ROUTING
-# Nếu thuộc khu vực ERP (có chốt in_erp = True HOẶC url_page là trang ERP nội bộ)
-if st.session_state.get('in_erp', False) or (url_page and url_page not in PUBLIC_PAGES):
-    st.session_state['in_erp'] = True
-    app.show_page()
-
-elif url_page == "dich_vu":
-    import dich_vu
-    dich_vu.show_page()
-
-elif url_page == "doi_xe":
-    import doi_xe_homepage
-    doi_xe_homepage.show_page()
-
-elif url_page == "tuyen_cambodia":
-    import tuyen_cambodia
-    tuyen_cambodia.show_page()
-
-elif url_page == "lien_he":
-    import lien_he
-    lien_he.show_page()
-
-else:
-    # GIAO DIỆN TRANG CHỦ PUBLIC (Khi url_page == "home" hoặc mở trang gốc "/")
+# ==========================================
+# CÁC HÀM RENDER TRANG PUBLIC MARKETING
+# ==========================================
+def show_home():
     header.render_header("home")
 
     st.markdown("""
@@ -141,3 +108,59 @@ else:
         """, unsafe_allow_html=True)
 
     footer.render_footer()
+
+def show_dich_vu():
+    import dich_vu
+    dich_vu.show_page()
+
+def show_doi_xe():
+    import doi_xe_homepage
+    doi_xe_homepage.show_page()
+
+def show_tuyen_cambodia():
+    import tuyen_cambodia
+    tuyen_cambodia.show_page()
+
+def show_lien_he():
+    import lien_he
+    lien_he.show_page()
+
+
+# ==========================================
+# CẤU HÌNH ROUTING HYBRID (QUERY PARAM + PATHNAME)
+# ==========================================
+query_page = st.query_params.get("page", None)
+
+if query_page == "dich_vu":
+    show_dich_vu()
+elif query_page == "doi_xe":
+    show_doi_xe()
+elif query_page == "tuyen_cambodia":
+    show_tuyen_cambodia()
+elif query_page == "lien_he":
+    show_lien_he()
+elif query_page == "home":
+    show_home()
+elif query_page == "app" or st.session_state.get('logged_in', False):
+    app.show_page()
+else:
+    # Trường hợp query_page == None:
+    # - Mở địa chỉ gốc "/" -> st.navigation tự chạy page_home (default=True)
+    # - Mở link New Tab như "/thiet-lap-bang-gia", "/quan-ly-co" -> st.navigation tự khớp url_path và gọi app.show_page
+    page_home = st.Page(show_home, title="Trang chủ", icon="🏠", default=True)
+    
+    erp_urls = [
+        "app", "quan-ly-chuyen-di", "quyet-toan-chuyen-di", "thong-ke-luong", 
+        "quan-ly-nhan-vien", "quan-ly-khach-hang", "khai-bao-hai-quan", 
+        "quan-ly-co", "quan-ly-doi-xe", "quan-ly-phap-ly-xe", 
+        "quan-ly-tai-khoan", "doi-mat-khau", "ket-qua-kinh-doanh", 
+        "cap-nhat-lich-trinh", "lay-thong-tin-tu-zalo", "thiet-lap-bang-gia", 
+        "thiet-lap-phu-cap", "thiet-lap-gia-hq", "quan-ly-nhien-lieu", "backup-database"
+    ]
+    
+    all_pages = [page_home]
+    for u in erp_urls:
+        all_pages.append(st.Page(app.show_page, title="Điều hành nội bộ", url_path=u))
+        
+    pg = st.navigation(all_pages, position="hidden")
+    pg.run()
