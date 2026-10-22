@@ -558,6 +558,8 @@ with tab_ocr_co:
                             merger.write(final_buffer)
                             
                             st.session_state["pdf_ready_opt3"] = final_buffer.getvalue()
+                            # [BỔ SUNG]: Lưu lại tên file gốc vào session_state để dùng sau khi rerun
+                            st.session_state["ten_pdf_goc_opt3"] = file_pdf_da_ky.name 
                             st.rerun()
 
                         except ImportError:
@@ -569,10 +571,15 @@ with tab_ocr_co:
             # =========================================================
             # [CẬP NHẬT 2] - HIỂN THỊ NÚT TẢI VÀ NÚT TIẾP TỤC SONG SONG
             if st.session_state.get("pdf_ready_opt3"):
-                import datetime
+                #import datetime
+                import os # Bổ sung thư viện xử lý đường dẫn
                 
                 st.success("✅ Đã xử lý phân tích và ghép ảnh thành công! Nút tải đã sẵn sàng.")
-                filename = f"Ban_Giao_CO_Kem_Hinh_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
+                
+                # [BỔ SUNG]: Lấy tên file gốc và tạo tên mới
+                ten_goc = st.session_state.get("ten_pdf_goc_opt3", "Ban_Giao_CO.pdf")
+                ten_khong_duoi = os.path.splitext(ten_goc)[0]
+                filename = f"{ten_khong_duoi}_Kem_Hinh.pdf"
                 
                 col_btn1, col_btn2 = st.columns([1, 1])
                 
@@ -616,7 +623,10 @@ with tab_ocr_co:
             # ----------------------------------------------
             
             df_current = pd.DataFrame(st.session_state["ocr_data"])
-            st.markdown(f"<h5 style='margin-bottom: 0px; margin-top: 0px;'>📝 Danh sách {len(df_current)} mã C/O (Nhấp đúp chuột để sửa)</h5>", unsafe_allow_html=True)
+            st.markdown(f"<h5 style='margin-bottom: 0px; margin-top: 0px;'>📝 Danh sách {len(df_current)} mã C/O</h5>", unsafe_allow_html=True)
+            
+            # [BỔ SUNG]: Hướng dẫn người dùng thao tác xóa dòng
+            st.info("💡 **Mẹo:** Nhấp đúp chuột vào ô để sửa chữ. Để **XÓA DÒNG**, hãy click vào ô vuông đầu dòng bên trái cùng và nhấn phím **Delete** trên bàn phím (hoặc biểu tượng 🗑️).")
             
             edited_df = st.data_editor(
                 df_current, 
@@ -626,9 +636,16 @@ with tab_ocr_co:
                 key="co_data_editor"
             )
             
+            # [BỔ SUNG]: Tự động đánh lại số thứ tự (STT) sau khi người dùng xóa hoặc thêm dòng
+            edited_df = edited_df.reset_index(drop=True)
+            if 'STT' in edited_df.columns:
+                edited_df['STT'] = edited_df.index + 1
+            
             st.session_state["ocr_data"] = edited_df.to_dict('records')
             
             # [TẢI BẢN NHÁP EXCEL]
+            
+            
             import io
             excel_nhap_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_nhap_buffer, engine='xlsxwriter') as writer:
@@ -639,7 +656,7 @@ with tab_ocr_co:
                 edited_df.to_excel(writer, sheet_name='So_Giao_Nhan', index=False, startrow=3)
                 worksheet.set_column('A:A', 10); worksheet.set_column('B:B', 35); worksheet.set_column('C:C', 30); worksheet.set_column('D:D', 25)
                 
-            import datetime
+          #  import datetime
             st.download_button(
                 label="📥 OPTION 1: Tải File Nháp (Chưa Ký) Để Lưu Trữ",
                 data=excel_nhap_buffer.getvalue(),
