@@ -636,11 +636,15 @@ with tab_ocr_co:
                 key="co_data_editor"
             )
             
-            # [BỔ SUNG]: Tự động đánh lại số thứ tự (STT) sau khi người dùng xóa hoặc thêm dòng
-            edited_df = edited_df.reset_index(drop=True)
-            if 'STT' in edited_df.columns:
-                edited_df['STT'] = edited_df.index + 1
+            # =========================================================
+            # [SỬA ĐỔI QUAN TRỌNG]: Tự động đánh lại STT liên tục từ 1, 2, 3...
+            # =========================================================
+            if not edited_df.empty:
+                edited_df = edited_df.reset_index(drop=True)
+                if 'STT' in edited_df.columns:
+                    edited_df['STT'] = edited_df.index + 1
             
+            # Lưu lại danh sách đã làm sạch STT vào session_state
             st.session_state["ocr_data"] = edited_df.to_dict('records')
             
             # [TẢI BẢN NHÁP EXCEL]
