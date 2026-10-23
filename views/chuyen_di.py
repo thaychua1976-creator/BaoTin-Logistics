@@ -17,8 +17,6 @@ load_dotenv(override=False)
 # =====================================================================
 # THUẬT TOÁN QUÉT TÌM API_KEY (CHỐNG LỖI 400 CHO KHÓA AQ. MỚI)
 # =====================================================================
-#import google.generativeai as genai
-
 api_key = None
 
 # Bước 1: Quét từ Streamlit Cloud Secrets
@@ -34,8 +32,14 @@ except Exception:
 if not api_key:
     api_key = os.getenv("GEMINI_API_KEY")
 
+# Kiểm tra chốt chặn và Ép biến môi trường
 if not api_key:
     st.error("Lỗi: Không tìm thấy API Key trong hệ thống!")
+else:
+    # BÍ QUYẾT: Gán thẳng Key vào Hệ điều hành để thư viện cũ đọc trực tiếp
+    os.environ["GOOGLE_API_KEY"] = api_key
+    # Chỉ gọi configure rỗng, nó sẽ tự lôi GOOGLE_API_KEY ra xài
+    genai.configure()
 # =====================================================================
 
 @st.cache_resource
