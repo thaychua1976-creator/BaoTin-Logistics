@@ -342,7 +342,8 @@ with tab_ocr_co:
                                             pil_img = micro_crop.to_image(resolution=300).original
                                             
                                             try:
-                                                import google.generativeai as genai
+                                                from google import genai
+                                                #import google.generativeai as genai
                                                 if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
                                                     api_key = st.secrets["api_keys"]["gemini"]
                                                 elif "GEMINI_API_KEY" in st.secrets:

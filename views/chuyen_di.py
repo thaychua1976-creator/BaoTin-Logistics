@@ -8,15 +8,18 @@ from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 from dotenv import load_dotenv
 from openpyxl.styles import PatternFill, Border, Side, Font, Alignment
 from streamlit_mic_recorder import mic_recorder
-import google.generativeai as genai
-#from google import genai
+#import google.generativeai as genai
+from google import genai
 
 # Vẫn load file .env cho môi trường Local
 load_dotenv(override=False) 
 
 # =====================================================================
-# THUẬT TOÁN QUÉT TÌM API_KEY (CHỐNG LỖI 400 CHO KHÓA AQ. MỚI)
+# CHUẨN BỊ THƯ VIỆN & KHỞI TẠO GOOGLE GENAI CLIENT (CHUẨN MỚI 2026)
 # =====================================================================
+from google import genai
+import os
+
 api_key = None
 
 # Bước 1: Quét từ Streamlit Cloud Secrets
@@ -32,14 +35,11 @@ except Exception:
 if not api_key:
     api_key = os.getenv("GEMINI_API_KEY")
 
-# Kiểm tra chốt chặn và Ép biến môi trường
 if not api_key:
     st.error("Lỗi: Không tìm thấy API Key trong hệ thống!")
 else:
-    # BÍ QUYẾT: Gán thẳng Key vào Hệ điều hành để thư viện cũ đọc trực tiếp
-    os.environ["GOOGLE_API_KEY"] = api_key
-    # Chỉ gọi configure rỗng, nó sẽ tự lôi GOOGLE_API_KEY ra xài
-    genai.configure()
+    # KHỞI TẠO CLIENT CHUẨN MỚI
+    ai_client = genai.Client(api_key=api_key)
 # =====================================================================
 
 @st.cache_resource
@@ -294,32 +294,27 @@ with tab1:
                         key=f'recorder_dieu_xe_{st.session_state["form_reset_counter"]}'
                     )
                     
-                    # 1. TẠO KHÓA CHỐNG LẶP DỰA TRÊN THUỘC TÍNH AUDIO
+                    # 1. TẠO KHÓA CHỐNG LẶP DỰA TRÊN KÍCH THƯỚC FILE
                     if audio and api_key:
-                        # Streamlit mic_recorder trả về một dict, ta dùng hash của thuộc tính 'bytes' làm ID duy nhất
-                        current_audio_id = str(hash(audio['bytes']))
+                        current_audio_id = str(len(audio['bytes']))
                         
-                        # 2. KIỂM TRA XEM AUDIO NÀY ĐÃ TỪNG XỬ LÝ CHƯA
+                        # 2. KIỂM TRA ID (CHỈ CHẠY KHI ĐÂY LÀ ĐOẠN THU ÂM MỚI)
                         if st.session_state.get("last_processed_audio_id") != current_audio_id:
-                            # 3. KHOÁ LUỒNG NGAY LẬP TỨC
+                            # KHÓA LUỒNG NGAY LẬP TỨC
                             st.session_state["last_processed_audio_id"] = current_audio_id
                             
-                            # Hiển thị trạng thái phân tích (dùng st.empty để không làm hỏng cấu trúc form bên dưới)
                             status_placeholder = st.empty()
-                            status_placeholder.info("⏳ AI đang phân tích giọng nói bằng Gemini 1.5 Flash...")
+                            status_placeholder.info("⏳ AI đang phân tích giọng nói bằng Gemini Flash...")
                             
                             try:
-                                # Lưu file audio tạm
+                                # Lưu file tạm
                                 audio_bytes = audio['bytes']
                                 temp_file_path = "temp_voice_command.wav"
                                 with open(temp_file_path, "wb") as f:
                                     f.write(audio_bytes)
                                 
-                                # GỌI API GEMINI (Kèm cờ chống lỗi HTTP 400)
-                                genai.configure(api_key=api_key, transport="rest") # Ép giao thức REST
-                                model = genai.GenerativeModel('gemini-3.6-flash')
-                                voice_file = genai.upload_file(path=temp_file_path)
-                                response = model.generate_content([prompt, voice_file])
+                                # GỌI API BẰNG CÚ PHÁP THƯ VIỆN MỚI (google-genai)
+                                voice_file = ai_client.files.upload(file=temp_file_path)
 
                                 prompt = """
                                 Bạn là trợ lý điều phối xe tải và container. Hãy nghe đoạn âm thanh và trích xuất các thông tin sau ra đúng định dạng JSON.
@@ -333,27 +328,30 @@ with tab1:
                                 Chỉ trả về chuỗi JSON hợp lệ, không giải thích gì thêm.
                                 """
                                 
-                                response = model.generate_content([prompt, voice_file])
+                                # Thực thi Model (Sử dụng gemini-1.5-flash làm chuẩn ổn định nhất)
+                                response = ai_client.models.generate_content(
+                                    model='gemini-1.5-flash',
+                                    contents=[prompt, voice_file]
+                                )
                                 
-                                # Phân tích JSON
+                                # Phân tích chuỗi JSON trả về
                                 result_text = response.text.replace("```json", "").replace("```", "").strip()
                                 ai_data = json.loads(result_text)
                                 
-                                # 4. LƯU DỮ LIỆU ĐÃ NHẬN DIỆN VÀO SESSION STATE
+                                # 4. LƯU VÀO SESSION STATE ĐỂ RENDER LÊN FORM
                                 st.session_state["voice_ten_khach_hang"] = ai_data.get("ten_khach_hang", "")
                                 st.session_state["voice_diem_dau"] = ai_data.get("diem_dau", "")
                                 st.session_state["voice_diem_cuoi"] = ai_data.get("diem_cuoi", "")
                                 
-                                raw_khoi_luong = ai_data.get("khoi_luong_kg", 0)
                                 try:
-                                    st.session_state["voice_khoi_luong"] = float(raw_khoi_luong)
+                                    st.session_state["voice_khoi_luong"] = float(ai_data.get("khoi_luong_kg", 0))
                                 except:
                                     st.session_state["voice_khoi_luong"] = 0.0
                                 
-                                # 5. THÔNG BÁO VÀ ÉP FORM LOAD LẠI BẰNG RERUN
+                                # 5. THÔNG BÁO VÀ ÉP FORM TỰ ĐỘNG ĐIỀN
                                 status_placeholder.success("✅ Đã nhận diện thành công! Đang tự động điền form...")
-                                time.sleep(1)
-                                st.rerun() 
+                                time.sleep(1.2) # Dừng 1.2s để người dùng nhìn thấy thông báo
+                                st.rerun() # Khởi động lại form (Luồng AI sẽ bị bỏ qua nhờ đã lưu ID ở Bước 2)
                                 
                             except Exception as e:
                                 status_placeholder.error(f"❌ Lỗi trong quá trình nhận diện: {e}")
