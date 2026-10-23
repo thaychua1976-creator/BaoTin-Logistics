@@ -8,8 +8,8 @@ from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 from dotenv import load_dotenv
 from openpyxl.styles import PatternFill, Border, Side, Font, Alignment
 from streamlit_mic_recorder import mic_recorder
-#import google.generativeai as genai
-from google import genai
+import google.generativeai as genai
+#from google import genai
 
 # Vẫn load file .env cho môi trường Local
 load_dotenv(override=False) 
@@ -17,7 +17,7 @@ load_dotenv(override=False)
 # =====================================================================
 # THUẬT TOÁN QUÉT TÌM API_KEY (CHỐNG LỖI 400 CHO KHÓA AQ. MỚI)
 # =====================================================================
-import google.generativeai as genai
+#import google.generativeai as genai
 
 api_key = None
 
