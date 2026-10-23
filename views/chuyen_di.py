@@ -14,34 +14,28 @@ import google.generativeai as genai
 load_dotenv(override=False) 
 
 # =====================================================================
-# THUẬT TOÁN QUÉT TÌM API_KEY CHỐNG LỖI (ƯU TIÊN: genini_api_key_free)
+# THUẬT TOÁN QUÉT TÌM API_KEY (ƯU TIÊN LẤY TỪ SECRETS ĐỂ TRÁNH LỖI CACHE)
 # =====================================================================
 api_key = None
 
-# Bước 1: Thử lấy từ biến môi trường của hệ điều hành (Nếu chạy Local có file .env)
-api_key = os.getenv("GEMINI_API_KEY")
+# Bước 1: Ưu tiên lấy chính xác từ khối [api_keys] trong Streamlit Cloud Secrets
+try:
+    api_key = st.secrets["api_keys"]["gemini"]
+except Exception:
+    pass
+
+# Bước 2: Nếu trên Cloud không có, mới tìm trong file .env (dành cho chạy Local)
 if not api_key:
     api_key = os.getenv("GEMINI_API_KEY")
 
-# Bước 2: Nếu chưa có, tiến hành quét trong kho Secrets của Streamlit Cloud
-if not api_key:
-    try:
-        if "api_keys" in st.secrets and "GEMINI_API_KEY" in st.secrets["api_keys"]:
-            api_key = st.secrets["api_keys"]["GEMINI_API_KEY"]
-        
-        elif "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
-            api_key = st.secrets["api_keys"]["gemini"]
-        elif "GEMINI_API_KEY" in st.secrets:
-            api_key = st.secrets["GEMINI_API_KEY"]
-    except Exception:
-        pass
-
 # Kiểm tra chốt chặn cuối cùng
 if not api_key:
-    st.error("Lỗi: Không tìm thấy gemini_api_key_free trong hệ thống! Vui lòng kiểm tra lại cấu trúc file .env hoặc Secrets.")
+    st.error("Lỗi: Không tìm thấy API Key trong hệ thống!")
 else:
     # Khởi tạo Gemini API
     genai.configure(api_key=api_key)
+# =====================================================================
+
 # =====================================================================
 
 @st.cache_resource
