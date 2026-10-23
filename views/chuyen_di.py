@@ -292,56 +292,68 @@ with tab1:
                         key=f'recorder_dieu_xe_{st.session_state["form_reset_counter"]}'
                     )
                     
+                    # 1. TẠO KHÓA CHỐNG LẶP DỰA TRÊN THUỘC TÍNH AUDIO
                     if audio and api_key:
-                        # Dùng audio_id (sinh ra từ kích thước file) làm ID chống lặp
-                        audio_id = str(len(audio['bytes']))
+                        # Streamlit mic_recorder trả về một dict, ta dùng hash của thuộc tính 'bytes' làm ID duy nhất
+                        current_audio_id = str(hash(audio['bytes']))
                         
-                        # Chỉ xử lý nếu audio_id này chưa từng được xử lý
-                        if st.session_state.get("last_processed_audio_id") != audio_id:
-                            with st.spinner("⏳ AI đang phân tích giọng nói bằng Gemini 3.6 Flash..."):
+                        # 2. KIỂM TRA XEM AUDIO NÀY ĐÃ TỪNG XỬ LÝ CHƯA
+                        if st.session_state.get("last_processed_audio_id") != current_audio_id:
+                            # 3. KHOÁ LUỒNG NGAY LẬP TỨC
+                            st.session_state["last_processed_audio_id"] = current_audio_id
+                            
+                            # Hiển thị trạng thái phân tích (dùng st.empty để không làm hỏng cấu trúc form bên dưới)
+                            status_placeholder = st.empty()
+                            status_placeholder.info("⏳ AI đang phân tích giọng nói bằng Gemini 1.5 Flash...")
+                            
+                            try:
+                                # Lưu file audio tạm
+                                audio_bytes = audio['bytes']
+                                temp_file_path = "temp_voice_command.wav"
+                                with open(temp_file_path, "wb") as f:
+                                    f.write(audio_bytes)
+                                
+                                # GỌI API GEMINI (Sử dụng thư viện google-generativeai bản ổn định)
+                                model = genai.GenerativeModel('gemini-1.5-flash')
+                                voice_file = genai.upload_file(path=temp_file_path)
+
+                                prompt = """
+                                Bạn là trợ lý điều phối xe tải và container. Hãy nghe đoạn âm thanh và trích xuất các thông tin sau ra đúng định dạng JSON.
+                                Nếu không nghe rõ thông tin nào, hãy để trống chuỗi ("").
+                                {
+                                    "ten_khach_hang": "",
+                                    "diem_dau": "",
+                                    "diem_cuoi": "",
+                                    "khoi_luong_kg": 0
+                                }
+                                Chỉ trả về chuỗi JSON hợp lệ, không giải thích gì thêm.
+                                """
+                                
+                                response = model.generate_content([prompt, voice_file])
+                                
+                                # Phân tích JSON
+                                result_text = response.text.replace("```json", "").replace("```", "").strip()
+                                ai_data = json.loads(result_text)
+                                
+                                # 4. LƯU DỮ LIỆU ĐÃ NHẬN DIỆN VÀO SESSION STATE
+                                st.session_state["voice_ten_khach_hang"] = ai_data.get("ten_khach_hang", "")
+                                st.session_state["voice_diem_dau"] = ai_data.get("diem_dau", "")
+                                st.session_state["voice_diem_cuoi"] = ai_data.get("diem_cuoi", "")
+                                
+                                # Xử lý ép kiểu an toàn cho khối lượng (tránh lỗi nếu AI trả về string "5 tấn")
+                                raw_khoi_luong = ai_data.get("khoi_luong_kg", 0)
                                 try:
-                                    audio_bytes = audio['bytes']
-                                    with open("temp_voice_command.wav", "wb") as f:
-                                        f.write(audio_bytes)
-                                    
-                                    voice_file = ai_client.files.upload(file="temp_voice_command.wav")
-
-                                    prompt = """
-                                    Bạn là trợ lý điều phối xe tải và container. Hãy nghe đoạn âm thanh và trích xuất các thông tin sau ra đúng định dạng JSON.
-                                    Nếu không nghe rõ thông tin nào, hãy để trống chuỗi ("").
-                                    {
-                                        "ten_khach_hang": "",
-                                        "diem_dau": "",
-                                        "diem_cuoi": "",
-                                        "khoi_luong_kg": 0
-                                    }
-                                    Chỉ trả về chuỗi JSON hợp lệ, không giải thích gì thêm.
-                                    """
-
-                                    response = ai_client.models.generate_content(
-                                        model='gemini-3.6-flash',
-                                        contents=[prompt, voice_file]
-                                    )
-                                    
-                                    result_text = response.text.replace("```json", "").replace("```", "").strip()
-                                    ai_data = json.loads(result_text)
-                                    
-                                    # Ghi kết quả vào Session State
-                                    st.session_state["voice_ten_khach_hang"] = ai_data.get("ten_khach_hang", "")
-                                    st.session_state["voice_diem_dau"] = ai_data.get("diem_dau", "")
-                                    st.session_state["voice_diem_cuoi"] = ai_data.get("diem_cuoi", "")
-                                    st.session_state["voice_khoi_luong"] = ai_data.get("khoi_luong_kg", 0)
-                                    
-                                    # KHÓA VÒNG LẶP: Lưu lại ID của Audio này
-                                    st.session_state["last_processed_audio_id"] = audio_id
-                                    
-                                    st.success("✅ Đã nhận diện thành công! Hệ thống đang tự động điền form...")
-                                    time.sleep(1)
-                                    st.rerun() # Chỉ Rerun đúng 1 lần
-                                    
-                                except Exception as e:
-                                    st.session_state["last_processed_audio_id"] = audio_id # Có lỗi cũng đánh dấu để khỏi lặp
-                                    st.error(f"❌ Nhận diện thất bại: {e}")
+                                    st.session_state["voice_khoi_luong"] = float(raw_khoi_luong)
+                                except:
+                                    st.session_state["voice_khoi_luong"] = 0.0
+                                
+                                # 5. THÔNG BÁO VÀ ÉP FORM LOAD LẠI BẰNG RERUN
+                                status_placeholder.success("✅ Đã nhận diện thành công! Đang tự động điền form...")
+                                time.sleep(1) # Dừng 1 chút để user nhìn thấy thông báo
+                                st.rerun() # Ép tải lại toàn bộ app (luồng này sẽ bị chặn lại ở Bước 2 vì audio_id đã được đánh dấu)
+                                
+                            except Exception as e:
+                                status_placeholder.error(f"❌ Lỗi trong quá trình nhận diện: {e}")
                 st.divider()
 
                 # --- BỔ SUNG LOGIC CHUYẾN CHÍNH - PHỤ ---
@@ -707,10 +719,11 @@ with tab1:
 
                     lo_trinh_db = str(trip_data.get('dia_diem_giao_nhan', ''))
                     lo_trinh_keys = list(lo_trinh_opts.keys())
-                    default_lt_idx = 0 # Mặc định
+                    default_lt_idx = 0 # Luôn mặc định là 0 (Tùy chọn đầu tiên)
 
                     if mode_action == "✏️ Sửa chuyến hiện tại":
-                        default_lt_idx = lo_trinh_keys.index(lo_trinh_db) if lo_trinh_db in lo_trinh_keys else 0
+                        if lo_trinh_db in lo_trinh_keys:
+                            default_lt_idx = lo_trinh_keys.index(lo_trinh_db)
                     elif mode_action == "➕ Tạo chuyến mới":
                         # [ƯU TIÊN LẤY TỪ KẾT QUẢ AI VOICE NẾU CÓ]
                         voice_dau = st.session_state.get("voice_diem_dau", "")
@@ -723,10 +736,6 @@ with tab1:
                                     if (voice_dau and voice_dau.lower() in k_lower) or (voice_cuoi and voice_cuoi.lower() in k_lower):
                                         default_lt_idx = i
                                         break
-                                        
-                            # Nếu AI đọc ra địa chỉ mà chưa từng có trong Database Rate Cards, tự động gán vào text
-                            if default_lt_idx == 0:
-                                lo_trinh_db = f"{voice_dau} ➡️ {voice_cuoi}"
 
                     st.info("💡💡 Nếu xe máy thì hãy click checkbox lộ trình cho xe máy ở trên.")
                     chon_lo_trinh = st.selectbox("🗺️ Chọn lộ trình (Tham chiếu từ Bảng Giá)*", options=lo_trinh_keys, index=default_lt_idx, format_func=lambda x: lo_trinh_opts[x], key=f"chon_lo_trinh_out_{trip_suffix}")
