@@ -8,7 +8,8 @@ from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 from dotenv import load_dotenv
 from openpyxl.styles import PatternFill, Border, Side, Font, Alignment
 from streamlit_mic_recorder import mic_recorder
-import google.generativeai as genai
+#import google.generativeai as genai
+from google import genai
 
 # Vẫn load file .env cho môi trường Local
 load_dotenv(override=False) 
@@ -33,7 +34,8 @@ if not api_key:
     st.error("Lỗi: Không tìm thấy API Key trong hệ thống!")
 else:
     # Khởi tạo Gemini API
-    genai.configure(api_key=api_key)
+    #genai.configure(api_key=api_key)
+    ai_client = genai.Client(api_key=api_key)
 # =====================================================================
 
 # =====================================================================
@@ -297,9 +299,9 @@ with tab1:
                                 with open("temp_voice_command.wav", "wb") as f:
                                     f.write(audio_bytes)
                                 
-                                model = genai.GenerativeModel('gemini-3.6-flash')
-                                voice_file = genai.upload_file(path="temp_voice_command.wav")
-                                
+                                # MỚI: Sử dụng ai_client
+                                voice_file = ai_client.files.upload(file="temp_voice_command.wav")
+
                                 prompt = """
                                 Bạn là trợ lý điều phối xe tải và container. Hãy nghe đoạn âm thanh và trích xuất các thông tin sau ra đúng định dạng JSON.
                                 Nếu không nghe rõ thông tin nào, hãy để trống chuỗi ("").
@@ -311,7 +313,11 @@ with tab1:
                                 }
                                 Chỉ trả về chuỗi JSON hợp lệ, không giải thích gì thêm.
                                 """
-                                response = model.generate_content([prompt, voice_file])
+
+                                response = ai_client.models.generate_content(
+                                    model='gemini-3.6-flash',
+                                    contents=[prompt, voice_file]
+                                )
                                 
                                 result_text = response.text.replace("```json", "").replace("```", "").strip()
                                 ai_data = json.loads(result_text)
