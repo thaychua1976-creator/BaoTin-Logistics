@@ -19,17 +19,16 @@ load_dotenv(override=False)
 api_key = None
 
 # Bước 1: Thử lấy từ biến môi trường của hệ điều hành (Nếu chạy Local có file .env)
-api_key = os.getenv("GEMINI_API_KEY_FREE")
+api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
     api_key = os.getenv("GEMINI_API_KEY")
 
 # Bước 2: Nếu chưa có, tiến hành quét trong kho Secrets của Streamlit Cloud
 if not api_key:
     try:
-        if "api_keys" in st.secrets and "GEMINI_API_KEY_FREE" in st.secrets["api_keys"]:
-            api_key = st.secrets["api_keys"]["genini_api_key_free"]
-        elif "GEMINI_API_KEY_FREE" in st.secrets:
-            api_key = st.secrets["GEMINI_API_KEY_FREE"]
+        if "api_keys" in st.secrets and "GEMINI_API_KEY" in st.secrets["api_keys"]:
+            api_key = st.secrets["api_keys"]["genini_api_key"]
+        
         elif "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
             api_key = st.secrets["api_keys"]["gemini"]
         elif "GEMINI_API_KEY" in st.secrets:
