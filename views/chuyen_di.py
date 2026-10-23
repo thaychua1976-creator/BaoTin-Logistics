@@ -428,9 +428,18 @@ with tab1:
                         # [ƯU TIÊN: LẤY TỪ KẾT QUẢ AI VOICE NẾU CÓ]
                         voice_kh = st.session_state.get("voice_ten_khach_hang", "")
                         if voice_kh:
+                            import re # Đảm bảo đã import re ở đầu file
+                            # Loại bỏ các từ khóa nhiễu để so sánh phần lõi tên
+                            clean_voice_kh = re.sub(r'(?i)\b(công ty|cty|tnhh|cổ phần|cp|nhà máy)\b', '', voice_kh).strip().lower()
+                            
                             for i, k in enumerate(kh_opts_keys):
                                 if k != "NEW" and k is not None:
-                                    if voice_kh.lower() in kh_opts[k].lower():
+                                    # Lấy tên khách hàng từ dict (bỏ phần Mã MST ở đầu)
+                                    db_full_name = kh_opts[k].split("—")[-1]
+                                    clean_db_name = re.sub(r'(?i)\b(công ty|cty|tnhh|cổ phần|cp|nhà máy)\b', '', db_full_name).strip().lower()
+                                    
+                                    # So sánh chéo xem lõi tên có nằm trong nhau không
+                                    if (clean_voice_kh and clean_voice_kh in clean_db_name) or (clean_db_name and clean_db_name in clean_voice_kh):
                                         default_kh_idx = i
                                         break
                     
@@ -733,13 +742,21 @@ with tab1:
                         voice_cuoi = st.session_state.get("voice_diem_cuoi", "")
                         
                         if voice_dau or voice_cuoi:
+                            import re
+                            clean_dau = re.sub(r'(?i)\b(kcn|cụm cn|kho|nhà máy)\b', '', voice_dau).strip().lower()
+                            clean_cuoi = re.sub(r'(?i)\b(kcn|cụm cn|kho|nhà máy)\b', '', voice_cuoi).strip().lower()
+
                             for i, k in enumerate(lo_trinh_keys):
                                 if k is not None:
                                     k_lower = k.lower()
-                                    if (voice_dau and voice_dau.lower() in k_lower) or (voice_cuoi and voice_cuoi.lower() in k_lower):
+                                    
+                                    # Bắt khớp linh hoạt điểm đầu hoặc điểm cuối
+                                    match_dau = (clean_dau != "") and (clean_dau in k_lower)
+                                    match_cuoi = (clean_cuoi != "") and (clean_cuoi in k_lower)
+                                    
+                                    if match_dau or match_cuoi:
                                         default_lt_idx = i
                                         break
-
                     st.info("💡💡 Nếu xe máy thì hãy click checkbox lộ trình cho xe máy ở trên.")
                     chon_lo_trinh = st.selectbox("🗺️ Chọn lộ trình (Tham chiếu từ Bảng Giá)*", options=lo_trinh_keys, index=default_lt_idx, format_func=lambda x: lo_trinh_opts[x], key=f"chon_lo_trinh_out_{trip_suffix}")
                     
