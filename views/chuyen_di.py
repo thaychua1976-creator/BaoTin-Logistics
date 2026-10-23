@@ -292,14 +292,16 @@ with tab1:
                         key=f'recorder_dieu_xe_{st.session_state["form_reset_counter"]}'
                     )
                     
-                    if audio and api_key:
+                    # THÊM CỜ BÁO (FLAG) KIỂM SOÁT LUỒNG CHẠY
+                    voice_processed_key = f"voice_processed_{st.session_state['form_reset_counter']}"
+                    
+                    if audio and api_key and not st.session_state.get(voice_processed_key, False):
                         with st.spinner("⏳ AI đang phân tích giọng nói bằng Gemini 3.6 Flash..."):
                             try:
                                 audio_bytes = audio['bytes']
                                 with open("temp_voice_command.wav", "wb") as f:
                                     f.write(audio_bytes)
                                 
-                                # MỚI: Sử dụng ai_client
                                 voice_file = ai_client.files.upload(file="temp_voice_command.wav")
 
                                 prompt = """
@@ -327,11 +329,13 @@ with tab1:
                                 st.session_state["voice_diem_cuoi"] = ai_data.get("diem_cuoi", "")
                                 st.session_state["voice_khoi_luong"] = ai_data.get("khoi_luong_kg", 0)
                                 
-                                st.success("✅ Đã nhận diện thành công! Hệ thống đang tự động điền form...")
-                                time.sleep(1) # Tạm dừng 1 giây để người dùng đọc thông báo
+                                # Đánh dấu là đã xử lý xong đoạn audio này để vòng lặp sau không gọi lại API
+                                st.session_state[voice_processed_key] = True
                                 
-                                # THÊM LỆNH NÀY ĐỂ ÉP RERUN VÀ ĐIỀN FORM
+                                st.success("✅ Đã nhận diện thành công! Hệ thống đang tự động điền form...")
+                                time.sleep(1.5)
                                 st.rerun()
+                                
                             except Exception as e:
                                 st.error(f"❌ Nhận diện thất bại: {e}")
                 st.divider()
