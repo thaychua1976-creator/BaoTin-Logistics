@@ -15,29 +15,27 @@ from google import genai
 load_dotenv(override=False) 
 
 # =====================================================================
-# THUẬT TOÁN QUÉT TÌM API_KEY (ƯU TIÊN LẤY TỪ SECRETS ĐỂ TRÁNH LỖI CACHE)
+# THUẬT TOÁN QUÉT TÌM API_KEY (CHỐNG LỖI 400 CHO KHÓA AQ. MỚI)
 # =====================================================================
+import google.generativeai as genai
+
 api_key = None
 
-# Bước 1: Ưu tiên lấy chính xác từ khối [api_keys] trong Streamlit Cloud Secrets
+# Bước 1: Quét từ Streamlit Cloud Secrets
 try:
-    api_key = st.secrets["api_keys"]["gemini"]
+    if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
+        api_key = st.secrets["api_keys"]["gemini"]
+    elif "GEMINI_API_KEY" in st.secrets:
+        api_key = st.secrets["GEMINI_API_KEY"]
 except Exception:
     pass
 
-# Bước 2: Nếu trên Cloud không có, mới tìm trong file .env (dành cho chạy Local)
+# Bước 2: Quét từ file .env Local
 if not api_key:
     api_key = os.getenv("GEMINI_API_KEY")
 
-# Kiểm tra chốt chặn cuối cùng
 if not api_key:
     st.error("Lỗi: Không tìm thấy API Key trong hệ thống!")
-else:
-    # Khởi tạo Gemini API
-    #genai.configure(api_key=api_key)
-    ai_client = genai.Client(api_key=api_key)
-# =====================================================================
-
 # =====================================================================
 
 @st.cache_resource
@@ -313,7 +311,9 @@ with tab1:
                                 with open(temp_file_path, "wb") as f:
                                     f.write(audio_bytes)
                                 
-                                # GỌI API GEMINI (Sử dụng thư viện google-generativeai bản ổn định)
+                                # GỌI API GEMINI (Kèm cờ chống lỗi HTTP 400)
+                                genai.configure(api_key=api_key, transport="rest") # Ép dùng REST Protocol
+                                
                                 model = genai.GenerativeModel('gemini-1.5-flash')
                                 voice_file = genai.upload_file(path=temp_file_path)
 
@@ -340,7 +340,6 @@ with tab1:
                                 st.session_state["voice_diem_dau"] = ai_data.get("diem_dau", "")
                                 st.session_state["voice_diem_cuoi"] = ai_data.get("diem_cuoi", "")
                                 
-                                # Xử lý ép kiểu an toàn cho khối lượng (tránh lỗi nếu AI trả về string "5 tấn")
                                 raw_khoi_luong = ai_data.get("khoi_luong_kg", 0)
                                 try:
                                     st.session_state["voice_khoi_luong"] = float(raw_khoi_luong)
@@ -349,8 +348,8 @@ with tab1:
                                 
                                 # 5. THÔNG BÁO VÀ ÉP FORM LOAD LẠI BẰNG RERUN
                                 status_placeholder.success("✅ Đã nhận diện thành công! Đang tự động điền form...")
-                                time.sleep(1) # Dừng 1 chút để user nhìn thấy thông báo
-                                st.rerun() # Ép tải lại toàn bộ app (luồng này sẽ bị chặn lại ở Bước 2 vì audio_id đã được đánh dấu)
+                                time.sleep(1)
+                                st.rerun() 
                                 
                             except Exception as e:
                                 status_placeholder.error(f"❌ Lỗi trong quá trình nhận diện: {e}")
