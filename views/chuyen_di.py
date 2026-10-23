@@ -27,7 +27,7 @@ if not api_key:
 if not api_key:
     try:
         if "api_keys" in st.secrets and "GEMINI_API_KEY" in st.secrets["api_keys"]:
-            api_key = st.secrets["api_keys"]["genini_api_key"]
+            api_key = st.secrets["api_keys"]["GEMINI_API_KEY"]
         
         elif "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
             api_key = st.secrets["api_keys"]["gemini"]
@@ -38,7 +38,7 @@ if not api_key:
 
 # Kiểm tra chốt chặn cuối cùng
 if not api_key:
-    st.error("Lỗi: Không tìm thấy genini_api_key_free trong hệ thống! Vui lòng kiểm tra lại cấu trúc file .env hoặc Secrets.")
+    st.error("Lỗi: Không tìm thấy gemini_api_key_free trong hệ thống! Vui lòng kiểm tra lại cấu trúc file .env hoặc Secrets.")
 else:
     # Khởi tạo Gemini API
     genai.configure(api_key=api_key)
