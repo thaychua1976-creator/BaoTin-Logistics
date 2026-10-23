@@ -292,52 +292,56 @@ with tab1:
                         key=f'recorder_dieu_xe_{st.session_state["form_reset_counter"]}'
                     )
                     
-                    # THÊM CỜ BÁO (FLAG) KIỂM SOÁT LUỒNG CHẠY
-                    voice_processed_key = f"voice_processed_{st.session_state['form_reset_counter']}"
-                    
-                    if audio and api_key and not st.session_state.get(voice_processed_key, False):
-                        with st.spinner("⏳ AI đang phân tích giọng nói bằng Gemini 3.6 Flash..."):
-                            try:
-                                audio_bytes = audio['bytes']
-                                with open("temp_voice_command.wav", "wb") as f:
-                                    f.write(audio_bytes)
-                                
-                                voice_file = ai_client.files.upload(file="temp_voice_command.wav")
+                    if audio and api_key:
+                        # Dùng audio_id (sinh ra từ kích thước file) làm ID chống lặp
+                        audio_id = str(len(audio['bytes']))
+                        
+                        # Chỉ xử lý nếu audio_id này chưa từng được xử lý
+                        if st.session_state.get("last_processed_audio_id") != audio_id:
+                            with st.spinner("⏳ AI đang phân tích giọng nói bằng Gemini 3.6 Flash..."):
+                                try:
+                                    audio_bytes = audio['bytes']
+                                    with open("temp_voice_command.wav", "wb") as f:
+                                        f.write(audio_bytes)
+                                    
+                                    voice_file = ai_client.files.upload(file="temp_voice_command.wav")
 
-                                prompt = """
-                                Bạn là trợ lý điều phối xe tải và container. Hãy nghe đoạn âm thanh và trích xuất các thông tin sau ra đúng định dạng JSON.
-                                Nếu không nghe rõ thông tin nào, hãy để trống chuỗi ("").
-                                {
-                                    "ten_khach_hang": "",
-                                    "diem_dau": "",
-                                    "diem_cuoi": "",
-                                    "khoi_luong_kg": 0
-                                }
-                                Chỉ trả về chuỗi JSON hợp lệ, không giải thích gì thêm.
-                                """
+                                    prompt = """
+                                    Bạn là trợ lý điều phối xe tải và container. Hãy nghe đoạn âm thanh và trích xuất các thông tin sau ra đúng định dạng JSON.
+                                    Nếu không nghe rõ thông tin nào, hãy để trống chuỗi ("").
+                                    {
+                                        "ten_khach_hang": "",
+                                        "diem_dau": "",
+                                        "diem_cuoi": "",
+                                        "khoi_luong_kg": 0
+                                    }
+                                    Chỉ trả về chuỗi JSON hợp lệ, không giải thích gì thêm.
+                                    """
 
-                                response = ai_client.models.generate_content(
-                                    model='gemini-3.6-flash',
-                                    contents=[prompt, voice_file]
-                                )
-                                
-                                result_text = response.text.replace("```json", "").replace("```", "").strip()
-                                ai_data = json.loads(result_text)
-                                
-                                st.session_state["voice_ten_khach_hang"] = ai_data.get("ten_khach_hang", "")
-                                st.session_state["voice_diem_dau"] = ai_data.get("diem_dau", "")
-                                st.session_state["voice_diem_cuoi"] = ai_data.get("diem_cuoi", "")
-                                st.session_state["voice_khoi_luong"] = ai_data.get("khoi_luong_kg", 0)
-                                
-                                # Đánh dấu là đã xử lý xong đoạn audio này để vòng lặp sau không gọi lại API
-                                st.session_state[voice_processed_key] = True
-                                
-                                st.success("✅ Đã nhận diện thành công! Hệ thống đang tự động điền form...")
-                                time.sleep(1.5)
-                                st.rerun()
-                                
-                            except Exception as e:
-                                st.error(f"❌ Nhận diện thất bại: {e}")
+                                    response = ai_client.models.generate_content(
+                                        model='gemini-3.6-flash',
+                                        contents=[prompt, voice_file]
+                                    )
+                                    
+                                    result_text = response.text.replace("```json", "").replace("```", "").strip()
+                                    ai_data = json.loads(result_text)
+                                    
+                                    # Ghi kết quả vào Session State
+                                    st.session_state["voice_ten_khach_hang"] = ai_data.get("ten_khach_hang", "")
+                                    st.session_state["voice_diem_dau"] = ai_data.get("diem_dau", "")
+                                    st.session_state["voice_diem_cuoi"] = ai_data.get("diem_cuoi", "")
+                                    st.session_state["voice_khoi_luong"] = ai_data.get("khoi_luong_kg", 0)
+                                    
+                                    # KHÓA VÒNG LẶP: Lưu lại ID của Audio này
+                                    st.session_state["last_processed_audio_id"] = audio_id
+                                    
+                                    st.success("✅ Đã nhận diện thành công! Hệ thống đang tự động điền form...")
+                                    time.sleep(1)
+                                    st.rerun() # Chỉ Rerun đúng 1 lần
+                                    
+                                except Exception as e:
+                                    st.session_state["last_processed_audio_id"] = audio_id # Có lỗi cũng đánh dấu để khỏi lặp
+                                    st.error(f"❌ Nhận diện thất bại: {e}")
                 st.divider()
 
                 # --- BỔ SUNG LOGIC CHUYẾN CHÍNH - PHỤ ---
@@ -401,16 +405,19 @@ with tab1:
                     new_ten_kh, new_mst_kh = "", ""
                 else:
                     kh_opts_keys = list(kh_opts.keys())
-                    default_kh_idx = get_idx(kh_opts_keys, trip_data.get('khach_hang_id'), 0) if mode_action == "✏️ Sửa chuyến hiện tại" else 0
+                    default_kh_idx = 0 # Mặc định
                     
-                    # [TỰ ĐỘNG CHỌN KHÁCH HÀNG TỪ GIỌNG NÓI]
-                    voice_kh = st.session_state.get("voice_ten_khach_hang", "")
-                    if voice_kh and mode_action == "➕ Tạo chuyến mới":
-                        for i, k in enumerate(kh_opts_keys):
-                            if k != "NEW" and k is not None:
-                                if voice_kh.lower() in kh_opts[k].lower():
-                                    default_kh_idx = i
-                                    break
+                    if mode_action == "✏️ Sửa chuyến hiện tại":
+                        default_kh_idx = get_idx(kh_opts_keys, trip_data.get('khach_hang_id'), 0)
+                    elif mode_action == "➕ Tạo chuyến mới":
+                        # [ƯU TIÊN: LẤY TỪ KẾT QUẢ AI VOICE NẾU CÓ]
+                        voice_kh = st.session_state.get("voice_ten_khach_hang", "")
+                        if voice_kh:
+                            for i, k in enumerate(kh_opts_keys):
+                                if k != "NEW" and k is not None:
+                                    if voice_kh.lower() in kh_opts[k].lower():
+                                        default_kh_idx = i
+                                        break
                     
                     def on_khach_hang_change():
                         selected_kh = st.session_state.get(f"tab1_c_kh_sel_{trip_suffix}")
@@ -700,18 +707,26 @@ with tab1:
 
                     lo_trinh_db = str(trip_data.get('dia_diem_giao_nhan', ''))
                     lo_trinh_keys = list(lo_trinh_opts.keys())
-                    default_lt_idx = lo_trinh_keys.index(lo_trinh_db) if lo_trinh_db in lo_trinh_keys else 0
+                    default_lt_idx = 0 # Mặc định
 
-                    # [TỰ ĐỘNG CHỌN LỘ TRÌNH TỪ GIỌNG NÓI]
-                    voice_dau = st.session_state.get("voice_diem_dau", "")
-                    voice_cuoi = st.session_state.get("voice_diem_cuoi", "")
-                    if (voice_dau or voice_cuoi) and mode_action == "➕ Tạo chuyến mới":
-                        for i, k in enumerate(lo_trinh_keys):
-                            if k is not None:
-                                k_lower = k.lower()
-                                if (voice_dau and voice_dau.lower() in k_lower) or (voice_cuoi and voice_cuoi.lower() in k_lower):
-                                    default_lt_idx = i
-                                    break
+                    if mode_action == "✏️ Sửa chuyến hiện tại":
+                        default_lt_idx = lo_trinh_keys.index(lo_trinh_db) if lo_trinh_db in lo_trinh_keys else 0
+                    elif mode_action == "➕ Tạo chuyến mới":
+                        # [ƯU TIÊN LẤY TỪ KẾT QUẢ AI VOICE NẾU CÓ]
+                        voice_dau = st.session_state.get("voice_diem_dau", "")
+                        voice_cuoi = st.session_state.get("voice_diem_cuoi", "")
+                        
+                        if voice_dau or voice_cuoi:
+                            for i, k in enumerate(lo_trinh_keys):
+                                if k is not None:
+                                    k_lower = k.lower()
+                                    if (voice_dau and voice_dau.lower() in k_lower) or (voice_cuoi and voice_cuoi.lower() in k_lower):
+                                        default_lt_idx = i
+                                        break
+                                        
+                            # Nếu AI đọc ra địa chỉ mà chưa từng có trong Database Rate Cards, tự động gán vào text
+                            if default_lt_idx == 0:
+                                lo_trinh_db = f"{voice_dau} ➡️ {voice_cuoi}"
 
                     st.info("💡💡 Nếu xe máy thì hãy click checkbox lộ trình cho xe máy ở trên.")
                     chon_lo_trinh = st.selectbox("🗺️ Chọn lộ trình (Tham chiếu từ Bảng Giá)*", options=lo_trinh_keys, index=default_lt_idx, format_func=lambda x: lo_trinh_opts[x], key=f"chon_lo_trinh_out_{trip_suffix}")
