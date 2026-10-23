@@ -300,11 +300,10 @@ with tab1:
                         
                         # 2. KIỂM TRA ID (CHỈ CHẠY KHI ĐÂY LÀ ĐOẠN THU ÂM MỚI)
                         if st.session_state.get("last_processed_audio_id") != current_audio_id:
-                            # KHÓA LUỒNG NGAY LẬP TỨC
                             st.session_state["last_processed_audio_id"] = current_audio_id
                             
                             status_placeholder = st.empty()
-                            status_placeholder.info("⏳ AI đang phân tích giọng nói bằng Gemini Flash...")
+                            status_placeholder.info("⏳ AI đang phân tích giọng nói... (Vui lòng đợi 3-5 giây)")
                             
                             try:
                                 # Lưu file tạm
@@ -313,50 +312,57 @@ with tab1:
                                 with open(temp_file_path, "wb") as f:
                                     f.write(audio_bytes)
                                 
-                                # GỌI API BẰNG CÚ PHÁP THƯ VIỆN MỚI (google-genai)
+                                # Upload file âm thanh
                                 voice_file = ai_client.files.upload(file=temp_file_path)
 
                                 prompt = """
-                                Bạn là trợ lý điều phối xe tải và container. Hãy nghe đoạn âm thanh và trích xuất các thông tin sau ra đúng định dạng JSON.
-                                Nếu không nghe rõ thông tin nào, hãy để trống chuỗi ("").
+                                Bạn là trợ lý điều phối xe tải. Hãy nghe đoạn âm thanh và trích xuất các thông tin sau ra đúng định dạng JSON.
+                                Nếu không nghe rõ, hãy để trống chuỗi ("").
                                 {
                                     "ten_khach_hang": "",
                                     "diem_dau": "",
                                     "diem_cuoi": "",
                                     "khoi_luong_kg": 0
                                 }
-                                Chỉ trả về chuỗi JSON hợp lệ, không giải thích gì thêm.
+                                Chỉ trả về duy nhất chuỗi JSON, tuyệt đối không giải thích.
                                 """
                                 
-                                # Thực thi Model (Sử dụng gemini-1.5-flash làm chuẩn ổn định nhất)
+                                # 3. SỬA TÊN MODEL: Bắt buộc dùng gemini-1.5-flash (Bản ổn định nhất hiện tại)
                                 response = ai_client.models.generate_content(
-                                    model='gemini-3.6-flash',
+                                    model='gemini-3.5-flash',
                                     contents=[prompt, voice_file]
                                 )
                                 
-                                # Phân tích chuỗi JSON trả về
-                                result_text = response.text.replace("```json", "").replace("```", "").strip()
-                                ai_data = json.loads(result_text)
+                                # 4. LỌC JSON BẰNG REGEX (Chống sập khi AI trả về markdown)
+                                import re, json
+                                match = re.search(r'\{.*\}', response.text, re.DOTALL)
+                                if match:
+                                    ai_data = json.loads(match.group(0))
+                                else:
+                                    ai_data = {}
                                 
-                                # 4. LƯU VÀO SESSION STATE ĐỂ RENDER LÊN FORM
+                                # 5. LƯU DỮ LIỆU TẠM
                                 st.session_state["voice_ten_khach_hang"] = ai_data.get("ten_khach_hang", "")
                                 st.session_state["voice_diem_dau"] = ai_data.get("diem_dau", "")
                                 st.session_state["voice_diem_cuoi"] = ai_data.get("diem_cuoi", "")
-                                
-                                try:
+                                try: 
                                     st.session_state["voice_khoi_luong"] = float(ai_data.get("khoi_luong_kg", 0))
-                                except:
+                                except: 
                                     st.session_state["voice_khoi_luong"] = 0.0
                                 
-                                # 5. THÔNG BÁO VÀ ÉP FORM TỰ ĐỘNG ĐIỀN
-                                status_placeholder.success("✅ Đã nhận diện thành công! Đang tự động điền form...")
-                                time.sleep(1.2) # Dừng 1.2s để người dùng nhìn thấy thông báo
-
-                                st.session_state["form_reset_counter"] += 1  # 👈 THÊM DÒNG NÀY ĐỂ ÉP RESET FORM
-                                st.rerun() # Khởi động lại form
+                                # 6. ÉP TẠO KEY MỚI & IN KẾT QUẢ ĐỂ KIỂM TRA
+                                kh_ai_nghe_duoc = st.session_state["voice_ten_khach_hang"]
+                                status_placeholder.success(f"✅ AI nghe được: Khách '{kh_ai_nghe_duoc}'. Đang khớp Database...")
+                                
+                                st.session_state["form_reset_counter"] += 1
+                                time.sleep(2) # Tạm dừng 2s để bạn kịp nhìn AI đã nghe đúng tên chưa
+                                st.rerun() 
                                 
                             except Exception as e:
-                                status_placeholder.error(f"❌ Lỗi trong quá trình nhận diện: {e}")
+                                # 7. RẤT QUAN TRỌNG: Mở khóa file nếu lỗi để bạn có thể bấm thu âm lại
+                                status_placeholder.error(f"❌ Lỗi xử lý AI: {e}")
+                                st.session_state.pop("last_processed_audio_id", None)
+                                st.stop() # Dừng hẳn code lại để hiển thị lỗi, không render form trắng
                 st.divider()
 
                 # --- BỔ SUNG LOGIC CHUYẾN CHÍNH - PHỤ ---
