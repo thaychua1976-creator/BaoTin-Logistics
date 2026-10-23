@@ -316,10 +316,10 @@ with tab1:
                                     f.write(audio_bytes)
                                 
                                 # GỌI API GEMINI (Kèm cờ chống lỗi HTTP 400)
-                                genai.configure(api_key=api_key, transport="rest") # Ép dùng REST Protocol
-                                
-                                model = genai.GenerativeModel('gemini-1.5-flash')
+                                genai.configure(api_key=api_key, transport="rest") # Ép giao thức REST
+                                model = genai.GenerativeModel('gemini-3.6-flash')
                                 voice_file = genai.upload_file(path=temp_file_path)
+                                response = model.generate_content([prompt, voice_file])
 
                                 prompt = """
                                 Bạn là trợ lý điều phối xe tải và container. Hãy nghe đoạn âm thanh và trích xuất các thông tin sau ra đúng định dạng JSON.
