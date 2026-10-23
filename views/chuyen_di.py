@@ -351,7 +351,9 @@ with tab1:
                                 # 5. THÔNG BÁO VÀ ÉP FORM TỰ ĐỘNG ĐIỀN
                                 status_placeholder.success("✅ Đã nhận diện thành công! Đang tự động điền form...")
                                 time.sleep(1.2) # Dừng 1.2s để người dùng nhìn thấy thông báo
-                                st.rerun() # Khởi động lại form (Luồng AI sẽ bị bỏ qua nhờ đã lưu ID ở Bước 2)
+
+                                st.session_state["form_reset_counter"] += 1  # 👈 THÊM DÒNG NÀY ĐỂ ÉP RESET FORM
+                                st.rerun() # Khởi động lại form
                                 
                             except Exception as e:
                                 status_placeholder.error(f"❌ Lỗi trong quá trình nhận diện: {e}")
