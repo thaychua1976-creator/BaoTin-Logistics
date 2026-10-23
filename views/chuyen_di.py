@@ -328,6 +328,10 @@ with tab1:
                                 st.session_state["voice_khoi_luong"] = ai_data.get("khoi_luong_kg", 0)
                                 
                                 st.success("✅ Đã nhận diện thành công! Hệ thống đang tự động điền form...")
+                                time.sleep(1) # Tạm dừng 1 giây để người dùng đọc thông báo
+                                
+                                # THÊM LỆNH NÀY ĐỂ ÉP RERUN VÀ ĐIỀN FORM
+                                st.rerun()
                             except Exception as e:
                                 st.error(f"❌ Nhận diện thất bại: {e}")
                 st.divider()
