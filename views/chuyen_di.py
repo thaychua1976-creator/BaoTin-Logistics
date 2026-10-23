@@ -330,7 +330,7 @@ with tab1:
                                 
                                 # Thực thi Model (Sử dụng gemini-1.5-flash làm chuẩn ổn định nhất)
                                 response = ai_client.models.generate_content(
-                                    model='gemini-1.5-flash',
+                                    model='gemini-3.6-flash',
                                     contents=[prompt, voice_file]
                                 )
                                 
