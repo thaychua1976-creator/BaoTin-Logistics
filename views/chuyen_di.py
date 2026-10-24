@@ -360,7 +360,7 @@ with tab1:
                                 
                                 # Thực thi Model
                                 response = ai_client.models.generate_content(
-                                    model='gemini-3.5-flash', # Nên dùng bản 1.5-flash để xử lý JSON và tiếng Việt ổn định nhất
+                                    model='gemini-3.6-flash', # Nên dùng bản 1.5-flash để xử lý JSON và tiếng Việt ổn định nhất
                                     contents=[prompt, voice_file]
                                 )
                                 
