@@ -462,42 +462,50 @@ with tab1:
                         # [ƯU TIÊN: LẤY TỪ KẾT QUẢ AI VOICE NẾU CÓ]
                         voice_kh = st.session_state.get("voice_ten_khach_hang", "")
                         if voice_kh:
-                            import re
-                            # 1. LÀM SẠCH NHƯNG GIỮ LẠI KHOẢNG TRẮNG CHUẨN
-                            clean_voice = re.sub(r'(?i)\b(công ty|cty|tnhh|cổ phần|cp|nhà máy|chi nhánh|mtv|tm|dv|tmdv)\b', '', voice_kh)
-                            clean_voice = re.sub(r'[^a-zA-Z0-9\s]', '', clean_voice) 
-                            clean_voice = " ".join(clean_voice.split()).lower() # Ép về khoảng trắng đơn
+                            # HÀM SIÊU LÀM SẠCH BẰNG REPLACE (Không dùng Regex \b để tránh lỗi tiếng Việt)
+                            def lam_sach_ten(text):
+                                t = str(text).lower()
+                                tu_khoa_rac = ["công ty", "cty", "trách nhiệm hữu hạn", "tnhh", "cổ phần", "cp", "chi nhánh", "nhà máy", "mtv", "tm", "dv", "tmdv"]
+                                for w in tu_khoa_rac:
+                                    t = t.replace(w, " ")
+                                import re
+                                t = re.sub(r'[^a-z0-9\s]', '', t) # Chỉ giữ lại chữ cái tiếng Anh/Việt ko dấu, số và khoảng trắng
+                                return " ".join(t.split()) # Ép về khoảng trắng đơn
 
-                            best_match_idx = None
-                            min_diff = 9999 # Chênh lệch ban đầu đặt mức tối đa
+                            clean_voice = lam_sach_ten(voice_kh)
+
+                            best_idx = None
+                            max_score = -1
 
                             for i, k in enumerate(kh_opts_keys):
                                 if k not in ["NEW", None]:
-                                    # Làm sạch DB y hệt như làm sạch AI
                                     db_name = kh_opts[k].split("—")[-1]
-                                    clean_db = re.sub(r'(?i)\b(công ty|cty|tnhh|cổ phần|cp|nhà máy|chi nhánh|mtv|tm|dv|tmdv)\b', '', db_name)
-                                    clean_db = re.sub(r'[^a-zA-Z0-9\s]', '', clean_db)
-                                    clean_db = " ".join(clean_db.split()).lower()
+                                    clean_db = lam_sach_ten(db_name)
 
-                                    # Nếu có từ khóa nằm trong nhau
-                                    if clean_voice and (clean_voice in clean_db or clean_db in clean_voice):
-                                        # 2. CHẤM ĐIỂM: Tính độ chênh lệch ký tự. Càng sát 0 càng chính xác!
-                                        diff = abs(len(clean_db) - len(clean_voice))
-                                        
-                                        if diff < min_diff:
-                                            min_diff = diff
-                                            best_match_idx = i
-                                            
-                                            # Khớp tuyệt đối 100% (diff = 0) -> Dừng luôn, không quét tiếp
-                                            if diff == 0:
-                                                break
+                                    # THANG ĐIỂM ƯU TIÊN 3 CẤP ĐỘ
+                                    score = 0
+                                    if clean_voice == clean_db:
+                                        score = 1000 # Ưu tiên 1: Giống hệt 100% (Ví dụ: Fortunate == Fortunate)
+                                    elif clean_voice in clean_db or clean_db in clean_voice:
+                                        # Ưu tiên 2: Chứa tên nhau. Tên DB nào ít chữ thừa hơn sẽ điểm cao hơn.
+                                        score = 100 - abs(len(clean_db) - len(clean_voice))
+                                    else:
+                                        # Ưu tiên 3: Sai chính tả (Dùng thuật toán mờ)
+                                        import difflib
+                                        score = difflib.SequenceMatcher(None, clean_voice, clean_db).ratio() * 50
+
+                                    if score > max_score:
+                                        max_score = score
+                                        best_idx = i
+                                    
+                                    if max_score == 1000:
+                                        break # Điểm tuyệt đối thì chốt ngay lập tức, không quét tiếp!
                             
-                            # Chốt hạ kết quả điểm cao nhất (diff thấp nhất)
-                            if best_match_idx is not None:
-                                default_kh_idx = best_match_idx
-                                matched_k = kh_opts_keys[best_match_idx]
+                            if best_idx is not None and max_score > 0:
+                                default_kh_idx = best_idx
+                                matched_k = kh_opts_keys[best_idx]
                                 matched_db_name = kh_opts[matched_k].split("—")[-1].strip()
-                                st.toast(f"🏢 AI đã tự chọn Khách hàng: {matched_db_name}", icon="🤖")
+                                st.toast(f"🏢 AI đã chốt Khách hàng: {matched_db_name}", icon="🤖")
                     
                     def on_khach_hang_change():
                         selected_kh = st.session_state.get(f"tab1_c_kh_sel_{trip_suffix}")
@@ -802,26 +810,38 @@ with tab1:
                         voice_cuoi = st.session_state.get("voice_diem_cuoi", "")
                         
                         if voice_dau or voice_cuoi:
-                            import re
                             def lam_sach_tuyen(text):
-                                # Bỏ từ khóa địa lý và xóa mọi khoảng trắng
-                                t = re.sub(r'(?i)\b(kcn|cụm cn|kho|nhà máy|cảng|tp|tỉnh|tx|huyện|q|quận|p|phường)\b', '', str(text))
-                                return re.sub(r'[^a-zA-Z0-9]', '', t).lower()
+                                t = str(text).lower()
+                                tu_khoa_rac = ["kcn", "cụm cn", "kho", "nhà máy", "cảng", "tp", "tỉnh", "tx", "huyện", "quận", "phường", "q", "p"]
+                                for w in tu_khoa_rac:
+                                    t = t.replace(w, " ")
+                                import re
+                                t = re.sub(r'[^a-z0-9\s]', '', t)
+                                return " ".join(t.split())
 
                             cl_dau = lam_sach_tuyen(voice_dau)
                             cl_cuoi = lam_sach_tuyen(voice_cuoi)
 
+                            best_lt_idx = 0 # Mặc định
+                            max_lt_score = -1
+
                             for i, k in enumerate(lo_trinh_keys):
                                 if k is not None:
                                     k_cl = lam_sach_tuyen(k)
-                                    # Bắt dính nếu điểm đầu HOẶC điểm cuối khớp nhau
+                                    
                                     match_dau = (cl_dau != "") and (cl_dau in k_cl)
                                     match_cuoi = (cl_cuoi != "") and (cl_cuoi in k_cl)
 
                                     if match_dau or match_cuoi:
-                                        default_lt_idx = i
-                                        st.toast(f"🗺️ AI đã tự chọn Lộ trình: {k}", icon="🤖")
-                                        break
+                                        # Chấm điểm độ lệch, lộ trình nào ngắn/sát nhất với giọng nói sẽ ăn điểm
+                                        score = 100 - abs(len(k_cl) - len(cl_dau) - len(cl_cuoi))
+                                        if score > max_lt_score:
+                                            max_lt_score = score
+                                            best_lt_idx = i
+                            
+                            if max_lt_score > -1:
+                                default_lt_idx = best_lt_idx
+                                st.toast(f"🗺️ AI đã chốt Lộ trình: {lo_trinh_keys[best_lt_idx]}", icon="🤖")
 
                     st.info("💡💡 Nếu xe máy thì hãy click checkbox lộ trình cho xe máy ở trên.")
                     chon_lo_trinh = st.selectbox("🗺️ Chọn lộ trình (Tham chiếu từ Bảng Giá)*", options=lo_trinh_keys, index=default_lt_idx, format_func=lambda x: lo_trinh_opts[x], key=f"chon_lo_trinh_out_{trip_suffix}")
