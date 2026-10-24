@@ -463,36 +463,39 @@ with tab1:
                         voice_kh = st.session_state.get("voice_ten_khach_hang", "")
                         if voice_kh:
                             import re
-                            # SIÊU LÀM SẠCH: Bỏ từ nhiễu, bỏ ký tự đặc biệt, XÓA MỌI KHOẢNG TRẮNG
+                            # 1. LÀM SẠCH NHƯNG GIỮ LẠI KHOẢNG TRẮNG CHUẨN
                             clean_voice = re.sub(r'(?i)\b(công ty|cty|tnhh|cổ phần|cp|nhà máy|chi nhánh|mtv|tm|dv|tmdv)\b', '', voice_kh)
-                            clean_voice = re.sub(r'[^a-zA-Z0-9]', '', clean_voice).lower()
+                            clean_voice = re.sub(r'[^a-zA-Z0-9\s]', '', clean_voice) 
+                            clean_voice = " ".join(clean_voice.split()).lower() # Ép về khoảng trắng đơn
 
-                            exact_match_idx = None
-                            partial_match_idx = None
+                            best_match_idx = None
+                            min_diff = 9999 # Chênh lệch ban đầu đặt mức tối đa
 
                             for i, k in enumerate(kh_opts_keys):
                                 if k not in ["NEW", None]:
-                                    # Cắt lấy tên từ DB và làm sạch
+                                    # Làm sạch DB y hệt như làm sạch AI
                                     db_name = kh_opts[k].split("—")[-1]
                                     clean_db = re.sub(r'(?i)\b(công ty|cty|tnhh|cổ phần|cp|nhà máy|chi nhánh|mtv|tm|dv|tmdv)\b', '', db_name)
-                                    clean_db = re.sub(r'[^a-zA-Z0-9]', '', clean_db).lower()
+                                    clean_db = re.sub(r'[^a-zA-Z0-9\s]', '', clean_db)
+                                    clean_db = " ".join(clean_db.split()).lower()
 
-                                    # 1. ƯU TIÊN 1: Khớp chính xác hoàn toàn (Ví dụ: Fortunate == Fortunate)
-                                    if clean_voice == clean_db:
-                                        exact_match_idx = i
-                                        break  # Tìm thấy khớp tuyệt đối -> Dừng ngay lập tức!
-                                    
-                                    # 2. ƯU TIÊN 2: Khớp một phần (Chỉ lưu tạm, tiếp tục quét tìm Ưu tiên 1)
-                                    elif len(clean_voice) >= 2 and (clean_voice in clean_db or clean_db in clean_voice):
-                                        if partial_match_idx is None:
-                                            partial_match_idx = i
-
-                            # Chốt hạ kết quả: Lấy Ưu tiên 1, nếu không có mới lấy Ưu tiên 2
-                            final_idx = exact_match_idx if exact_match_idx is not None else partial_match_idx
+                                    # Nếu có từ khóa nằm trong nhau
+                                    if clean_voice and (clean_voice in clean_db or clean_db in clean_voice):
+                                        # 2. CHẤM ĐIỂM: Tính độ chênh lệch ký tự. Càng sát 0 càng chính xác!
+                                        diff = abs(len(clean_db) - len(clean_voice))
+                                        
+                                        if diff < min_diff:
+                                            min_diff = diff
+                                            best_match_idx = i
+                                            
+                                            # Khớp tuyệt đối 100% (diff = 0) -> Dừng luôn, không quét tiếp
+                                            if diff == 0:
+                                                break
                             
-                            if final_idx is not None:
-                                default_kh_idx = final_idx
-                                matched_k = kh_opts_keys[final_idx]
+                            # Chốt hạ kết quả điểm cao nhất (diff thấp nhất)
+                            if best_match_idx is not None:
+                                default_kh_idx = best_match_idx
+                                matched_k = kh_opts_keys[best_match_idx]
                                 matched_db_name = kh_opts[matched_k].split("—")[-1].strip()
                                 st.toast(f"🏢 AI đã tự chọn Khách hàng: {matched_db_name}", icon="🤖")
                     
