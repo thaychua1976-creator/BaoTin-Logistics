@@ -21,23 +21,51 @@ from google import genai
 import os
 
 api_key = None
+is_free_key = False
 
-# Bước 1: Quét từ Streamlit Cloud Secrets
+# -----------------------------------------------------------
+# BƯỚC 1: ƯU TIÊN QUÉT TÌM KEY MIỄN PHÍ (FREE KEY) TRƯỚC
+# -----------------------------------------------------------
 try:
-    if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
-        api_key = st.secrets["api_keys"]["gemini"]
-    elif "GEMINI_API_KEY" in st.secrets:
-        api_key = st.secrets["GEMINI_API_KEY"]
+    if "api_keys" in st.secrets and "gemini_free" in st.secrets["api_keys"]:
+        api_key = st.secrets["api_keys"]["gemini_free"]
+    elif "GEMINI_API_KEY_FREE" in st.secrets:
+        api_key = st.secrets["GEMINI_API_KEY_FREE"]
 except Exception:
     pass
 
-# Bước 2: Quét từ file .env Local
+# Quét Free Key từ file .env Local
 if not api_key:
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY_FREE")
 
+if api_key:
+    is_free_key = True
+
+# -----------------------------------------------------------
+# BƯỚC 2: NẾU KHÔNG CÓ FREE KEY, QUÉT TÌM KEY TÍNH PHÍ (HIỆN HỮU)
+# -----------------------------------------------------------
 if not api_key:
-    st.error("Lỗi: Không tìm thấy API Key trong hệ thống!")
+    try:
+        if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
+            api_key = st.secrets["api_keys"]["gemini"]
+        elif "GEMINI_API_KEY" in st.secrets:
+            api_key = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        pass
+
+    # Quét Paid Key từ file .env Local
+    if not api_key:
+        api_key = os.getenv("GEMINI_API_KEY")
+
+# -----------------------------------------------------------
+# BƯỚC 3: KIỂM TRA CHỐT CHẶN VÀ KHỞI TẠO CLIENT
+# -----------------------------------------------------------
+if not api_key:
+    st.error("Lỗi: Không tìm thấy bất kỳ API Key nào (Miễn phí hay Tính phí) trong hệ thống!")
 else:
+    # (Tùy chọn) Bật dòng dưới đây nếu bạn muốn hiển thị toast thông báo đang dùng key nào
+    # st.toast(f"💡 Đang dùng Gemini API Key ({'Miễn phí' if is_free_key else 'Tính phí'})")
+    
     # KHỞI TẠO CLIENT CHUẨN MỚI
     ai_client = genai.Client(api_key=api_key)
 # =====================================================================
@@ -775,7 +803,7 @@ with tab1:
                                         default_lt_idx = i
                                         st.toast(f"🗺️ AI đã tự chọn Lộ trình: {k}", icon="🤖")
                                         break
-                                    
+
                     st.info("💡💡 Nếu xe máy thì hãy click checkbox lộ trình cho xe máy ở trên.")
                     chon_lo_trinh = st.selectbox("🗺️ Chọn lộ trình (Tham chiếu từ Bảng Giá)*", options=lo_trinh_keys, index=default_lt_idx, format_func=lambda x: lo_trinh_opts[x], key=f"chon_lo_trinh_out_{trip_suffix}")
                     
