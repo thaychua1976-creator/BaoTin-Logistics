@@ -345,6 +345,9 @@ with tab1:
 
                                 prompt = """
                                 Bạn là trợ lý điều phối xe tải. Hãy nghe đoạn âm thanh và trích xuất các thông tin sau ra đúng định dạng JSON.
+                                LƯU Ý ĐẶC BIỆT VỀ KHỐI LƯỢNG: 
+                                - Phân biệt thật kỹ phát âm (Ví dụ: "năm tấn" là số 5, tuyệt đối không nhầm thành 25).
+                                - NẾU NGƯỜI DÙNG ĐỌC LÀ "TẤN", BẮT BUỘC BẠN PHẢI NHÂN VỚI 1000 để đổi ra KG (Ví dụ: nghe "5 tấn" thì điền 5000 vào trường khoi_luong_kg).
                                 Nếu không nghe rõ, hãy để trống chuỗi ("").
                                 {
                                     "ten_khach_hang": "",
@@ -355,9 +358,9 @@ with tab1:
                                 Chỉ trả về duy nhất chuỗi JSON, tuyệt đối không giải thích.
                                 """
                                 
-                                # 3. SỬA TÊN MODEL: Bắt buộc dùng gemini-1.5-flash (Bản ổn định nhất hiện tại)
+                                # Thực thi Model
                                 response = ai_client.models.generate_content(
-                                    model='gemini-3.5-flash',
+                                    model='gemini-3.5-flash', # Nên dùng bản 1.5-flash để xử lý JSON và tiếng Việt ổn định nhất
                                     contents=[prompt, voice_file]
                                 )
                                 
@@ -378,13 +381,14 @@ with tab1:
                                 except: 
                                     st.session_state["voice_khoi_luong"] = 0.0
                                 
-                                # 6. ÉP TẠO KEY MỚI & IN KẾT QUẢ ĐỂ KIỂM TRA
+                                # 6. ÉP TẠO KEY MỚI, BẬT CỜ TÌM XE & IN KẾT QUẢ
                                 kh_ai_nghe_duoc = st.session_state["voice_ten_khach_hang"]
                                 status_placeholder.success(f"✅ AI nghe được: Khách '{kh_ai_nghe_duoc}'. Đang khớp Database...")
                                 
                                 st.session_state["form_reset_counter"] += 1
-                                time.sleep(2) # Tạm dừng 2s để bạn kịp nhìn AI đã nghe đúng tên chưa
-                                st.rerun() 
+                                st.session_state["trigger_auto_find_xe"] = True # 👈 THÊM CỜ KÍCH HOẠT TỰ ĐỘNG TÌM XE
+                                time.sleep(1.5) 
+                                st.rerun()
                                 
                             except Exception as e:
                                 # 7. RẤT QUAN TRỌNG: Mở khóa file nếu lỗi để bạn có thể bấm thu âm lại
@@ -613,7 +617,11 @@ with tab1:
                     with col_xe_1:
                         selectbox_xe_key = f"c_xe_sel_out_{trip_suffix}"
                         if kieu_nghiep_vu == "Nghiệp vụ Xe Tải":
-                            if st.button("🔍 Tìm xe tự động (Theo KG & CBM)", type="primary", use_container_width=True):
+                            # 👈 THÊM LOGIC: Chạy khi User tự bấm nút HOẶC khi AI vừa thu âm xong
+                            btn_find = st.button("🔍 Tìm xe tự động (Theo KG & CBM)", type="primary", use_container_width=True)
+                            auto_find = st.session_state.pop("trigger_auto_find_xe", False)
+                            
+                            if btn_find or auto_find:
                                 safe_khoi_luong = float(khoi_luong or 0.0)
                                 safe_so_cbm = float(so_cbm or 0.0)
                                 if safe_khoi_luong <= 0 and not is_chuyen_phu:
@@ -635,13 +643,13 @@ with tab1:
                                             if pd.isna(xe['tai_xe_co_dinh_id']): continue 
                                             da_cho_kg = float(xe['da_cho_kg'] or 0.0)
                                             cap_kg = float(xe['tai_trong_thiet_ke'] or 0.0) * 1000 - da_cho_kg
-                                            # Tìm xe rảnh không cần xét tải trọng nếu là xe phụ (vì = 0)
+                                            
                                             if (cap_kg >= safe_khoi_luong):
                                                 found_xe = int(xe['id'])
                                                 break
                                     if found_xe:
                                         st.session_state[selectbox_xe_key] = found_xe
-                                        st.toast("✅ Đã tìm thấy xe rảnh và tự động chọn!")
+                                        st.toast("✅ Đã tìm thấy xe rảnh và tự động chọn!", icon="🤖")
                                     else:
                                         st.error("❌ Không có xe nào đáp ứng đủ tải trọng / thể tích này!")
                         
