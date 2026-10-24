@@ -2,7 +2,8 @@ import requests, json, datetime, time
 import streamlit as st
 import pandas as pd
 from PIL import Image
-import google.generativeai as genai
+#import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 import os, re
 import logging
