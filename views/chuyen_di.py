@@ -467,18 +467,34 @@ with tab1:
                             clean_voice = re.sub(r'(?i)\b(công ty|cty|tnhh|cổ phần|cp|nhà máy|chi nhánh|mtv|tm|dv|tmdv)\b', '', voice_kh)
                             clean_voice = re.sub(r'[^a-zA-Z0-9]', '', clean_voice).lower()
 
+                            exact_match_idx = None
+                            partial_match_idx = None
+
                             for i, k in enumerate(kh_opts_keys):
                                 if k not in ["NEW", None]:
-                                    # Cắt lấy tên từ DB và làm sạch tương tự
+                                    # Cắt lấy tên từ DB và làm sạch
                                     db_name = kh_opts[k].split("—")[-1]
                                     clean_db = re.sub(r'(?i)\b(công ty|cty|tnhh|cổ phần|cp|nhà máy|chi nhánh|mtv|tm|dv|tmdv)\b', '', db_name)
                                     clean_db = re.sub(r'[^a-zA-Z0-9]', '', clean_db).lower()
 
-                                    # Chỉ cần chuỗi này nằm lọt thỏm trong chuỗi kia là bắt dính
-                                    if len(clean_voice) >= 2 and (clean_voice in clean_db or clean_db in clean_voice):
-                                        default_kh_idx = i
-                                        st.toast(f"🏢 AI đã tự chọn Khách hàng: {db_name.strip()}", icon="🤖")
-                                        break
+                                    # 1. ƯU TIÊN 1: Khớp chính xác hoàn toàn (Ví dụ: Fortunate == Fortunate)
+                                    if clean_voice == clean_db:
+                                        exact_match_idx = i
+                                        break  # Tìm thấy khớp tuyệt đối -> Dừng ngay lập tức!
+                                    
+                                    # 2. ƯU TIÊN 2: Khớp một phần (Chỉ lưu tạm, tiếp tục quét tìm Ưu tiên 1)
+                                    elif len(clean_voice) >= 2 and (clean_voice in clean_db or clean_db in clean_voice):
+                                        if partial_match_idx is None:
+                                            partial_match_idx = i
+
+                            # Chốt hạ kết quả: Lấy Ưu tiên 1, nếu không có mới lấy Ưu tiên 2
+                            final_idx = exact_match_idx if exact_match_idx is not None else partial_match_idx
+                            
+                            if final_idx is not None:
+                                default_kh_idx = final_idx
+                                matched_k = kh_opts_keys[final_idx]
+                                matched_db_name = kh_opts[matched_k].split("—")[-1].strip()
+                                st.toast(f"🏢 AI đã tự chọn Khách hàng: {matched_db_name}", icon="🤖")
                     
                     def on_khach_hang_change():
                         selected_kh = st.session_state.get(f"tab1_c_kh_sel_{trip_suffix}")
