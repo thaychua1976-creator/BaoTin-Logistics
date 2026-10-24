@@ -434,19 +434,22 @@ with tab1:
                         # [ƯU TIÊN: LẤY TỪ KẾT QUẢ AI VOICE NẾU CÓ]
                         voice_kh = st.session_state.get("voice_ten_khach_hang", "")
                         if voice_kh:
-                            import re # Đảm bảo đã import re ở đầu file
-                            # Loại bỏ các từ khóa nhiễu để so sánh phần lõi tên
-                            clean_voice_kh = re.sub(r'(?i)\b(công ty|cty|tnhh|cổ phần|cp|nhà máy)\b', '', voice_kh).strip().lower()
-                            
+                            import re
+                            # SIÊU LÀM SẠCH: Bỏ từ nhiễu, bỏ ký tự đặc biệt, XÓA MỌI KHOẢNG TRẮNG
+                            clean_voice = re.sub(r'(?i)\b(công ty|cty|tnhh|cổ phần|cp|nhà máy|chi nhánh|mtv|tm|dv|tmdv)\b', '', voice_kh)
+                            clean_voice = re.sub(r'[^a-zA-Z0-9]', '', clean_voice).lower()
+
                             for i, k in enumerate(kh_opts_keys):
-                                if k != "NEW" and k is not None:
-                                    # Lấy tên khách hàng từ dict (bỏ phần Mã MST ở đầu)
-                                    db_full_name = kh_opts[k].split("—")[-1]
-                                    clean_db_name = re.sub(r'(?i)\b(công ty|cty|tnhh|cổ phần|cp|nhà máy)\b', '', db_full_name).strip().lower()
-                                    
-                                    # So sánh chéo xem lõi tên có nằm trong nhau không
-                                    if (clean_voice_kh and clean_voice_kh in clean_db_name) or (clean_db_name and clean_db_name in clean_voice_kh):
+                                if k not in ["NEW", None]:
+                                    # Cắt lấy tên từ DB và làm sạch tương tự
+                                    db_name = kh_opts[k].split("—")[-1]
+                                    clean_db = re.sub(r'(?i)\b(công ty|cty|tnhh|cổ phần|cp|nhà máy|chi nhánh|mtv|tm|dv|tmdv)\b', '', db_name)
+                                    clean_db = re.sub(r'[^a-zA-Z0-9]', '', clean_db).lower()
+
+                                    # Chỉ cần chuỗi này nằm lọt thỏm trong chuỗi kia là bắt dính
+                                    if len(clean_voice) >= 2 and (clean_voice in clean_db or clean_db in clean_voice):
                                         default_kh_idx = i
+                                        st.toast(f"🏢 AI đã tự chọn Khách hàng: {db_name.strip()}", icon="🤖")
                                         break
                     
                     def on_khach_hang_change():
@@ -496,6 +499,10 @@ with tab1:
                 voice_kg = st.session_state.get("voice_khoi_luong", 0)
                 if voice_kg > 0 and mode_action == "➕ Tạo chuyến mới":
                     val_kl = float(voice_kg)
+                    # Bắn thông báo 1 lần duy nhất cho mỗi lần thu âm
+                    if f"toast_kg_{st.session_state['form_reset_counter']}" not in st.session_state:
+                        st.toast(f"⚖️ AI đã điền khối lượng: {val_kl:,.0f} KG", icon="🤖")
+                        st.session_state[f"toast_kg_{st.session_state['form_reset_counter']}"] = True
                 
                 # Nếu đang là Chuyến Phụ, ưu tiên đổ số 0.0 để tránh tính cước 
                 if is_chuyen_phu and mode_action == "➕ Tạo chuyến mới":
@@ -749,20 +756,26 @@ with tab1:
                         
                         if voice_dau or voice_cuoi:
                             import re
-                            clean_dau = re.sub(r'(?i)\b(kcn|cụm cn|kho|nhà máy)\b', '', voice_dau).strip().lower()
-                            clean_cuoi = re.sub(r'(?i)\b(kcn|cụm cn|kho|nhà máy)\b', '', voice_cuoi).strip().lower()
+                            def lam_sach_tuyen(text):
+                                # Bỏ từ khóa địa lý và xóa mọi khoảng trắng
+                                t = re.sub(r'(?i)\b(kcn|cụm cn|kho|nhà máy|cảng|tp|tỉnh|tx|huyện|q|quận|p|phường)\b', '', str(text))
+                                return re.sub(r'[^a-zA-Z0-9]', '', t).lower()
+
+                            cl_dau = lam_sach_tuyen(voice_dau)
+                            cl_cuoi = lam_sach_tuyen(voice_cuoi)
 
                             for i, k in enumerate(lo_trinh_keys):
                                 if k is not None:
-                                    k_lower = k.lower()
-                                    
-                                    # Bắt khớp linh hoạt điểm đầu hoặc điểm cuối
-                                    match_dau = (clean_dau != "") and (clean_dau in k_lower)
-                                    match_cuoi = (clean_cuoi != "") and (clean_cuoi in k_lower)
-                                    
+                                    k_cl = lam_sach_tuyen(k)
+                                    # Bắt dính nếu điểm đầu HOẶC điểm cuối khớp nhau
+                                    match_dau = (cl_dau != "") and (cl_dau in k_cl)
+                                    match_cuoi = (cl_cuoi != "") and (cl_cuoi in k_cl)
+
                                     if match_dau or match_cuoi:
                                         default_lt_idx = i
+                                        st.toast(f"🗺️ AI đã tự chọn Lộ trình: {k}", icon="🤖")
                                         break
+                                    
                     st.info("💡💡 Nếu xe máy thì hãy click checkbox lộ trình cho xe máy ở trên.")
                     chon_lo_trinh = st.selectbox("🗺️ Chọn lộ trình (Tham chiếu từ Bảng Giá)*", options=lo_trinh_keys, index=default_lt_idx, format_func=lambda x: lo_trinh_opts[x], key=f"chon_lo_trinh_out_{trip_suffix}")
                     
