@@ -359,7 +359,7 @@ with tab_ocr_co:
                                             if api_key:
                                                 genai.configure(api_key=api_key)
                                                 model = genai.GenerativeModel('gemini-3.6-flash')
-                                                prompt = "Đọc và trích xuất nguyên văn tất cả các đoạn văn bản có trong hình ảnh này. Không cần giải thích thêm."
+                                                prompt = "Hãy tìm và trích xuất duy nhất dòng chứa mã số C/O (Certificate of Origin) trong hình ảnh. Mã này thường có chứa số tham chiếu, mã quốc gia hoặc ngày tháng (ví dụ: VN-... hoặc dãy số đặc trưng ở góc trên). Chỉ trả về chuỗi mã số đó, tuyệt đối không trích xuất các văn bản khác và không giải thích thêm."
                                                 response = model.generate_content([prompt, pil_img])
                                                 text_ai = (response.text or "").upper()
                                                 match = re.search(pattern, text_ai)
