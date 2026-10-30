@@ -44,7 +44,9 @@ def get_danh_sach_nhan_vien(database):
             dict_dich_thuat = {
                 "Tai_Chinh": "Tài xế chính",
                 "Tai_Phu": "Tài xế phụ",
-                "Dieu_Hanh": "Điều hành"
+                "Dieu_Hanh": "Điều hành",
+                "Ke_Toan" : "Ke_Toan",
+                "Co_Khach": "Co_Khach"
             }
             
             # Hàm xử lý việc dịch: Nếu giá trị có trong từ điển thì dịch, không thì giữ nguyên
@@ -84,6 +86,7 @@ with tab1:
                     WHEN u.role = 'Ke_Toan' THEN 'Kế toán tài chính'
                     WHEN u.role = 'Dieu_Do' THEN 'Điều độ điều xe'
                     WHEN u.role = 'Tai_Xe' THEN 'Tài xế vận hành'
+                    WHEN u.role = 'Co_Khach' THEN 'Co cho shipper'
                     ELSE u.role 
                 END AS 'Quyền hạn',
                 COALESCE(nv.ho_ten, '---') AS 'Thuộc Nhân Viên',

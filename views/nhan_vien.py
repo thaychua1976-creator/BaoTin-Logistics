@@ -140,7 +140,8 @@ with tab2:
         "Tai_Chinh": "Tài xế chính",
         "Tai_Phu": "Tài xế phụ",
         "Van_Phong": "NV văn phòng",
-        "Dieu_Hanh": "Điều hành"
+        "Dieu_Hanh": "Điều hành",
+        "Co_Khach": "Co_Khach"
     }
 
     loai_nv = st.selectbox("Chức vụ", options=list(dict_chuc_vu.keys()), format_func=lambda x: dict_chuc_vu[x], key=f"add_loai_{ac}")

@@ -5,7 +5,8 @@ import easyocr
 import re
 import pandas as pd
 from PIL import Image
-import google.generativeai as genai
+#import google.generativeai as genai
+from google import genai
 from datetime import datetime, date, timedelta
 import streamlit as st
 from dotenv import load_dotenv

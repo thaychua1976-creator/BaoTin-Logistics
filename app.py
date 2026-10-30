@@ -214,6 +214,11 @@ def show_page():
                 "📱 NGHIỆP VỤ TÀI XẾ": [page_app_tai_xe],
                 "📦 CÁ NHÂN": [page_doi_mat_khau]
             }
+        elif role == 'Co_Khach':
+                    pages_structure = {
+                        "📱 NGHIỆP VỤ GIAO CO": [page_quan_ly_co],
+                        "📦 CÁ NHÂN": [page_doi_mat_khau]
+                    }
         elif role == 'Ke_Toan':
             pages_structure = {
                 "📦 TÀI CHÍNH KẾ TOÁN": [page_quyet_toan, page_bao_cao],
