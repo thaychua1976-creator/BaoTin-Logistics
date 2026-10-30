@@ -341,9 +341,11 @@ with tab_ocr_co:
                                             micro_crop = page.crop(bounding_box)
                                             pil_img = micro_crop.to_image(resolution=300).original
                                             
+                                            # FIX 1: Khởi tạo api_key từ trước để tránh UnboundLocalError
+                                            api_key = None 
                                             try:
-                                                from google import genai
-                                                #import google.generativeai as genai
+                                                # FIX 2: Sửa lại đúng tên thư viện theo cú pháp bên dưới
+                                                import google.generativeai as genai
                                                 if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
                                                     api_key = st.secrets["api_keys"]["gemini"]
                                                 elif "GEMINI_API_KEY" in st.secrets:
@@ -362,8 +364,9 @@ with tab_ocr_co:
                                                 text_ai = (response.text or "").upper()
                                                 match = re.search(pattern, text_ai)
                                             else:
+                                                # FIX 3: Dùng break thay vì return None để không làm sập toàn bộ fragment
                                                 st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống!")
-                                                return None    
+                                                break    
                                             
                                         if match:
                                             prefix_raw, dd, mm = match.group(1), match.group(2), match.group(3)
@@ -401,8 +404,10 @@ with tab_ocr_co:
                             except Exception as inner_e:
                                 st.warning(f"Lỗi đọc {pdf_file.name}: {inner_e}")
                         
-                        st.session_state["ocr_data"] = extracted_data
-                        st.rerun()
+                        # FIX 4: Chỉ gọi rerun() nếu có data. Nếu mảng rỗng thì giữ lại màn hình để user kịp đọc thông báo lỗi.
+                        if extracted_data:
+                            st.session_state["ocr_data"] = extracted_data
+                            st.rerun()
 
         # ---------------------------------------------------------
         # CHẾ ĐỘ 2: TẢI LÊN FILE EXCEL (KHÔI PHỤC PHIÊN LÀM VIỆC)
