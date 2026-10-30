@@ -161,7 +161,7 @@ with tab2:
         c3, c4 = st.columns(2)
         new_name = c3.text_input("Họ và tên người dùng*", placeholder="VD: Nguyễn Văn Thuận", key=f"new_na_{st.session_state['reset_add_user']}")
         # --- ĐÃ SỬA: Thêm quyền Tai_Xe ---
-        new_role = c4.selectbox("Phân quyền hệ thống", options=[("Admin", "Quản trị viên"), ("Ke_Toan", "Kế toán"), ("Dieu_Do", "Điều độ"), ("Tai_Xe", "Tài xế")], format_func=lambda x: x[1], key=f"new_ro_{st.session_state['reset_add_user']}")
+        new_role = c4.selectbox("Phân quyền hệ thống", options=[("Admin", "Quản trị viên"), ("Ke_Toan", "Kế toán"), ("Dieu_Do", "Điều độ"), ("Tai_Xe", "Tài xế"),("Co_Khach", "Co_Khach")], format_func=lambda x: x[1], key=f"new_ro_{st.session_state['reset_add_user']}")
         
         # --- MỚI: Liên kết nhân viên ---
         new_nv_id = st.selectbox(
@@ -243,7 +243,7 @@ with tab3:
                     edit_pass = c_ed2.text_input("Đổi mật khẩu mới (Để trống nếu giữ nguyên)", type="password", placeholder="Nhập mật khẩu mới")
                     
                     c_ed3, c_ed4 = st.columns(2)
-                    role_list = [("Admin", "Quản trị viên"), ("Ke_Toan", "Kế toán"), ("Dieu_Do", "Điều độ"), ("Tai_Xe", "Tài xế")]
+                    role_list = [("Admin", "Quản trị viên"), ("Ke_Toan", "Kế toán"), ("Dieu_Do", "Điều độ"), ("Tai_Xe", "Tài xế"), ("Co_Khach", "Co_Khach")]
                     current_role_idx = [x[0] for x in role_list].index(us_data['role']) if us_data['role'] in [x[0] for x in role_list] else 0
                     edit_role = c_ed3.selectbox("Thay đổi phân quyền", options=role_list, index=current_role_idx, format_func=lambda x: x[1])
                     
