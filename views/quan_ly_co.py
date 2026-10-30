@@ -358,7 +358,7 @@ with tab_ocr_co:
                                                 
                                             if api_key:
                                                 genai.configure(api_key=api_key)
-                                                model = genai.GenerativeModel('gemini-1.5-flash')
+                                                model = genai.GenerativeModel('gemini-3.6-flash')
                                                 prompt = "Đọc và trích xuất nguyên văn tất cả các đoạn văn bản có trong hình ảnh này. Không cần giải thích thêm."
                                                 response = model.generate_content([prompt, pil_img])
                                                 text_ai = (response.text or "").upper()
