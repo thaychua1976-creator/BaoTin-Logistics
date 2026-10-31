@@ -42,7 +42,7 @@ st.toast("✅ Đang load số liệu bạn vui lòng đợi nha:")
 st.divider()
 
 # Thêm tab OCR vào danh sách tabs
-tab_ocr_co = st.tab(["🤖 TRÍCH XUẤT C/O TẠO FILE GIAO ĐẠI LÝ"])
+tab_ocr_co, = st.tab(["🤖 TRÍCH XUẤT C/O TẠO FILE GIAO ĐẠI LÝ"])
   
 
 
