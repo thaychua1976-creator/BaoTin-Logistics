@@ -218,7 +218,6 @@ def show_page():
         elif role == 'Co_Khach':
                     pages_structure = {
                         "📱 NGHIỆP VỤ GIAO CO": [page_quan_ly_co_khach]
-                        
                     }
         elif role == 'Ke_Toan':
             pages_structure = {
