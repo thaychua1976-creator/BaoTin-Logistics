@@ -185,6 +185,7 @@ def show_page():
         page_khach_hang = st.Page("views/khach_hang.py", title="Quản lý Khách hàng", icon="🧑", url_path="quan-ly-khach-hang")
         page_to_khai_hq = st.Page("views/khai_bao_hq.py", title="Khai báo Hải Quan", icon="🧑‍✈️", url_path="khai-bao-hai-quan")
         page_quan_ly_co = st.Page("views/quan_ly_co.py", title="Quản lý CO", icon="🧑‍✈️", url_path="quan-ly-co")
+        page_quan_ly_co_khach = st.Page("views/quan_ly_co_khach.py", title="Quản lý CO", icon="🧑‍✈️", url_path="quan-ly-co-khach")
         page_doi_xe    = st.Page("views/doi_xe.py", title="Quản lý Đội xe", icon="🚛", url_path="quan-ly-doi-xe")
         page_phap_ly_xe    = st.Page("views/phap_ly_xe.py", title="Quản lý pháp lý xe", icon="🚛", url_path="quan-ly-phap-ly-xe")
         page_tai_khoan = st.Page("views/tai_khoan.py", title="Quản lý tài khoản user", icon="👤", url_path="quan-ly-tai-khoan")
@@ -216,8 +217,8 @@ def show_page():
             }
         elif role == 'Co_Khach':
                     pages_structure = {
-                        "📱 NGHIỆP VỤ GIAO CO": [page_quan_ly_co],
-                        "📦 CÁ NHÂN": [page_doi_mat_khau]
+                        "📱 NGHIỆP VỤ GIAO CO": [page_quan_ly_co_khach]
+                        
                     }
         elif role == 'Ke_Toan':
             pages_structure = {
