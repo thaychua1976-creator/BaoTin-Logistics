@@ -272,7 +272,7 @@ with tab_file_co:
 # ==========================================
 with tab_ocr_co:
     st.markdown("#### 🤖 Trích Xuất Dữ Liệu C/O & Ký Nhận Bàn Giao")
-    # 🚀 1. SỬ DỤNG @st.fragment ĐỂ CÔ LẬP RERUN (Tuyệt đối không giật trang khi gõ/ký tên)
+    
     # 🚀 1. SỬ DỤNG @st.fragment ĐỂ CÔ LẬP RERUN (Tuyệt đối không giật trang khi gõ/ký tên)
     @st.fragment
     def vung_trich_xuat_va_ky_nhan():

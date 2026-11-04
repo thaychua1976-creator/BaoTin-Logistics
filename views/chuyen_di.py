@@ -17,8 +17,8 @@ load_dotenv(override=False)
 # =====================================================================
 # CHUẨN BỊ THƯ VIỆN & KHỞI TẠO GOOGLE GENAI CLIENT (CHUẨN MỚI 2026)
 # =====================================================================
-from google import genai
-import os
+#from google import genai
+#import os
 
 api_key = None
 is_free_key = False
