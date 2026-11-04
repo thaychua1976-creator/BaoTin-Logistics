@@ -688,16 +688,20 @@ with tab_ocr_co:
             
             st.markdown("<p style='margin-bottom: 0px; margin-top: 10px; font-weight: bold;'>Đại lý vẽ chữ ký xác nhận vào khung bên dưới:</p>", unsafe_allow_html=True)
             
-            canvas_result = st_canvas(
-                fill_color="rgba(255, 165, 0, 0.3)", 
-                stroke_width=2.5, 
-                stroke_color="#FF0000", 
-                background_color="#f0f2f6", 
-                height=150, 
-                width=350, 
-                drawing_mode="freedraw",
-                return_image_data=True, key="canvas_ky_ten_2"
-            )
+            try:
+                canvas_result = st_canvas(
+                    fill_color="rgba(255, 165, 0, 0.3)", 
+                    stroke_width=2.5, 
+                    stroke_color="#FF0000", 
+                    background_color="#f0f2f6", 
+                    height=150, 
+                    width=350, 
+                    drawing_mode="freedraw",
+                    key="canvas_ky_ten_2"
+                )
+            except Exception as canvas_err:
+                st.warning("⚠️ Không thể tải khung chữ ký do lỗi mạng hoặc bộ nhớ đệm. Vui lòng bấm F5 để thử lại.")
+                canvas_result = None
             
             st.markdown("<div style='margin-top: -10px;'></div>", unsafe_allow_html=True)
             
