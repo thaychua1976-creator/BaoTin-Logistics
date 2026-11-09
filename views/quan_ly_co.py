@@ -545,10 +545,9 @@ with tab_ocr_co:
                                 for i in range(len(original_pdf.pages) - 1):
                                     merger.add_page(original_pdf.pages[i])
                                     
-                                # Trộn lớp ảnh (trang 1) đè lên phần khoảng trắng của trang cuối file gốc
-                                last_page = original_pdf.pages[-1]
-                                last_page.merge_page(new_imgs_pdf.pages[0])
-                                merger.add_page(last_page)
+                                # [ĐÃ FIX]: Thêm trang cuối vào PdfWriter TRƯỚC, rồi mới gọi merge_page lên trang của writer
+                                merger.add_page(original_pdf.pages[-1])
+                                merger.pages[-1].merge_page(new_imgs_pdf.pages[0])
                                 
                                 # Nếu ảnh vượt qua 1 trang, chép tiếp các trang sau của file ảnh như bình thường
                                 for i in range(1, len(new_imgs_pdf.pages)):
