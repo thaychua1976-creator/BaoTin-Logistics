@@ -42,11 +42,12 @@ st.toast("✅ Đang load số liệu bạn vui lòng đợi nha:")
 st.divider()
 
 # Thêm tab OCR vào danh sách tabs
-tab_khai_co, tab_file_co, tab_ocr_co, tab_quan_ly_co = st.tabs([
+tab_khai_co, tab_file_co, tab_ocr_co, tab_quan_ly_co,tab_thong_ke_co = st.tabs([
     "📋 KHAI BÁO C/O MỚI", 
     "📂 TẠO C/O TỪ FILE BỘ CÔNG THƯƠNG", 
     "🤖 TRÍCH XUẤT C/O TẠO FILE GIAO ĐẠI LÝ", 
-    "🔍 DANH SÁCH & QUẢN LÝ"
+    "🔍 DANH SÁCH & QUẢN LÝ",
+    "📊 THỐNG KÊ & BÁO CÁO"
 ])
 
 # ==========================================
@@ -1051,3 +1052,125 @@ with tab_quan_ly_co:
         else:
             st.info("📭 Không có chứng từ C/O nào trong khoảng thời gian này.")
     vung_thao_tac_edit_delete_co()
+# ==========================================
+# TAB 5: THỐNG KÊ & BÁO CÁO (XUẤT EXCEL BCT & SCT)
+# ==========================================
+with tab_thong_ke_co:
+    st.markdown("#### 📊 Thống Kê Số Lượng Bộ C/O (Bộ Công Thương & Sở Công Thương)")
+    
+    @st.fragment
+    def vung_thong_ke_co():
+        col_tk1, col_tk2, col_tk3 = st.columns([2, 2, 4])
+        today = datetime.date.today()
+        
+        tu_ngay_tk = col_tk1.date_input("📅 Từ ngày", value=today.replace(day=1), format="DD/MM/YYYY", key="tk_tu_ngay")
+        den_ngay_tk = col_tk2.date_input("📅 Đến ngày", value=today, format="DD/MM/YYYY", key="tk_den_ngay")
+        
+        # Lấy danh sách công ty từ Database
+        sql_kh = "SELECT id, ten_khach_hang, ma_khach_hang FROM khach_hang ORDER BY ten_khach_hang ASC"
+        df_kh = get_cached_master_data(db, sql_kh)
+        
+        dict_kh_tk = {"ALL": "🏢 TẤT CẢ CÔNG TY"}
+        if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
+            for _, r in df_kh.iterrows():
+                dict_kh_tk[r['id']] = f"[{r['ma_khach_hang']}] {r['ten_khach_hang']}"
+        
+        # Chọn công ty (Hỗ trợ gõ phím để tìm kiếm tức thì)
+        cong_ty_id = col_tk3.selectbox(
+            "Chọn Công ty (Gõ để tìm nhanh):", 
+            options=list(dict_kh_tk.keys()), 
+            format_func=lambda x: dict_kh_tk[x]
+        )
+        
+        if st.button("📈 Xem Báo Cáo & Trích Xuất File", type="primary"):
+            # Truy vấn lấy toàn bộ dữ liệu C/O và count số lượng bộ
+            sql_tk_co = """
+                SELECT kh.ten_khach_hang, kh.ma_khach_hang, co.ngay_co, co.form_co, COUNT(co.id) as so_luong
+                FROM to_khai_co co
+                JOIN to_khai_hai_quan tk ON co.to_khai_id = tk.id
+                JOIN khach_hang kh ON tk.khach_hang_id = kh.id
+                WHERE co.ngay_co BETWEEN %s AND %s
+            """
+            params = [tu_ngay_tk.strftime('%Y-%m-%d'), den_ngay_tk.strftime('%Y-%m-%d')]
+            
+            if cong_ty_id != "ALL":
+                sql_tk_co += " AND kh.id = %s"
+                params.append(cong_ty_id)
+                
+            sql_tk_co += " GROUP BY kh.ten_khach_hang, kh.ma_khach_hang, co.ngay_co, co.form_co ORDER BY co.ngay_co DESC"
+            
+            df_thong_ke = db.execute_query(sql_tk_co, tuple(params))
+            
+            if isinstance(df_thong_ke, pd.DataFrame) and not df_thong_ke.empty:
+                # Phân loại C/O thuộc Bộ Công Thương hay Sở Công Thương (VCCI)
+                # Có thể thêm các form khác vào mảng này nếu cần
+                bct_forms = ["Form EURO.1", "Form EURO.1UK", "Form AI", "Form EAV", "Form AJ", "Form AHK", "Form RCEP", "Form AK", "Form D", "Form E", "Form VK", "Form VJ", "Form S", "Form VI"]
+                
+                df_thong_ke['co_quan'] = df_thong_ke['form_co'].apply(lambda x: "Bộ công thương" if str(x) in bct_forms else "Sở công thương")
+                
+                def prepare_summary_df(df_sub):
+                    if df_sub.empty:
+                        return pd.DataFrame(columns=['Tên công ty', 'Mã số thuế', 'Ngày nộp C/O', 'Số lượng bộ'])
+                    
+                    df_res = df_sub.groupby(['ten_khach_hang', 'ma_khach_hang', 'ngay_co'])['so_luong'].sum().reset_index()
+                    df_res.columns = ['Tên công ty', 'Mã số thuế', 'Ngày nộp C/O', 'Số lượng bộ']
+                    df_res['Ngày nộp C/O'] = pd.to_datetime(df_res['Ngày nộp C/O']).dt.strftime('%d/%m/%Y')
+                    return df_res
+                
+                df_bct = prepare_summary_df(df_thong_ke[df_thong_ke['co_quan'] == 'Bộ công thương'])
+                df_sct = prepare_summary_df(df_thong_ke[df_thong_ke['co_quan'] == 'Sở công thương'])
+                
+                tong_bct = df_bct['Số lượng bộ'].sum() if not df_bct.empty else 0
+                tong_sct = df_sct['Số lượng bộ'].sum() if not df_sct.empty else 0
+                
+                # Hiển thị trên màn hình Web
+                t1, t2 = st.tabs([f"🏛️ Bộ Công Thương ({tong_bct} bộ)", f"🏢 Sở Công Thương ({tong_sct} bộ)"])
+                with t1:
+                    st.dataframe(df_bct, use_container_width=True, hide_index=True)
+                with t2:
+                    st.dataframe(df_sct, use_container_width=True, hide_index=True)
+                
+                # Xuất ra file Excel
+                import io
+                excel_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+                    workbook = writer.book
+                    bold_fmt = workbook.add_format({'bold': True, 'border': 1, 'bg_color': '#D9D9D9'})
+                    
+                    # Cấu hình Sheet BCT
+                    df_bct.to_excel(writer, sheet_name='Bộ công thương', index=False, startrow=1)
+                    ws_bct = writer.sheets['Bộ công thương']
+                    ws_bct.write(0, 0, f"BÁO CÁO C/O - BỘ CÔNG THƯƠNG ({tu_ngay_tk.strftime('%d/%m/%Y')} - {den_ngay_tk.strftime('%d/%m/%Y')})", workbook.add_format({'bold': True, 'font_size': 12}))
+                    if not df_bct.empty:
+                        sum_row = len(df_bct) + 2
+                        ws_bct.write(sum_row, 2, "TỔNG CỘNG:", bold_fmt)
+                        ws_bct.write(sum_row, 3, tong_bct, bold_fmt)
+                        
+                    # Cấu hình Sheet SCT
+                    df_sct.to_excel(writer, sheet_name='Sở công thương', index=False, startrow=1)
+                    ws_sct = writer.sheets['Sở công thương']
+                    ws_sct.write(0, 0, f"BÁO CÁO C/O - SỞ CÔNG THƯƠNG ({tu_ngay_tk.strftime('%d/%m/%Y')} - {den_ngay_tk.strftime('%d/%m/%Y')})", workbook.add_format({'bold': True, 'font_size': 12}))
+                    if not df_sct.empty:
+                        sum_row = len(df_sct) + 2
+                        ws_sct.write(sum_row, 2, "TỔNG CỘNG:", bold_fmt)
+                        ws_sct.write(sum_row, 3, tong_sct, bold_fmt)
+                        
+                    # Định dạng độ rộng cột cho cả 2 Sheet
+                    for ws in [ws_bct, ws_sct]:
+                        ws.set_column('A:A', 45) # Tên công ty
+                        ws.set_column('B:B', 20) # Mã số thuế
+                        ws.set_column('C:C', 18) # Ngày nộp C/O
+                        ws.set_column('D:D', 18) # Số lượng bộ
+
+                st.markdown("<hr>", unsafe_allow_html=True)
+                st.download_button(
+                    label="📥 BẤM VÀO ĐÂY ĐỂ TẢI FILE EXCEL BÁO CÁO",
+                    data=excel_buffer.getvalue(),
+                    file_name=f"Bao_Cao_Nop_CO_{datetime.date.today().strftime('%d_%m_%Y')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary"
+                )
+            else:
+                st.info("📭 Không có dữ liệu khai báo C/O nào được tìm thấy trong khoảng thời gian và tiêu chí đã chọn.")
+                
+    vung_thong_ke_co()
