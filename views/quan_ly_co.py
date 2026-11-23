@@ -429,14 +429,13 @@ with tab_ocr_co:
                     st.error(f"Lỗi đọc file Excel: {e}")
 
         # ---------------------------------------------------------
-        # CHẾ ĐỘ 3: GHÉP ẢNH BỔ SUNG VÀO FILE PDF ĐÃ KÝ
+        # CHẾ ĐỘ 3: GHÉP ẢNH BỔ SUNG VÀO FILE PDF ĐÃ KÝ (ĐÃ ĐÓNG BĂNG ỔN ĐỊNH)
         # ---------------------------------------------------------
         elif che_do_tab3 == "3️⃣ Ghép Ảnh C/O Vào File Đã Ký":
             st.info("💡 Mẹo: Ở công ty/cảng anh chỉ cần cho đại lý ký rồi tải file PDF chứa chữ ký về máy. Sau đó về nhà có mạng Wifi mạnh, anh tải ngược file PDF đó lên đây cùng với mớ hình ảnh C/O để hệ thống tự ghép ảnh vào đuôi PDF nhé!")
             
             col_up1, col_up2 = st.columns(2)
             
-            # [CẬP NHẬT 1] - Đổi key tĩnh thành key động để dễ dàng xóa trắng
             current_pdf_key = f"upload_pdf_da_ky_{st.session_state['reset_uploader_key']}"
             current_img_key = f"upload_img_bo_sung_{st.session_state['reset_uploader_key']}"
             
@@ -454,7 +453,7 @@ with tab_ocr_co:
                             import pypdf
                             from fpdf import FPDF
                             from PIL import Image as PILImage
-                            import tempfile, os, io
+                            import tempfile, os, io, urllib.request
                             import pdfplumber
                             
                             # --- 1. PHÂN TÍCH KHÔNG GIAN TRỐNG CỦA TRANG CUỐI BẰNG PDFPLUMBER ---
@@ -463,17 +462,13 @@ with tab_ocr_co:
                             try:
                                 with pdfplumber.open(io.BytesIO(file_bytes)) as p_pdf:
                                     last_page = p_pdf.pages[-1]
-                                    # Lấy tất cả đối tượng (chữ, hình ảnh chữ ký, đường kẻ) trên trang cuối
                                     all_objs = last_page.chars + last_page.images + last_page.rects + last_page.curves
                                     if all_objs:
-                                        # Tìm tọa độ điểm thấp nhất (tính từ trên xuống dưới theo point)
                                         max_bottom_pt = max([obj['bottom'] for obj in all_objs if 'bottom' in obj], default=0)
-                                        lowest_y_mm = max_bottom_pt / 2.83465 # Đổi từ point (72dpi) sang mm
+                                        lowest_y_mm = max_bottom_pt / 2.83465
                             except Exception as e:
                                 print("Lỗi quét không gian PDF:", e)
 
-                            # Chiều cao A4 ngang là 210mm. Một hàng ảnh cao tối đa 75mm + Tiêu đề = ~85mm
-                            # Nếu điểm kết thúc nhỏ hơn 125mm -> Đủ không gian để chèn nối tiếp cùng trang
                             if 0 < lowest_y_mm < 125: 
                                 start_y = lowest_y_mm + 15
                                 is_overlay = True
@@ -481,24 +476,44 @@ with tab_ocr_co:
                                 start_y = 10
                                 is_overlay = False
 
-                            # --- 2. TẠO LỚP ẢNH BỔ SUNG BẰNG FPDF ---
+                            # --- 2. ĐẢM BẢO FONT UNICODE LUÔN SẴN SÀNG TRƯỚC KHI VẼ PDF ---
                             temp_dir = tempfile.gettempdir()
+                            # Ưu tiên font đặt cục bộ trong project (nếu có), sau đó mới tới thư mục temp
+                            local_font_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Roboto-Bold.ttf")
+                            temp_font_path = os.path.join(temp_dir, "Roboto-Bold.ttf")
+                            
+                            active_font_path = None
+                            if os.path.exists(local_font_path) and os.path.getsize(local_font_path) > 10000:
+                                active_font_path = local_font_path
+                            else:
+                                if not os.path.exists(temp_font_path) or os.path.getsize(temp_font_path) < 10000:
+                                    try:
+                                        opener = urllib.request.build_opener()
+                                        opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+                                        urllib.request.install_opener(opener)
+                                        urllib.request.urlretrieve(
+                                            "https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Bold.ttf",
+                                            temp_font_path
+                                        )
+                                    except Exception as font_dl_err:
+                                        print("Không tải được font Roboto:", font_dl_err)
+                                if os.path.exists(temp_font_path) and os.path.getsize(temp_font_path) > 10000:
+                                    active_font_path = temp_font_path
+
                             pdf_imgs = FPDF(orientation="L", unit="mm", format="A4")
-                            
-                            font_path = os.path.join(temp_dir, "Roboto-Bold.ttf")
-                            if os.path.exists(font_path):
-                                pdf_imgs.add_font("Roboto", style="B", fname=font_path)
-                                
                             pdf_imgs.add_page()
-                            # Bắt đầu vẽ từ tọa độ thông minh vừa tính toán
-                            pdf_imgs.set_y(start_y) 
+                            pdf_imgs.set_y(start_y)
                             
-                            try:
+                            if active_font_path:
+                                pdf_imgs.add_font("Roboto", style="B", fname=active_font_path)
                                 pdf_imgs.set_font("Roboto", style="B", size=10)
-                            except:
-                                pdf_imgs.set_font("Arial", style="B", size=10)
+                                header_text = "HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC (BỔ SUNG SAU):"
+                            else:
+                                # Fallback an toàn tuyệt đối: không bao giờ crash nếu server mất mạng tải font
+                                pdf_imgs.set_font("Helvetica", style="B", size=10)
+                                header_text = "HINH ANH DOI CHUNG CHUNG TU C/O GOC (BO SUNG SAU):"
                                 
-                            pdf_imgs.cell(0, 6, "HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC (BỔ SUNG SAU):", new_x="LMARGIN", new_y="NEXT")
+                            pdf_imgs.cell(0, 6, header_text, new_x="LMARGIN", new_y="NEXT")
                             pdf_imgs.ln(4)
                             
                             img_pairs = [imgs_bo_sung[i:i + 2] for i in range(0, len(imgs_bo_sung), 2)]
@@ -520,7 +535,6 @@ with tab_ocr_co:
                                     
                                 max_row_h = max(item['h'] for item in row_imgs_info)
                                 
-                                # Nếu bị tràn trang thì tự động tạo trang mới
                                 if pdf_imgs.get_y() + max_row_h + 6 > 195:
                                     pdf_imgs.add_page()
                                     
@@ -542,19 +556,15 @@ with tab_ocr_co:
                             new_imgs_pdf = pypdf.PdfReader(imgs_pdf_buffer)
                             
                             if is_overlay:
-                                # Chép nguyên xi các trang trước đó
                                 for i in range(len(original_pdf.pages) - 1):
                                     merger.add_page(original_pdf.pages[i])
                                     
-                                # [ĐÃ FIX]: Thêm trang cuối vào PdfWriter TRƯỚC, rồi mới gọi merge_page lên trang của writer
                                 merger.add_page(original_pdf.pages[-1])
                                 merger.pages[-1].merge_page(new_imgs_pdf.pages[0])
                                 
-                                # Nếu ảnh vượt qua 1 trang, chép tiếp các trang sau của file ảnh như bình thường
                                 for i in range(1, len(new_imgs_pdf.pages)):
                                     merger.add_page(new_imgs_pdf.pages[i])
                             else:
-                                # Nếu không đủ không gian, chép nối đuôi bình thường
                                 for page in original_pdf.pages:
                                     merger.add_page(page)
                                 for page in new_imgs_pdf.pages:
@@ -564,7 +574,6 @@ with tab_ocr_co:
                             merger.write(final_buffer)
                             
                             st.session_state["pdf_ready_opt3"] = final_buffer.getvalue()
-                            # [BỔ SUNG]: Lưu lại tên file gốc vào session_state để dùng sau khi rerun
                             st.session_state["ten_pdf_goc_opt3"] = file_pdf_da_ky.name 
                             st.rerun()
 
@@ -572,17 +581,10 @@ with tab_ocr_co:
                             st.error("⚠️ Hệ thống thiếu thư viện. Hãy đảm bảo đã cài đặt: `pip install pypdf pdfplumber`")
                         except Exception as e:
                             st.error(f"Lỗi khi ghép file: {e}")
-            # ================= ĐOẠN CẦN BỔ SUNG LẠI =================
-            # HIỂN THỊ NÚT TẢI SAU KHI XỬ LÝ (DÀNH CHO OPTION 3)
-            # =========================================================
-            # [CẬP NHẬT 2] - HIỂN THỊ NÚT TẢI VÀ NÚT TIẾP TỤC SONG SONG
+
             if st.session_state.get("pdf_ready_opt3"):
-                #import datetime
-                import os # Bổ sung thư viện xử lý đường dẫn
-                
                 st.success("✅ Đã xử lý phân tích và ghép ảnh thành công! Nút tải đã sẵn sàng.")
                 
-                # [BỔ SUNG]: Lấy tên file gốc và tạo tên mới
                 ten_goc = st.session_state.get("ten_pdf_goc_opt3", "Ban_Giao_CO.pdf")
                 ten_khong_duoi = os.path.splitext(ten_goc)[0]
                 filename = f"{ten_khong_duoi}_Kem_Hinh.pdf"
@@ -596,14 +598,14 @@ with tab_ocr_co:
                         file_name=filename,
                         mime="application/pdf",
                         type="primary",
-                        use_container_width=True # Kéo dãn nút cho đẹp
+                        use_container_width=True
                     )
                     
                 with col_btn2:
                     if st.button("🔄 Tiếp Tục: Chèn ảnh vào file khác", use_container_width=True):
-                        st.session_state["pdf_ready_opt3"] = None       # Ẩn nút tải
-                        st.session_state["reset_uploader_key"] += 1     # Ép Streamlit làm mới file_uploader
-                        st.rerun()                                      # Tải lại giao diện tức thì
+                        st.session_state["pdf_ready_opt3"] = None
+                        st.session_state["reset_uploader_key"] += 1
+                        st.rerun()                 # Tải lại giao diện tức thì
             # =========================================================
 
         # ==========================================
