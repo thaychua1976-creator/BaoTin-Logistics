@@ -3,12 +3,15 @@ import pandas as pd
 import datetime, time, re
 import tempfile, os, io
 import urllib.request
+import base64
+import unicodedata
 
 from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 from co_manager import save_co_transaction, delete_co_transaction, get_don_gia_co_theo_khach_hang
 from dotenv import load_dotenv
+
 # Vẫn load file .env cho môi trường Local
-load_dotenv(override=False) 
+load_dotenv(override=False)
 
 # --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -17,12 +20,41 @@ def get_cached_master_data(_db_instance, query, params=None):
 
 def clear_master_cache():
     get_cached_master_data.clear()
+
+# --- HÀM HỖ TRỢ FONT UNICODE & TEXT AN TOÀN CHO PDF ---
+def get_roboto_font_path(font_filename, url):
+    # 1. Ưu tiên lấy file font đặt sẵn cùng thư mục với quan_ly_co.py
+    local_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), font_filename)
+    if os.path.exists(local_path) and os.path.getsize(local_path) > 10000:
+        return local_path
+
+    # 2. Kiểm tra hoặc tải về thư mục tạm (có giới hạn timeout 5 giây)
+    temp_path = os.path.join(tempfile.gettempdir(), font_filename)
+    if not os.path.exists(temp_path) or os.path.getsize(temp_path) < 10000:
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=5) as resp, open(temp_path, 'wb') as out_f:
+                out_f.write(resp.read())
+        except Exception as dl_err:
+            print(f"Cảnh báo: Không tải được {font_filename} từ GitHub ({dl_err})")
+            return None
+
+    if os.path.exists(temp_path) and os.path.getsize(temp_path) > 10000:
+        return temp_path
+    return None
+
+def safe_pdf_text(text_val, use_unicode=True):
+    s = str(text_val)
+    if use_unicode:
+        return s
+    s = s.replace('đ', 'd').replace('Đ', 'D')
+    return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
 # ---------------------------------
 
 # 1. KIỂM TRA ĐĂNG NHẬP (Bắt buộc)
 if 'username' not in st.session_state or not st.session_state['username']:
     st.error("⚠️ Phiên đăng nhập đã hết hạn hoặc bạn chưa đăng nhập. Vui lòng đăng nhập lại!")
-    st.stop() # Dừng toàn bộ code phía dưới nếu chưa đăng nhập
+    st.stop()
 
 # 2. LẤY CHÍNH XÁC USERNAME ĐÃ LOGIN
 current_user = st.session_state['username']
@@ -34,18 +66,20 @@ if not db:
     st.stop()
 
 def get_idx(lst, val, default=0):
-    try: return lst.index(val)
-    except: return default
+    try:
+        return lst.index(val)
+    except Exception:
+        return default
 
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>📄 PHÂN HỆ QUẢN LÝ CHỨNG TỪ C/O (XUẤT KHẨU)</h3>", unsafe_allow_html=True)
 st.toast("✅ Đang load số liệu bạn vui lòng đợi nha:")
 st.divider()
 
 # Thêm tab OCR vào danh sách tabs
-tab_khai_co, tab_file_co, tab_ocr_co, tab_quan_ly_co,tab_thong_ke_co = st.tabs([
-    "📋 KHAI BÁO C/O MỚI", 
-    "📂 TẠO C/O TỪ FILE BỘ CÔNG THƯƠNG", 
-    "🤖 TRÍCH XUẤT C/O TẠO FILE GIAO ĐẠI LÝ", 
+tab_khai_co, tab_file_co, tab_ocr_co, tab_quan_ly_co, tab_thong_ke_co = st.tabs([
+    "📋 KHAI BÁO C/O MỚI",
+    "📂 TẠO C/O TỪ FILE BỘ CÔNG THƯƠNG",
+    "🤖 TRÍCH XUẤT C/O TẠO FILE GIAO ĐẠI LÝ",
     "🔍 DANH SÁCH & QUẢN LÝ",
     "📊 THỐNG KÊ & BÁO CÁO"
 ])
@@ -55,55 +89,61 @@ tab_khai_co, tab_file_co, tab_ocr_co, tab_quan_ly_co,tab_thong_ke_co = st.tabs([
 # ==========================================
 with tab_khai_co:
     st.markdown("#### 📥 Nhập Liệu Chứng Từ C/O Mới")
+
     @st.fragment
     def vung_thao_tac_declare_co():
         col_a, col_b, col_c = st.columns([5, 3, 2])
-        
+
         sql_kh = "SELECT id, ten_khach_hang, ma_khach_hang FROM khach_hang ORDER BY ten_khach_hang ASC"
         df_kh = get_cached_master_data(db, sql_kh)
-        dict_kh = {r['id']: f"[{r['ma_khach_hang']}] {r['ten_khach_hang']}" for _, r in df_kh.iterrows()} if not df_kh.empty else {}
-        
+        dict_kh = (
+            {r['id']: f"[{r['ma_khach_hang']}] {r['ten_khach_hang']}" for _, r in df_kh.iterrows()}
+            if isinstance(df_kh, pd.DataFrame) and not df_kh.empty
+            else {}
+        )
+
         khach_hang_id = col_a.selectbox(
-            "1. Chọn Khách Hàng*", options=list(dict_kh.keys()),
+            "1. Chọn Khách Hàng*",
+            options=list(dict_kh.keys()),
             format_func=lambda x: dict_kh[x],
-            index=0)
-        
+            index=0 if dict_kh else None
+        )
+
         dict_tk = {}
         if khach_hang_id:
             sql_tk_xuat = "SELECT id, so_to_khai, ngay_khai FROM to_khai_hai_quan WHERE loai_to_khai = 'Xuat_Khau' AND khach_hang_id = %s ORDER BY id DESC"
             df_tk_xuat = get_cached_master_data(db, sql_tk_xuat, (khach_hang_id,))
             if isinstance(df_tk_xuat, pd.DataFrame) and not df_tk_xuat.empty:
                 dict_tk = {r['id']: f"Số TK: {r['so_to_khai']} ({r['ngay_khai']})" for _, r in df_tk_xuat.iterrows()}
-                
+
         to_khai_id = col_b.selectbox("2. Chọn Tờ Khai Của Khách*", options=list(dict_tk.keys()), format_func=lambda x: dict_tk[x]) if dict_tk else None
-        
+
         if not to_khai_id and khach_hang_id:
             st.warning("⚠️ Khách hàng này chưa có tờ khai xuất khẩu nào trong hệ thống.")
 
         phan_loai_co = col_c.selectbox("3. Phân Loại Làm C/O", ["Thường", "Gấp", "Ghép"])
-        
+
         gia_co_tu_dong = 0.0
         if khach_hang_id:
             gia_co_tu_dong = get_don_gia_co_theo_khach_hang(db.pool, khach_hang_id, phan_loai_co)
-            
+
         st.divider()
 
         with st.form("form_khai_co", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
-            form_co = c1.selectbox("Form C/O", ["", "Form EURO.1", "Form EURO.1UK", "Form AI", "Form EAV","Form AJ","Form AHK","Form RCEP","Form AK", "Form D","Form E","Form VK","Form VJ","Form S","Form VI"])
+            form_co = c1.selectbox("Form C/O", ["", "Form EURO.1", "Form EURO.1UK", "Form AI", "Form EAV", "Form AJ", "Form AHK", "Form RCEP", "Form AK", "Form D", "Form E", "Form VK", "Form VJ", "Form S", "Form VI"])
             so_co = c2.text_input("Số C/O*")
-            # Lưu ý: GIỮ NGUYÊN kiểu dữ liệu datetime.date trả về, KHÔNG DÙNG strftime ở đây
             ngay_co = c3.date_input("Ngày Cấp C/O", value=datetime.date.today(), format="DD/MM/YYYY")
-            
+
             c4, c5, c6 = st.columns(3)
             phi_co_val = f"{gia_co_tu_dong:,.0f}" if gia_co_tu_dong > 0 else ""
-            
-            phi_co = c4.text_input(f"Lệ Phí C/O (VNĐ)*", value=phi_co_val, placeholder="0", help="Hệ thống tự động đề xuất giá theo cấu hình. Có thể sửa tay.")
+
+            phi_co = c4.text_input("Lệ Phí C/O (VNĐ)*", value=phi_co_val, placeholder="0", help="Hệ thống tự động đề xuất giá theo cấu hình. Có thể sửa tay.")
             phi_dvhq = c5.text_input("Phí DVHQ C/O (VNĐ)", value="", placeholder="0")
             so_hoa_don_co = c6.text_input("Số Hóa Đơn Phí C/O")
-            
+
             ghi_chu_co = st.text_input("Ghi chú bổ sung", value=f"Phân loại C/O: {phan_loai_co}")
-            
+
             if st.form_submit_button("💾 LƯU CHỨNG TỪ C/O", type="primary"):
                 if not to_khai_id:
                     st.error("Vui lòng chọn tờ khai xuất khẩu hợp lệ.")
@@ -129,6 +169,7 @@ with tab_khai_co:
                         st.rerun()
                     else:
                         st.error(f"Lỗi: {msg}")
+
     vung_thao_tac_declare_co()
 
 # ==========================================
@@ -137,44 +178,46 @@ with tab_khai_co:
 with tab_file_co:
     st.markdown("#### 📥 Nhập Liệu Chứng Từ C/O Hàng Loạt Từ File Excel")
     st.info("Hỗ trợ đọc file danh sách C/O kết xuất từ phần mềm khai báo (VD: CO Fortuna09.xlsx). Hệ thống sẽ tự động đối chiếu Số tờ khai HQ để liên kết dữ liệu.")
-    
+
     uploaded_file = st.file_uploader("📂 Chọn file Excel danh sách C/O", type=["xls", "xlsx"], key="upload_co_excel")
-    
+
     if uploaded_file is not None:
         try:
             df_upload = pd.read_excel(uploaded_file)
             df_upload.dropna(how='all', inplace=True)
             df_upload.fillna('', inplace=True)
-            
+
             required_cols = ['Số C/O', 'Số tờ khai HQ']
             missing = [c for c in required_cols if c not in df_upload.columns]
-            
+
             if missing:
                 st.error(f"❌ File Excel không đúng định dạng. Thiếu các cột: {', '.join(missing)}")
             else:
                 sql_tk = "SELECT id, so_to_khai FROM to_khai_hai_quan"
                 df_tk_sys = db.execute_query(sql_tk)
-                
+
                 dict_tk_sys = {}
                 if isinstance(df_tk_sys, pd.DataFrame) and not df_tk_sys.empty:
                     for _, row in df_tk_sys.iterrows():
                         tk_str = str(row['so_to_khai']).strip()
-                        if tk_str.endswith('.0'): tk_str = tk_str[:-2] 
+                        if tk_str.endswith('.0'):
+                            tk_str = tk_str[:-2]
                         dict_tk_sys[tk_str] = row['id']
-                
+
                 valid_records = []
                 invalid_records = []
-                
+
                 for idx, row in df_upload.iterrows():
                     so_co = str(row.get('Số C/O', '')).strip()
                     if not so_co or so_co.lower() == 'nan':
-                        continue 
-                        
+                        continue
+
                     so_tk = str(row.get('Số tờ khai HQ', '')).strip()
-                    if so_tk.endswith('.0'): so_tk = so_tk[:-2]
-                    
+                    if so_tk.endswith('.0'):
+                        so_tk = so_tk[:-2]
+
                     tk_id = dict_tk_sys.get(so_tk)
-                    
+
                     if not tk_id:
                         invalid_records.append({
                             "Số C/O": so_co,
@@ -182,28 +225,35 @@ with tab_file_co:
                             "Lý do lỗi": "Không tìm thấy Số Tờ Khai này trong hệ thống."
                         })
                         continue
-                        
+
                     phi_co = 0.0
                     raw_phi = row.get('PHI', '')
                     if str(raw_phi).strip():
-                        try: phi_co = float(raw_phi)
-                        except: pass
-                        
+                        try:
+                            phi_co = float(raw_phi)
+                        except Exception:
+                            pass
+
                     ngay_co_val = datetime.date.today()
                     raw_ngay = row.get('Ngày cấp phép', '')
                     if str(raw_ngay).strip():
                         try:
                             ngay_co_val = pd.to_datetime(raw_ngay, dayfirst=True).date()
-                        except: pass
-                            
+                        except Exception:
+                            pass
+
                     form_co = ""
-                    if "VN-CN" in so_co.upper(): form_co = "Form E"
-                    elif "VN-KR" in so_co.upper(): form_co = "Form VK"
-                    elif "VN-JP" in so_co.upper(): form_co = "Form VJ"
-                    elif "VN-CU" in so_co.upper(): form_co = "Form VN-CU"
-                    
+                    if "VN-CN" in so_co.upper():
+                        form_co = "Form E"
+                    elif "VN-KR" in so_co.upper():
+                        form_co = "Form VK"
+                    elif "VN-JP" in so_co.upper():
+                        form_co = "Form VJ"
+                    elif "VN-CU" in so_co.upper():
+                        form_co = "Form VN-CU"
+
                     doanh_nghiep = str(row.get('Doanh nghiệp ký', '')).strip()
-                    
+
                     valid_records.append({
                         "to_khai_id": tk_id,
                         "Số tờ khai": so_tk,
@@ -216,25 +266,25 @@ with tab_file_co:
                         "so_hoa_don_co": "",
                         "ghi_chu": "Import hàng loạt từ Excel"
                     })
-                
+
                 if invalid_records:
                     st.warning(f"⚠️ Phát hiện {len(invalid_records)} dòng bị từ chối do chưa có Tờ Khai HQ trong phần mềm:")
                     st.dataframe(pd.DataFrame(invalid_records), use_container_width=True)
-                    
+
                 if valid_records:
                     st.success(f"✅ Đã chuẩn bị sẵn sàng {len(valid_records)} chứng từ C/O hợp lệ.")
                     df_valid = pd.DataFrame(valid_records)
-                    
+
                     df_view = df_valid[['so_co', 'Số tờ khai', 'Doanh nghiệp', 'form_co', 'ngay_co', 'phi_co']].copy()
                     df_view['phi_co'] = df_view['phi_co'].apply(lambda x: f"{int(x):,}")
-                    
+
                     st.dataframe(df_view, use_container_width=True)
-                    
+
                     if st.button("🚀 XÁC NHẬN LƯU HÀNG LOẠT VÀO HỆ THỐNG", type="primary"):
                         with st.spinner("Đang kết nối Database và tiến hành lưu dữ liệu..."):
                             success_count = 0
                             error_msgs = []
-                            
+
                             for rec in valid_records:
                                 data_save = {
                                     'to_khai_id': rec['to_khai_id'],
@@ -247,24 +297,24 @@ with tab_file_co:
                                     'ghi_chu': rec['ghi_chu']
                                 }
                                 ok, msg = save_co_transaction(db.pool, data_save, None, current_user)
-                                if ok: 
+                                if ok:
                                     success_count += 1
-                                else: 
+                                else:
                                     error_msgs.append(f"- Lỗi ở Số C/O {rec['so_co']}: {msg}")
-                            
+
                             clear_master_cache()
-                            
+
                             if success_count > 0:
                                 st.success(f"🎉 Hoàn tất! Đã lưu thành công {success_count}/{len(valid_records)} chứng từ C/O.")
                             if error_msgs:
                                 st.error("❌ Các lỗi phát sinh trong quá trình lưu:")
-                                for err in error_msgs: 
+                                for err in error_msgs:
                                     st.write(err)
-                                    
+
                             if success_count > 0:
                                 time.sleep(1.5)
                                 st.rerun()
-                                    
+
         except Exception as e:
             st.error(f"❌ Xảy ra lỗi khi phân tích file Excel: {e}")
 
@@ -273,11 +323,11 @@ with tab_file_co:
 # ==========================================
 with tab_ocr_co:
     st.markdown("#### 🤖 Trích Xuất Dữ Liệu C/O & Ký Nhận Bàn Giao")
-    
-    # 🚀 1. SỬ DỤNG @st.fragment ĐỂ CÔ LẬP RERUN (Tuyệt đối không giật trang khi gõ/ký tên)
+
+    # 🚀 SỬ DỤNG @st.fragment ĐỂ CÔ LẬP RERUN (Tuyệt đối không giật trang khi gõ/ký tên)
     @st.fragment
     def vung_trich_xuat_va_ky_nhan():
-        # --- BƯỚC 1: TIÊM CSS ÉP KHOẢNG CÁCH NGAY TỪ ĐẦU ---
+        # --- TIÊM CSS ÉP KHOẢNG CÁCH NGAY TỪ ĐẦU ---
         st.markdown("""
             <style>
                 div[data-testid="stVerticalBlock"] > div { padding-bottom: 0.1rem !important; }
@@ -292,43 +342,40 @@ with tab_ocr_co:
 
         try:
             from streamlit_drawable_canvas import st_canvas
-            from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
-            from openpyxl.drawing.image import Image as OpenpyxlImage
-            from PIL import Image
+            from PIL import Image, ImageOps
             import pdfplumber
-            import easyocr
-            import numpy as np
+            import pypdf
+            from fpdf import FPDF
         except ImportError:
-            st.error("⚠️ Server thiếu thư viện. Chạy lệnh: `pip install streamlit-drawable-canvas openpyxl pdfplumber easyocr pypdf fpdf2`")
+            st.error("⚠️ Server thiếu thư viện. Chạy lệnh: `pip install streamlit-drawable-canvas openpyxl pdfplumber pypdf fpdf2 pillow`")
             st.stop()
 
-        # [CẬP NHẬT 1]: THÊM OPTION 3 LÊN TRÊN CÙNG
         che_do_tab3 = st.radio(
-            "Lựa chọn luồng công việc:", 
+            "Lựa chọn luồng công việc:",
             ["1️⃣ Quét PDF Mới & Chỉnh Sửa", "2️⃣ Tải File Excel Cũ Lên (Làm tiếp)", "3️⃣ Ghép Ảnh C/O Vào File Đã Ký"],
             horizontal=True
         )
-        
+
         st.markdown("<hr style='margin: 10px 0px 5px 0px; border: 1px solid #e0e0e0;'>", unsafe_allow_html=True)
-        
+
         if "ocr_data" not in st.session_state:
             st.session_state["ocr_data"] = []
         if "reset_uploader_key" not in st.session_state:
             st.session_state["reset_uploader_key"] = 0
-        
+
         # ---------------------------------------------------------
         # CHẾ ĐỘ 1: QUÉT PDF MỚI VÀ CHỈNH SỬA TRỰC TIẾP
         # ---------------------------------------------------------
         if che_do_tab3 == "1️⃣ Quét PDF Mới & Chỉnh Sửa":
             current_pdf_key = f"upload_pdfs_ocr_{st.session_state['reset_uploader_key']}"
             uploaded_pdfs = st.file_uploader("📂 Kéo thả file PDF C/O vào đây", type=["pdf"], accept_multiple_files=True, key=current_pdf_key)
-            
+
             if uploaded_pdfs:
                 if st.button("🚀 Bắt Đầu Quét & Trích Xuất", type="primary"):
                     with st.spinner("⏳ Đang xử lý siêu tốc..."):
                         extracted_data = []
                         pattern = r'([A-Z0-9.\-\s]{0,20})(\d{2})\s*[-/|17lI\.]\s*(\d{2})\s*[-/|17lI\.]\s*([0-9A-Z\s]{5,15})'
-                        
+
                         for pdf_file in uploaded_pdfs:
                             try:
                                 with pdfplumber.open(pdf_file) as pdf:
@@ -336,16 +383,14 @@ with tab_ocr_co:
                                         co_number = "Không nhận diện được"
                                         text_fast = (page.extract_text() or "").upper()
                                         match = re.search(pattern, text_fast)
-                                        
+
                                         if not match:
                                             bounding_box = (page.width * 0.35, 0, page.width, page.height * 0.35)
                                             micro_crop = page.crop(bounding_box)
                                             pil_img = micro_crop.to_image(resolution=300).original
-                                            
-                                            # FIX 1: Khởi tạo api_key từ trước để tránh UnboundLocalError
-                                            api_key = None 
+
+                                            api_key = None
                                             try:
-                                                # FIX 2: Sửa lại đúng tên thư viện theo cú pháp bên dưới
                                                 import google.generativeai as genai
                                                 if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
                                                     api_key = st.secrets["api_keys"]["gemini"]
@@ -353,10 +398,10 @@ with tab_ocr_co:
                                                     api_key = st.secrets["GEMINI_API_KEY"]
                                             except Exception:
                                                 pass
-                                                
+
                                             if not api_key:
                                                 api_key = os.getenv("GEMINI_API_KEY")
-                                                
+
                                             if api_key:
                                                 genai.configure(api_key=api_key)
                                                 model = genai.GenerativeModel('gemini-3.6-flash')
@@ -365,47 +410,47 @@ with tab_ocr_co:
                                                 text_ai = (response.text or "").upper()
                                                 match = re.search(pattern, text_ai)
                                             else:
-                                                # FIX 3: Dùng break thay vì return None để không làm sập toàn bộ fragment
                                                 st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống!")
-                                                break    
-                                            
+                                                break
+
                                         if match:
                                             prefix_raw, dd, mm = match.group(1), match.group(2), match.group(3)
                                             raw_suffix = match.group(4)
                                             num_clean = re.sub(r'\s+', '', raw_suffix).replace('O', '0')
-                                            
+
                                             m_strict = re.match(r'^(\d{5,8})([A-Z]?)', num_clean)
                                             if m_strict:
                                                 digits = m_strict.group(1)
                                                 letter = m_strict.group(2)
                                                 if len(digits) >= 7 and digits[6] == '8':
-                                                    digits = digits[:6] 
-                                                    letter = 'B'        
+                                                    digits = digits[:6]
+                                                    letter = 'B'
                                                 elif len(digits) > 6:
                                                     digits = digits[:6]
                                                 if letter != 'B':
                                                     letter = ''
                                                 num_clean = digits + letter
-                                                
+
                                             suffix_clean = f"{dd}/{mm}/{num_clean}"
                                             prefix_clean = re.sub(r'[\s.\-]', '', prefix_raw)
                                             for noise in ['EUR1', 'EUR', 'NO', 'NUM']:
                                                 prefix_clean = prefix_clean.replace(noise, '')
-                                                
+
                                             country = "??"
                                             for c in ['DE', 'NL', 'SE', 'UK', 'KZ', 'K2', 'K7']:
                                                 if c in prefix_clean:
                                                     country = c.replace('K2', 'KZ').replace('K7', 'KZ')
                                                     break
-                                            if country == "??" and len(prefix_clean) >= 2: country = prefix_clean[-2:]
-                                            if country == "??" and prefix_clean.endswith('E'): country = 'DE'
+                                            if country == "??" and len(prefix_clean) >= 2:
+                                                country = prefix_clean[-2:]
+                                            if country == "??" and prefix_clean.endswith('E'):
+                                                country = 'DE'
                                             co_number = f"VN-{country} {suffix_clean}" if country != "??" else f"VN-?? {suffix_clean}"
-                                        
+
                                         extracted_data.append({"STT": len(extracted_data) + 1, "SỐ C/O BẢN GỐC": co_number, "KÝ NHẬN": "", "NGÀY NHẬN": ""})
                             except Exception as inner_e:
                                 st.warning(f"Lỗi đọc {pdf_file.name}: {inner_e}")
-                        
-                        # FIX 4: Chỉ gọi rerun() nếu có data. Nếu mảng rỗng thì giữ lại màn hình để user kịp đọc thông báo lỗi.
+
                         if extracted_data:
                             st.session_state["ocr_data"] = extracted_data
                             st.rerun()
@@ -429,19 +474,19 @@ with tab_ocr_co:
                     st.error(f"Lỗi đọc file Excel: {e}")
 
         # ---------------------------------------------------------
-        # CHẾ ĐỘ 3: GHÉP ẢNH BỔ SUNG VÀO FILE PDF ĐÃ KÝ (ĐÃ ĐÓNG BĂNG ỔN ĐỊNH)
+        # CHẾ ĐỘ 3: GHÉP ẢNH BỔ SUNG VÀO FILE PDF ĐÃ KÝ
         # ---------------------------------------------------------
         elif che_do_tab3 == "3️⃣ Ghép Ảnh C/O Vào File Đã Ký":
             st.info("💡 Mẹo: Ở công ty/cảng anh chỉ cần cho đại lý ký rồi tải file PDF chứa chữ ký về máy. Sau đó về nhà có mạng Wifi mạnh, anh tải ngược file PDF đó lên đây cùng với mớ hình ảnh C/O để hệ thống tự ghép ảnh vào đuôi PDF nhé!")
-            
+
             col_up1, col_up2 = st.columns(2)
-            
+
             current_pdf_key = f"upload_pdf_da_ky_{st.session_state['reset_uploader_key']}"
             current_img_key = f"upload_img_bo_sung_{st.session_state['reset_uploader_key']}"
-            
+
             file_pdf_da_ky = col_up1.file_uploader("1️⃣ Tải lên Phiếu bàn giao ĐÃ KÝ (PDF)", type=["pdf"], key=current_pdf_key)
             imgs_bo_sung = col_up2.file_uploader("2️⃣ Tải lên hình ảnh C/O gốc bổ sung", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key=current_img_key)
-            
+
             if st.button("⚙️ BẮT ĐẦU GHÉP ẢNH VÀO PDF", type="primary"):
                 if not file_pdf_da_ky:
                     st.error("⚠️ Vui lòng tải lên file PDF Phiếu bàn giao đã ký.")
@@ -450,12 +495,6 @@ with tab_ocr_co:
                 else:
                     with st.spinner("⏳ Đang tính toán không gian và nối ảnh, vui lòng chờ trong giây lát..."):
                         try:
-                            import pypdf
-                            from fpdf import FPDF
-                            from PIL import Image as PILImage
-                            import tempfile, os, io, urllib.request
-                            import pdfplumber
-                            
                             # --- 1. PHÂN TÍCH KHÔNG GIAN TRỐNG CỦA TRANG CUỐI BẰNG PDFPLUMBER ---
                             file_bytes = file_pdf_da_ky.getvalue()
                             lowest_y_mm = 0
@@ -469,7 +508,7 @@ with tab_ocr_co:
                             except Exception as e:
                                 print("Lỗi quét không gian PDF:", e)
 
-                            if 0 < lowest_y_mm < 125: 
+                            if 0 < lowest_y_mm < 125:
                                 start_y = lowest_y_mm + 15
                                 is_overlay = True
                             else:
@@ -477,91 +516,76 @@ with tab_ocr_co:
                                 is_overlay = False
 
                             # --- 2. ĐẢM BẢO FONT UNICODE LUÔN SẴN SÀNG TRƯỚC KHI VẼ PDF ---
-                            temp_dir = tempfile.gettempdir()
-                            # Ưu tiên font đặt cục bộ trong project (nếu có), sau đó mới tới thư mục temp
-                            local_font_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Roboto-Bold.ttf")
-                            temp_font_path = os.path.join(temp_dir, "Roboto-Bold.ttf")
-                            
-                            active_font_path = None
-                            if os.path.exists(local_font_path) and os.path.getsize(local_font_path) > 10000:
-                                active_font_path = local_font_path
-                            else:
-                                if not os.path.exists(temp_font_path) or os.path.getsize(temp_font_path) < 10000:
-                                    try:
-                                        opener = urllib.request.build_opener()
-                                        opener.addheaders = [('User-agent', 'Mozilla/5.0')]
-                                        urllib.request.install_opener(opener)
-                                        urllib.request.urlretrieve(
-                                            "https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Bold.ttf",
-                                            temp_font_path
-                                        )
-                                    except Exception as font_dl_err:
-                                        print("Không tải được font Roboto:", font_dl_err)
-                                if os.path.exists(temp_font_path) and os.path.getsize(temp_font_path) > 10000:
-                                    active_font_path = temp_font_path
+                            font_bold_path = get_roboto_font_path(
+                                "Roboto-Bold.ttf",
+                                "https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Bold.ttf"
+                            )
+                            use_unicode = bool(font_bold_path)
 
                             pdf_imgs = FPDF(orientation="L", unit="mm", format="A4")
                             pdf_imgs.add_page()
                             pdf_imgs.set_y(start_y)
-                            
-                            if active_font_path:
-                                pdf_imgs.add_font("Roboto", style="B", fname=active_font_path)
+
+                            if use_unicode:
+                                pdf_imgs.add_font("Roboto", style="B", fname=font_bold_path)
                                 pdf_imgs.set_font("Roboto", style="B", size=10)
-                                header_text = "HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC (BỔ SUNG SAU):"
                             else:
-                                # Fallback an toàn tuyệt đối: không bao giờ crash nếu server mất mạng tải font
                                 pdf_imgs.set_font("Helvetica", style="B", size=10)
-                                header_text = "HINH ANH DOI CHUNG CHUNG TU C/O GOC (BO SUNG SAU):"
-                                
+
+                            header_text = safe_pdf_text("HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC (BỔ SUNG SAU):", use_unicode)
                             pdf_imgs.cell(0, 6, header_text, new_x="LMARGIN", new_y="NEXT")
                             pdf_imgs.ln(4)
-                            
+
+                            temp_dir = tempfile.gettempdir()
                             img_pairs = [imgs_bo_sung[i:i + 2] for i in range(0, len(imgs_bo_sung), 2)]
                             for row_idx, pair in enumerate(img_pairs):
                                 row_imgs_info = []
                                 for idx_in_pair, img_file in enumerate(pair):
-                                    eb_img = PILImage.open(img_file).convert('RGB')
+                                    eb_img = ImageOps.exif_transpose(Image.open(img_file)).convert('RGB')
                                     eb_path = os.path.join(temp_dir, f"temp_evidence_bs_{row_idx}_{idx_in_pair}.png")
                                     eb_img.save(eb_path, format="PNG")
-                                    
+
                                     w_img_px, h_img_px = eb_img.size
                                     render_w = 125.0
                                     render_h = (h_img_px / w_img_px) * render_w
                                     if render_h > 75:
                                         render_h = 75.0
                                         render_w = (w_img_px / h_img_px) * render_h
-                                        
+
                                     row_imgs_info.append({'path': eb_path, 'w': render_w, 'h': render_h})
-                                    
+
                                 max_row_h = max(item['h'] for item in row_imgs_info)
-                                
+
                                 if pdf_imgs.get_y() + max_row_h + 6 > 195:
                                     pdf_imgs.add_page()
-                                    
+
                                 current_y = pdf_imgs.get_y() + 2
                                 x_positions = [15.0, 148.0]
                                 for col_idx, item in enumerate(row_imgs_info):
                                     x_pos = x_positions[col_idx]
                                     pdf_imgs.image(item['path'], x=x_pos, y=current_y, w=item['w'], h=item['h'])
-                                    if os.path.exists(item['path']):
-                                        os.remove(item['path'])
-                                        
+                                    try:
+                                        if os.path.exists(item['path']):
+                                            os.remove(item['path'])
+                                    except Exception:
+                                        pass
+
                                 pdf_imgs.set_y(current_y + max_row_h + 5)
-                            
+
                             imgs_pdf_buffer = io.BytesIO(pdf_imgs.output())
-                            
+
                             # --- 3. GHÉP/XẾP CHỒNG (OVERLAY) LỚP ẢNH VÀO PDF GỐC ---
                             merger = pypdf.PdfWriter()
                             original_pdf = pypdf.PdfReader(io.BytesIO(file_bytes))
                             new_imgs_pdf = pypdf.PdfReader(imgs_pdf_buffer)
-                            
+
                             if is_overlay:
                                 for i in range(len(original_pdf.pages) - 1):
                                     merger.add_page(original_pdf.pages[i])
-                                    
+
                                 merger.add_page(original_pdf.pages[-1])
                                 merger.pages[-1].merge_page(new_imgs_pdf.pages[0])
-                                
+
                                 for i in range(1, len(new_imgs_pdf.pages)):
                                     merger.add_page(new_imgs_pdf.pages[i])
                             else:
@@ -569,28 +593,26 @@ with tab_ocr_co:
                                     merger.add_page(page)
                                 for page in new_imgs_pdf.pages:
                                     merger.add_page(page)
-                                    
+
                             final_buffer = io.BytesIO()
                             merger.write(final_buffer)
-                            
+
                             st.session_state["pdf_ready_opt3"] = final_buffer.getvalue()
-                            st.session_state["ten_pdf_goc_opt3"] = file_pdf_da_ky.name 
+                            st.session_state["ten_pdf_goc_opt3"] = file_pdf_da_ky.name
                             st.rerun()
 
-                        except ImportError:
-                            st.error("⚠️ Hệ thống thiếu thư viện. Hãy đảm bảo đã cài đặt: `pip install pypdf pdfplumber`")
                         except Exception as e:
                             st.error(f"Lỗi khi ghép file: {e}")
 
             if st.session_state.get("pdf_ready_opt3"):
                 st.success("✅ Đã xử lý phân tích và ghép ảnh thành công! Nút tải đã sẵn sàng.")
-                
+
                 ten_goc = st.session_state.get("ten_pdf_goc_opt3", "Ban_Giao_CO.pdf")
                 ten_khong_duoi = os.path.splitext(ten_goc)[0]
                 filename = f"{ten_khong_duoi}_Kem_Hinh.pdf"
-                
+
                 col_btn1, col_btn2 = st.columns([1, 1])
-                
+
                 with col_btn1:
                     st.download_button(
                         label="📥 BẤM VÀO ĐÂY ĐỂ TẢI FILE",
@@ -600,75 +622,66 @@ with tab_ocr_co:
                         type="primary",
                         use_container_width=True
                     )
-                    
+
                 with col_btn2:
                     if st.button("🔄 Tiếp Tục: Chèn ảnh vào file khác", use_container_width=True):
                         st.session_state["pdf_ready_opt3"] = None
                         st.session_state["reset_uploader_key"] += 1
-                        st.rerun()                 # Tải lại giao diện tức thì
-            # =========================================================
+                        st.rerun()
 
         # ==========================================
         # HIỂN THỊ LƯỚI DATA VÀ KHUNG KÝ (CHỈ DÀNH CHO OPTION 1 & 2)
         # ==========================================
         if st.session_state.get("ocr_data") and che_do_tab3 in ["1️⃣ Quét PDF Mới & Chỉnh Sửa", "2️⃣ Tải File Excel Cũ Lên (Làm tiếp)"]:
-            
-            # --- [CẬP NHẬT MỚI]: BỘ CHỌN CÔNG TY ĐẠI LÝ ---
+
             st.markdown("<h4 style='margin-bottom: 5px; margin-top: 0px;'>🏢 Thông tin Đại lý nhận bàn giao</h4>", unsafe_allow_html=True)
             col_dl1, col_dl2 = st.columns([2, 3])
-            
+
             cong_ty_dai_ly_chon = col_dl1.selectbox(
                 "Chọn Công ty Đại lý:",
                 options=["EXPEDITORS", "DSV AIR & SEA CO. LTD", "KUEHNE+NAGEL", "DHL", "KHÁC (Tự nhập tay)"]
             )
-            
+
             if cong_ty_dai_ly_chon == "KHÁC (Tự nhập tay)":
                 ten_cong_ty_dai_ly = col_dl2.text_input("Nhập tên công ty đại lý:", placeholder="VD: CÔNG TY LOGISTICS ABC...")
             else:
                 ten_cong_ty_dai_ly = cong_ty_dai_ly_chon
-                
+
             st.markdown("<hr style='margin: 10px 0px; border: 1px solid #ddd;'>", unsafe_allow_html=True)
-            # ----------------------------------------------
-            
+
             df_current = pd.DataFrame(st.session_state["ocr_data"])
             st.markdown(f"<h5 style='margin-bottom: 0px; margin-top: 0px;'>📝 Danh sách {len(df_current)} mã C/O</h5>", unsafe_allow_html=True)
-            
-            # [BỔ SUNG]: Hướng dẫn người dùng thao tác xóa dòng
+
             st.info("💡 **Mẹo:** Nhấp đúp chuột vào ô để sửa chữ. Để **XÓA DÒNG**, hãy click vào ô vuông đầu dòng bên trái cùng và nhấn phím **Delete** trên bàn phím (hoặc biểu tượng 🗑️).")
-            
+
             edited_df = st.data_editor(
-                df_current, 
-                use_container_width=True, 
+                df_current,
+                use_container_width=True,
                 num_rows="dynamic",
                 disabled=["STT", "TÊN NGƯỜI NHẬN", "NGÀY NHẬN"],
                 key="co_data_editor"
             )
-            
-            # =========================================================
-            # [SỬA ĐỔI QUAN TRỌNG]: Tự động đánh lại STT liên tục từ 1, 2, 3...
-            # =========================================================
+
             if not edited_df.empty:
                 edited_df = edited_df.reset_index(drop=True)
                 if 'STT' in edited_df.columns:
                     edited_df['STT'] = edited_df.index + 1
-            
-            # Lưu lại danh sách đã làm sạch STT vào session_state
+
             st.session_state["ocr_data"] = edited_df.to_dict('records')
-            
+
             # [TẢI BẢN NHÁP EXCEL]
-            
-            
-            import io
             excel_nhap_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_nhap_buffer, engine='xlsxwriter') as writer:
                 workbook = writer.book
                 worksheet = writer.sheets.setdefault('So_Giao_Nhan', workbook.add_worksheet('So_Giao_Nhan'))
                 worksheet.write('A1', "CÔNG TY FORTUNATE HONGKONG VIỆT NAM")
-                worksheet.write('A2', f"GỞI CÔNG TY: {ten_cong_ty_dai_ly}") # Gắn biến động vào file Excel
+                worksheet.write('A2', f"GỞI CÔNG TY: {ten_cong_ty_dai_ly}")
                 edited_df.to_excel(writer, sheet_name='So_Giao_Nhan', index=False, startrow=3)
-                worksheet.set_column('A:A', 10); worksheet.set_column('B:B', 35); worksheet.set_column('C:C', 30); worksheet.set_column('D:D', 25)
-                
-          #  import datetime
+                worksheet.set_column('A:A', 10)
+                worksheet.set_column('B:B', 35)
+                worksheet.set_column('C:C', 30)
+                worksheet.set_column('D:D', 25)
+
             st.download_button(
                 label="📥 OPTION 1: Tải File Nháp (Chưa Ký) Để Lưu Trữ",
                 data=excel_nhap_buffer.getvalue(),
@@ -677,7 +690,7 @@ with tab_ocr_co:
             )
 
             st.markdown("<hr style='margin: 10px 0px; border: 1px solid #ddd;'>", unsafe_allow_html=True)
-            
+
             # [KHUNG KÝ TÊN VÀ XUẤT PDF]
             st.markdown("<h4 style='margin-bottom: 5px; margin-top: 0px;'>🤝 OPTION 2: Ký Nhận & Xuất Phiếu Bản Giao</h4>", unsafe_allow_html=True)
 
@@ -687,32 +700,32 @@ with tab_ocr_co:
             c_ten, c_ngay = st.columns(2)
             ten_dai_ly = c_ten.text_input("Tên nhân viên nhận (Đại lý):", placeholder="Nhập họ tên nhân viên nhận...")
             ngay_nhan = c_ngay.date_input("Ngày nhận:", value=datetime.date.today())
-            
+
             st.markdown("<p style='margin-bottom: 0px; margin-top: 10px; font-weight: bold;'>Đại lý vẽ chữ ký xác nhận vào khung bên dưới:</p>", unsafe_allow_html=True)
-            
+
             try:
                 canvas_result = st_canvas(
-                    fill_color="rgba(255, 165, 0, 0.3)", 
-                    stroke_width=2.5, 
-                    stroke_color="#FF0000", 
-                    background_color="#f0f2f6", 
-                    height=150, 
-                    width=350, 
+                    fill_color="rgba(255, 165, 0, 0.3)",
+                    stroke_width=2.5,
+                    stroke_color="#FF0000",
+                    background_color="#f0f2f6",
+                    height=150,
+                    width=350,
                     drawing_mode="freedraw",
                     key="canvas_ky_ten_2"
                 )
-            except Exception as canvas_err:
+            except Exception:
                 st.warning("⚠️ Không thể tải khung chữ ký do lỗi mạng hoặc bộ nhớ đệm. Vui lòng bấm F5 để thử lại.")
                 canvas_result = None
-            
+
             st.markdown("<div style='margin-top: -10px;'></div>", unsafe_allow_html=True)
-            
+
             if st.button("🤝 KÝ VÀ TẢI FILE VỀ", type="primary"):
                 if not ten_cong_ty_dai_ly.strip():
                     st.error("Vui lòng nhập Tên công ty đại lý.")
                 elif not ten_dai_ly.strip():
                     st.error("Vui lòng nhập Tên nhân viên nhận của đại lý.")
-                elif canvas_result.image_data is None or canvas_result.image_data.sum() == 0:
+                elif canvas_result is None or canvas_result.image_data is None or canvas_result.image_data.sum() == 0:
                     st.error("Đại lý chưa ký xác nhận vào khung.")
                 else:
                     with st.spinner("Đang chèn chữ ký và xử lý File..."):
@@ -720,158 +733,115 @@ with tab_ocr_co:
                             from audit_logger import ghi_log_he_thong
                             chi_tiet_log = f"Bàn giao {len(edited_df)} C/O gốc cho đại lý: {ten_cong_ty_dai_ly} (Nhân viên: {ten_dai_ly})"
                             ghi_log_he_thong(db.pool, "QUAN_LY_CO", None, current_user, "BAN_GIAO_CO", chi_tiet_log)
-                        except Exception as log_err:
+                        except Exception:
                             pass
-                        
+
                         img_data = canvas_result.image_data
                         img_rgba = Image.fromarray(img_data.astype('uint8'), 'RGBA')
                         img_bg = Image.new("RGBA", img_rgba.size, "WHITE")
                         img_bg.paste(img_rgba, mask=img_rgba)
                         img_rgb = img_bg.convert('RGB')
-                        
-                        img_buffer = io.BytesIO()
-                        img_rgb.save(img_buffer, format="PNG")
-                        img_buffer.seek(0)
-                        
-                        try:
-                            from fpdf import FPDF
-                        except ImportError:
-                            st.error("⚠️ Thiếu thư viện PDF. Vui lòng thêm 'fpdf2' vào file requirements.txt")
-                            st.stop()
-                        
-                        import urllib.request
-                        import os
-                        import tempfile
-                        import base64
-                        import unicodedata
 
-                        def chuan_hoa_font_roboto(font_filename, url):
-                            # 1. Ưu tiên lấy file font đặt sẵn cùng thư mục với quan_ly_co.py
-                            local_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), font_filename)
-                            if os.path.exists(local_path) and os.path.getsize(local_path) > 10000:
-                                return local_path
-                            
-                            # 2. Kiểm tra hoặc tải về thư mục tạm (có giới hạn timeout 5 giây)
-                            temp_path = os.path.join(tempfile.gettempdir(), font_filename)
-                            if not os.path.exists(temp_path) or os.path.getsize(temp_path) < 10000:
-                                try:
-                                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                                    with urllib.request.urlopen(req, timeout=5) as resp, open(temp_path, 'wb') as out_f:
-                                        out_f.write(resp.read())
-                                except Exception as dl_err:
-                                    print(f"Cảnh báo: Không tải được {font_filename} từ GitHub ({dl_err})")
-                                    return None
-                            
-                            if os.path.exists(temp_path) and os.path.getsize(temp_path) > 10000:
-                                return temp_path
-                            return None
-
-                        font_path = chuan_hoa_font_roboto(
+                        font_path = get_roboto_font_path(
                             "Roboto-Regular.ttf",
                             "https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Regular.ttf"
                         )
-                        font_bold_path = chuan_hoa_font_roboto(
+                        font_bold_path = get_roboto_font_path(
                             "Roboto-Bold.ttf",
                             "https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Bold.ttf"
                         )
-                        
+
                         use_unicode_font = bool(font_path and font_bold_path)
-                        
-                        # Hàm tự động bỏ dấu tiếng Việt an toàn nếu server mất mạng hoàn toàn
-                        def txt(text_val):
-                            s = str(text_val)
-                            if use_unicode_font:
-                                return s
-                            s = s.replace('đ', 'd').replace('Đ', 'D')
-                            return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
 
                         pdf = FPDF(orientation="L", unit="mm", format="A4")
                         pdf.add_page()
-                        
+
                         if use_unicode_font:
                             pdf.add_font("Roboto", style="", fname=font_path)
                             pdf.add_font("Roboto", style="B", fname=font_bold_path)
                             font_family = "Roboto"
                         else:
                             font_family = "Helvetica"
-                        
+
                         pdf.set_font(font_family, style="B", size=18)
-                        pdf.cell(0, 10, txt("CÔNG TY FORTUNATE HONGKONG VIỆT NAM"), align="C", new_x="LMARGIN", new_y="NEXT")
-                        pdf.cell(0, 10, txt(f"GỞI CÔNG TY: {ten_cong_ty_dai_ly}"), align="C", new_x="LMARGIN", new_y="NEXT")
+                        pdf.cell(0, 10, safe_pdf_text("CÔNG TY FORTUNATE HONGKONG VIỆT NAM", use_unicode_font), align="C", new_x="LMARGIN", new_y="NEXT")
+                        pdf.cell(0, 10, safe_pdf_text(f"GỞI CÔNG TY: {ten_cong_ty_dai_ly}", use_unicode_font), align="C", new_x="LMARGIN", new_y="NEXT")
                         pdf.ln(5)
-                        
+
                         pdf.set_font(font_family, style="B", size=11)
                         pdf.set_fill_color(220, 220, 220)
-                        
-                        col_widths = [20, 100, 80, 50] 
+
+                        col_widths = [20, 100, 80, 50]
                         headers = ['STT', 'SỐ C/O BẢN GỐC', 'TÊN NGƯỜI NHẬN', 'NGÀY NHẬN']
-                        
+
                         for i, h in enumerate(headers):
-                            pdf.cell(col_widths[i], 8, txt(h), border=1, align="C", fill=True)
+                            pdf.cell(col_widths[i], 8, safe_pdf_text(h, use_unicode_font), border=1, align="C", fill=True)
                         pdf.ln(8)
-                        
+
                         pdf.set_font(font_family, style="", size=11)
                         ngay_format = ngay_nhan.strftime('%d/%m/%Y')
-                        
+
                         for r_idx in range(len(edited_df)):
                             so_dong_con_lai = len(edited_df) - r_idx
-                            space_needed = (so_dong_con_lai * 8) + 55 
-                            
+                            space_needed = (so_dong_con_lai * 8) + 55
+
                             if so_dong_con_lai <= 3 and (pdf.get_y() + space_needed) > 200:
                                 pdf.add_page()
                                 pdf.set_font(font_family, style="B", size=11)
                                 for i, h in enumerate(headers):
-                                    pdf.cell(col_widths[i], 8, txt(h), border=1, align="C", fill=True)
+                                    pdf.cell(col_widths[i], 8, safe_pdf_text(h, use_unicode_font), border=1, align="C", fill=True)
                                 pdf.ln(8)
                                 pdf.set_font(font_family, style="", size=11)
-                            
-                            pdf.cell(col_widths[0], 8, txt(str(edited_df.iloc[r_idx, 0]).replace('.0', '')), border=1, align="C")
-                            pdf.cell(col_widths[1], 8, txt(str(edited_df.iloc[r_idx, 1])), border=1, align="C")
-                            pdf.cell(col_widths[2], 8, txt(ten_dai_ly), border=1, align="C") 
+
+                            pdf.cell(col_widths[0], 8, safe_pdf_text(str(edited_df.iloc[r_idx, 0]).replace('.0', ''), use_unicode_font), border=1, align="C")
+                            pdf.cell(col_widths[1], 8, safe_pdf_text(str(edited_df.iloc[r_idx, 1]), use_unicode_font), border=1, align="C")
+                            pdf.cell(col_widths[2], 8, safe_pdf_text(ten_dai_ly, use_unicode_font), border=1, align="C")
                             pdf.cell(col_widths[3], 8, ngay_format, border=1, align="C")
                             pdf.ln(8)
-                            
+
                         if imgs_bang_chung:
                             try:
-                                from PIL import Image as PILImage
                                 if pdf.get_y() > 155:
                                     pdf.add_page()
                                 else:
                                     pdf.ln(4)
-                                    
+
                                 pdf.set_font(font_family, style="B", size=10)
-                                pdf.cell(0, 6, txt("HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC THỰC TẾ KHI BÀN GIAO:"), new_x="LMARGIN", new_y="NEXT")
-                                
+                                pdf.cell(0, 6, safe_pdf_text("HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC THỰC TẾ KHI BÀN GIAO:", use_unicode_font), new_x="LMARGIN", new_y="NEXT")
+
                                 img_pairs = [imgs_bang_chung[i:i + 2] for i in range(0, len(imgs_bang_chung), 2)]
                                 for row_idx, pair in enumerate(img_pairs):
                                     row_imgs_info = []
                                     for idx_in_pair, img_file in enumerate(pair):
                                         global_idx = row_idx * 2 + idx_in_pair
-                                        eb_img = PILImage.open(img_file).convert('RGB')
+                                        eb_img = ImageOps.exif_transpose(Image.open(img_file)).convert('RGB')
                                         eb_path = os.path.join(tempfile.gettempdir(), f"temp_evidence_co_{global_idx}.png")
                                         eb_img.save(eb_path, format="PNG")
-                                        
+
                                         w_img_px, h_img_px = eb_img.size
                                         render_w = 125.0
                                         render_h = (h_img_px / w_img_px) * render_w
                                         if render_h > 75:
                                             render_h = 75.0
                                             render_w = (w_img_px / h_img_px) * render_h
-                                            
+
                                         row_imgs_info.append({'path': eb_path, 'w': render_w, 'h': render_h})
-                                    
+
                                     max_row_h = max(item['h'] for item in row_imgs_info)
                                     if pdf.get_y() + max_row_h + 6 > 195:
                                         pdf.add_page()
-                                        
+
                                     start_y = pdf.get_y() + 2
                                     x_positions = [15.0, 148.0]
                                     for col_idx, item in enumerate(row_imgs_info):
                                         x_pos = x_positions[col_idx]
                                         pdf.image(item['path'], x=x_pos, y=start_y, w=item['w'], h=item['h'])
-                                        if os.path.exists(item['path']):
-                                            os.remove(item['path'])
-                                            
+                                        try:
+                                            if os.path.exists(item['path']):
+                                                os.remove(item['path'])
+                                        except Exception:
+                                            pass
+
                                     pdf.set_y(start_y + max_row_h + 5)
                             except Exception as e_img:
                                 print(f"Lỗi chèn ảnh bằng chứng: {e_img}")
@@ -882,36 +852,39 @@ with tab_ocr_co:
                             pdf.ln(4)
 
                         pdf.set_font(font_family, style="", size=9)
-                        pdf.multi_cell(0, 5, txt("XÁC NHẬN: Đại lý cam kết đã kiểm tra kỹ, đếm và nhận đủ các bản C/O GỐC (có mộc đỏ) ghi trong danh sách trên. Mọi sự thất lạc sau thời điểm ký nhận này hoàn toàn thuộc trách nhiệm của Đại lý."), align="L")
+                        pdf.multi_cell(0, 5, safe_pdf_text("XÁC NHẬN: Đại lý cam kết đã kiểm tra kỹ, đếm và nhận đủ các bản C/O GỐC (có mộc đỏ) ghi trong danh sách trên. Mọi sự thất lạc sau thời điểm ký nhận này hoàn toàn thuộc trách nhiệm của Đại lý.", use_unicode_font), align="L")
                         pdf.ln(3)
 
                         pdf.set_font(font_family, style="B", size=12)
-                        pdf.cell(135, 8, txt("ĐẠI DIỆN BÀN GIAO"), align="C")
-                        pdf.cell(135, 8, txt("ĐẠI LÝ KÍ NHẬN - ĐÃ NHẬN ĐỦ"), align="C", new_x="LMARGIN", new_y="NEXT")
-                        
+                        pdf.cell(135, 8, safe_pdf_text("ĐẠI DIỆN BÀN GIAO", use_unicode_font), align="C")
+                        pdf.cell(135, 8, safe_pdf_text("ĐẠI LÝ KÍ NHẬN - ĐÃ NHẬN ĐỦ", use_unicode_font), align="C", new_x="LMARGIN", new_y="NEXT")
+
                         img_temp_path = os.path.join(tempfile.gettempdir(), "temp_signature.png")
                         img_rgb.save(img_temp_path, format="PNG")
                         current_y = pdf.get_y() + 2
-                        pdf.image(img_temp_path, x=185, y=current_y, w=55) 
-                        
-                        if os.path.exists(img_temp_path):
-                            os.remove(img_temp_path)
-                            
+                        pdf.image(img_temp_path, x=185, y=current_y, w=55)
+
+                        try:
+                            if os.path.exists(img_temp_path):
+                                os.remove(img_temp_path)
+                        except Exception:
+                            pass
+
                         pdf.ln(20)
                         pdf.set_font(font_family, style="B", size=11)
                         pdf.cell(135, 6, "", align="C")
-                        pdf.cell(135, 6, txt(ten_dai_ly), align="C", new_x="LMARGIN", new_y="NEXT")
-                        
+                        pdf.cell(135, 6, safe_pdf_text(ten_dai_ly, use_unicode_font), align="C", new_x="LMARGIN", new_y="NEXT")
+
                         pdf_bytes = pdf.output()
-                        
+
                         ten_goc = st.session_state.get("ten_file_goc", "")
                         if ten_goc:
                             ten_file_xuat_ra = f"{os.path.splitext(ten_goc)[0]}_Da_Ky.pdf"
                         else:
                             ten_file_xuat_ra = f"Phieu_Ban_Giao_CO_{ten_dai_ly}_{datetime.date.today().strftime('%d_%m_%Y')}.pdf"
-                        
+
                         st.success("✅ Đã tạo file thành công! Trình duyệt đang tự động tải xuống...")
-                        
+
                         b64_pdf = base64.b64encode(pdf_bytes).decode()
                         href = f'''
                         <a id="auto_download_pdf" href="data:application/pdf;base64,{b64_pdf}" download="{ten_file_xuat_ra}" style="display:none;">Tải xuống</a>
@@ -923,7 +896,7 @@ with tab_ocr_co:
                         '''
                         st.components.v1.html(href, height=0)
                         st.markdown(f'<a href="data:application/pdf;base64,{b64_pdf}" download="{ten_file_xuat_ra}">🔗 Nhấp vào đây nếu trình duyệt không tự động tải xuống</a>', unsafe_allow_html=True)
-            
+
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
             if st.button("🔄 Tải Lại Phiên Mới (Xóa Trắng)"):
                 st.session_state["ocr_data"] = []
@@ -943,13 +916,14 @@ with tab_ocr_co:
 # ==========================================
 with tab_quan_ly_co:
     tao_tieu_de_kem_nut_refresh("🔍 Danh sách Chứng từ C/O", "ref_tab_ds_co")
+
     @st.fragment
     def vung_thao_tac_edit_delete_co():
         col_f1, col_f2 = st.columns(2)
         today = datetime.date.today()
-        co_tu_ngay = col_f1.date_input("Từ ngày", value=today.replace(day=1),format= "DD/MM/YYYY", key="co_tu_ngay")
-        co_den_ngay = col_f2.date_input("Đến ngày", value=today,format= "DD/MM/YYYY", key="co_den_ngay")
-        
+        co_tu_ngay = col_f1.date_input("Từ ngày", value=today.replace(day=1), format="DD/MM/YYYY", key="co_tu_ngay")
+        co_den_ngay = col_f2.date_input("Đến ngày", value=today, format="DD/MM/YYYY", key="co_den_ngay")
+
         sql_ds_co = """
             SELECT co.id, co.to_khai_id, co.form_co, co.so_co, co.ngay_co, 
                 co.phi_co, co.phi_dvhq, co.so_hoa_don_co, co.ghi_chu, 
@@ -961,7 +935,7 @@ with tab_quan_ly_co:
             ORDER BY co.ngay_co DESC, co.id DESC
         """
         df_co = db.execute_query(sql_ds_co, (co_tu_ngay.strftime('%Y-%m-%d'), co_den_ngay.strftime('%Y-%m-%d')))
-        
+
         if isinstance(df_co, pd.DataFrame) and not df_co.empty:
             df_co['phi_co'] = pd.to_numeric(df_co['phi_co'], errors='coerce').fillna(0)
             df_co['phi_dvhq'] = pd.to_numeric(df_co['phi_dvhq'], errors='coerce').fillna(0)
@@ -969,17 +943,16 @@ with tab_quan_ly_co:
             df_co['ghi_chu'] = df_co['ghi_chu'].fillna('').apply(lambda x: str(x).strip() if str(x).strip().lower() != 'nan' else '')
 
             df_co_view = df_co[['id', 'form_co', 'so_co', 'ngay_co', 'so_to_khai', 'ten_khach_hang', 'phi_co', 'phi_dvhq', 'so_hoa_don_co', 'ghi_chu']].copy()
-            # [BỔ SUNG]: Format cột ngay_co hiển thị theo dạng dd/mm/yyyy
             df_co_view['ngay_co'] = pd.to_datetime(df_co_view['ngay_co'], errors='coerce').dt.strftime('%d/%m/%Y').fillna('')
             df_co_view['phi_co'] = df_co_view['phi_co'].apply(lambda x: f"{int(x):,}" if pd.notnull(x) else "0")
             df_co_view['phi_dvhq'] = df_co_view['phi_dvhq'].apply(lambda x: f"{int(x):,}" if pd.notnull(x) else "0")
             st.dataframe(df_co_view, use_container_width=True, hide_index=True)
-            
+
             st.divider()
             st.markdown("#### 🛠️ Thao Tác Quản Lý C/O (Sửa / Xóa)")
-            
+
             dict_co_edit = {row['id']: f"Form: {row['form_co']} | Số C/O: {row['so_co']} (TK: {row['so_to_khai']} - {row['ten_khach_hang']})" for _, row in df_co.iterrows()}
-            
+
             selected_co_id = st.selectbox(
                 "📌 Chọn chứng từ C/O để sửa hoặc xóa:",
                 options=list(dict_co_edit.keys()),
@@ -988,10 +961,10 @@ with tab_quan_ly_co:
                 placeholder="-- Vui lòng click chọn 1 chứng từ C/O --",
                 key="select_co_action"
             )
-            
+
             if selected_co_id is not None:
                 co_info = df_co[df_co['id'] == selected_co_id].iloc[0]
-                
+
                 def get_safe_val(key, default=""):
                     val = co_info.get(key)
                     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
@@ -1002,12 +975,14 @@ with tab_quan_ly_co:
                     val = co_info.get(key)
                     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == 'nan':
                         return default
-                    try: return float(val)
-                    except: return default
+                    try:
+                        return float(val)
+                    except Exception:
+                        return default
 
                 st.markdown(f"Đang thao tác với Số C/O: **{get_safe_val('so_co')}**")
                 action_mode_co = st.radio("Hành động:", ["✏️ Sửa C/O", "🗑️ Xóa C/O"], horizontal=True, key="radio_co_action")
-                
+
                 if action_mode_co == "🗑️ Xóa C/O":
                     st.warning(f"⚠️ Bạn có chắc chắn muốn xóa vĩnh viễn chứng từ C/O **{get_safe_val('so_co')}**?")
                     if st.button("Xác Nhận Xóa C/O", type="primary"):
@@ -1024,36 +999,37 @@ with tab_quan_ly_co:
                     with st.form(f"form_edit_co_{selected_co_id}", clear_on_submit=False):
                         sql_tk_edit = "SELECT id, so_to_khai FROM to_khai_hai_quan WHERE khach_hang_id = %s"
                         df_tk_edit = get_cached_master_data(db, sql_tk_edit, (co_info['khach_hang_id'],))
-                        # [FIX LỖI]: Kiểm tra isinstance để đảm bảo nó là DataFrame trước khi gọi .empty
                         if isinstance(df_tk_edit, pd.DataFrame) and not df_tk_edit.empty:
                             dict_tk_edit = {r['id']: f"Số TK: {r['so_to_khai']}" for _, r in df_tk_edit.iterrows()}
                         else:
                             dict_tk_edit = {co_info['to_khai_id']: co_info['so_to_khai']}
-                        
+
                         e_to_khai_id = st.selectbox("Tờ Khai Xuất Khẩu Liên Kết", options=list(dict_tk_edit.keys()), index=get_idx(list(dict_tk_edit.keys()), co_info['to_khai_id']), format_func=lambda x: dict_tk_edit[x])
-                            
+
                         ec1, ec2, ec3 = st.columns(3)
                         e_form_co = ec1.text_input("Loại Form C/O", value=get_safe_val('form_co'))
                         e_so_co = ec2.text_input("Số C/O*", value=get_safe_val('so_co'))
-                        
+
                         raw_ngay_co = co_info.get('ngay_co')
                         default_ngay_co = pd.to_datetime(raw_ngay_co).date() if pd.notna(raw_ngay_co) and str(raw_ngay_co).strip().lower() != 'nan' else datetime.date.today()
                         e_ngay_co = ec3.date_input("Ngày Cấp C/O", value=default_ngay_co)
-                        
-                        def fmt(val): 
-                            if pd.isna(val) or val == "" or str(val).strip().lower() == 'nan': return ""
+
+                        def fmt(val):
+                            if pd.isna(val) or val == "" or str(val).strip().lower() == 'nan':
+                                return ""
                             try:
                                 num = float(val)
                                 return f"{int(num):,}" if num > 0 else ""
-                            except: return ""
-                        
+                            except Exception:
+                                return ""
+
                         ec4, ec5, ec6 = st.columns(3)
                         e_phi_co = ec4.text_input("Lệ Phí C/O (VNĐ)*", value=fmt(get_safe_float('phi_co')), placeholder="0")
                         e_phi_dvhq = ec5.text_input("Phí DVHQ C/O (VNĐ)", value=fmt(get_safe_float('phi_dvhq')), placeholder="0")
                         e_so_hoa_don_co = ec6.text_input("Số Hóa Đơn Phí C/O", value=get_safe_val('so_hoa_don_co'))
-                        
+
                         e_ghi_chu = st.text_input("Ghi chú bổ sung", value=get_safe_val('ghi_chu'))
-                        
+
                         if st.form_submit_button("💾 LƯU THAY ĐỔI C/O", type="primary"):
                             if not e_so_co:
                                 st.error("Vui lòng nhập số C/O.")
@@ -1081,39 +1057,38 @@ with tab_quan_ly_co:
                 st.info("👆 Vui lòng chọn một chứng từ C/O từ danh sách bên trên để tiến hành sửa hoặc xóa.")
         else:
             st.info("📭 Không có chứng từ C/O nào trong khoảng thời gian này.")
+
     vung_thao_tac_edit_delete_co()
+
 # ==========================================
 # TAB 5: THỐNG KÊ & BÁO CÁO (XUẤT EXCEL BCT & SCT)
 # ==========================================
 with tab_thong_ke_co:
     st.markdown("#### 📊 Thống Kê Số Lượng Bộ C/O (Bộ Công Thương & Sở Công Thương)")
-    
+
     @st.fragment
     def vung_thong_ke_co():
         col_tk1, col_tk2, col_tk3 = st.columns([2, 2, 4])
         today = datetime.date.today()
-        
+
         tu_ngay_tk = col_tk1.date_input("📅 Từ ngày", value=today.replace(day=1), format="DD/MM/YYYY", key="tk_tu_ngay")
         den_ngay_tk = col_tk2.date_input("📅 Đến ngày", value=today, format="DD/MM/YYYY", key="tk_den_ngay")
-        
-        # Lấy danh sách công ty từ Database
+
         sql_kh = "SELECT id, ten_khach_hang, ma_khach_hang FROM khach_hang ORDER BY ten_khach_hang ASC"
         df_kh = get_cached_master_data(db, sql_kh)
-        
+
         dict_kh_tk = {"ALL": "🏢 TẤT CẢ CÔNG TY"}
         if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
             for _, r in df_kh.iterrows():
                 dict_kh_tk[r['id']] = f"[{r['ma_khach_hang']}] {r['ten_khach_hang']}"
-        
-        # Chọn công ty (Hỗ trợ gõ phím để tìm kiếm tức thì)
+
         cong_ty_id = col_tk3.selectbox(
-            "Chọn Công ty (Gõ để tìm nhanh):", 
-            options=list(dict_kh_tk.keys()), 
+            "Chọn Công ty (Gõ để tìm nhanh):",
+            options=list(dict_kh_tk.keys()),
             format_func=lambda x: dict_kh_tk[x]
         )
-        
+
         if st.button("📈 Xem Báo Cáo & Trích Xuất File", type="primary"):
-            # Truy vấn lấy toàn bộ dữ liệu C/O và count số lượng bộ
             sql_tk_co = """
                 SELECT kh.ten_khach_hang, kh.ma_khach_hang, co.ngay_co, co.form_co, COUNT(co.id) as so_luong
                 FROM to_khai_co co
@@ -1122,52 +1097,46 @@ with tab_thong_ke_co:
                 WHERE co.ngay_co BETWEEN %s AND %s
             """
             params = [tu_ngay_tk.strftime('%Y-%m-%d'), den_ngay_tk.strftime('%Y-%m-%d')]
-            
+
             if cong_ty_id != "ALL":
                 sql_tk_co += " AND kh.id = %s"
                 params.append(cong_ty_id)
-                
+
             sql_tk_co += " GROUP BY kh.ten_khach_hang, kh.ma_khach_hang, co.ngay_co, co.form_co ORDER BY co.ngay_co DESC"
-            
+
             df_thong_ke = db.execute_query(sql_tk_co, tuple(params))
-            
+
             if isinstance(df_thong_ke, pd.DataFrame) and not df_thong_ke.empty:
-                # Phân loại C/O thuộc Bộ Công Thương hay Sở Công Thương (VCCI)
-                # Có thể thêm các form khác vào mảng này nếu cần
                 bct_forms = ["Form EURO.1", "Form EURO.1UK", "Form AI", "Form EAV", "Form AJ", "Form AHK", "Form RCEP", "Form AK", "Form D", "Form E", "Form VK", "Form VJ", "Form S", "Form VI"]
-                
+
                 df_thong_ke['co_quan'] = df_thong_ke['form_co'].apply(lambda x: "Bộ công thương" if str(x) in bct_forms else "Sở công thương")
-                
+
                 def prepare_summary_df(df_sub):
                     if df_sub.empty:
                         return pd.DataFrame(columns=['Tên công ty', 'Mã số thuế', 'Ngày nộp C/O', 'Số lượng bộ'])
-                    
+
                     df_res = df_sub.groupby(['ten_khach_hang', 'ma_khach_hang', 'ngay_co'])['so_luong'].sum().reset_index()
                     df_res.columns = ['Tên công ty', 'Mã số thuế', 'Ngày nộp C/O', 'Số lượng bộ']
                     df_res['Ngày nộp C/O'] = pd.to_datetime(df_res['Ngày nộp C/O']).dt.strftime('%d/%m/%Y')
                     return df_res
-                
+
                 df_bct = prepare_summary_df(df_thong_ke[df_thong_ke['co_quan'] == 'Bộ công thương'])
                 df_sct = prepare_summary_df(df_thong_ke[df_thong_ke['co_quan'] == 'Sở công thương'])
-                
+
                 tong_bct = df_bct['Số lượng bộ'].sum() if not df_bct.empty else 0
                 tong_sct = df_sct['Số lượng bộ'].sum() if not df_sct.empty else 0
-                
-                # Hiển thị trên màn hình Web
+
                 t1, t2 = st.tabs([f"🏛️ Bộ Công Thương ({tong_bct} bộ)", f"🏢 Sở Công Thương ({tong_sct} bộ)"])
                 with t1:
                     st.dataframe(df_bct, use_container_width=True, hide_index=True)
                 with t2:
                     st.dataframe(df_sct, use_container_width=True, hide_index=True)
-                
-                # Xuất ra file Excel
-                import io
+
                 excel_buffer = io.BytesIO()
                 with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
                     workbook = writer.book
                     bold_fmt = workbook.add_format({'bold': True, 'border': 1, 'bg_color': '#D9D9D9'})
-                    
-                    # Cấu hình Sheet BCT
+
                     df_bct.to_excel(writer, sheet_name='Bộ công thương', index=False, startrow=1)
                     ws_bct = writer.sheets['Bộ công thương']
                     ws_bct.write(0, 0, f"BÁO CÁO C/O - BỘ CÔNG THƯƠNG ({tu_ngay_tk.strftime('%d/%m/%Y')} - {den_ngay_tk.strftime('%d/%m/%Y')})", workbook.add_format({'bold': True, 'font_size': 12}))
@@ -1175,8 +1144,7 @@ with tab_thong_ke_co:
                         sum_row = len(df_bct) + 2
                         ws_bct.write(sum_row, 2, "TỔNG CỘNG:", bold_fmt)
                         ws_bct.write(sum_row, 3, tong_bct, bold_fmt)
-                        
-                    # Cấu hình Sheet SCT
+
                     df_sct.to_excel(writer, sheet_name='Sở công thương', index=False, startrow=1)
                     ws_sct = writer.sheets['Sở công thương']
                     ws_sct.write(0, 0, f"BÁO CÁO C/O - SỞ CÔNG THƯƠNG ({tu_ngay_tk.strftime('%d/%m/%Y')} - {den_ngay_tk.strftime('%d/%m/%Y')})", workbook.add_format({'bold': True, 'font_size': 12}))
@@ -1184,13 +1152,12 @@ with tab_thong_ke_co:
                         sum_row = len(df_sct) + 2
                         ws_sct.write(sum_row, 2, "TỔNG CỘNG:", bold_fmt)
                         ws_sct.write(sum_row, 3, tong_sct, bold_fmt)
-                        
-                    # Định dạng độ rộng cột cho cả 2 Sheet
+
                     for ws in [ws_bct, ws_sct]:
-                        ws.set_column('A:A', 45) # Tên công ty
-                        ws.set_column('B:B', 20) # Mã số thuế
-                        ws.set_column('C:C', 18) # Ngày nộp C/O
-                        ws.set_column('D:D', 18) # Số lượng bộ
+                        ws.set_column('A:A', 45)
+                        ws.set_column('B:B', 20)
+                        ws.set_column('C:C', 18)
+                        ws.set_column('D:D', 18)
 
                 st.markdown("<hr>", unsafe_allow_html=True)
                 st.download_button(
@@ -1202,5 +1169,5 @@ with tab_thong_ke_co:
                 )
             else:
                 st.info("📭 Không có dữ liệu khai báo C/O nào được tìm thấy trong khoảng thời gian và tiêu chí đã chọn.")
-                
+
     vung_thong_ke_co()
