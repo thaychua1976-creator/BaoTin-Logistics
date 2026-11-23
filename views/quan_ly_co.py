@@ -743,46 +743,74 @@ with tab_ocr_co:
                         import os
                         import tempfile
                         import base64
+                        import unicodedata
 
-                        opener = urllib.request.build_opener()
-                        opener.addheaders = [('User-agent', 'Mozilla/5.0')]
-                        urllib.request.install_opener(opener)
-                        
-                        temp_dir = tempfile.gettempdir()
-                        font_path = os.path.join(temp_dir, "Roboto-Regular.ttf")
-                        font_bold_path = os.path.join(temp_dir, "Roboto-Bold.ttf")
-                        
-                        try:
-                            if not os.path.exists(font_path):
-                                urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Regular.ttf", font_path)
-                            if not os.path.exists(font_bold_path):
-                                urllib.request.urlretrieve("https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Bold.ttf", font_bold_path)
-                        except Exception as e:
-                            st.error(f"Lỗi tải Font chữ: ({e})")
-                            st.stop()
+                        def chuan_hoa_font_roboto(font_filename, url):
+                            # 1. Ưu tiên lấy file font đặt sẵn cùng thư mục với quan_ly_co.py
+                            local_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), font_filename)
+                            if os.path.exists(local_path) and os.path.getsize(local_path) > 10000:
+                                return local_path
                             
+                            # 2. Kiểm tra hoặc tải về thư mục tạm (có giới hạn timeout 5 giây)
+                            temp_path = os.path.join(tempfile.gettempdir(), font_filename)
+                            if not os.path.exists(temp_path) or os.path.getsize(temp_path) < 10000:
+                                try:
+                                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                                    with urllib.request.urlopen(req, timeout=5) as resp, open(temp_path, 'wb') as out_f:
+                                        out_f.write(resp.read())
+                                except Exception as dl_err:
+                                    print(f"Cảnh báo: Không tải được {font_filename} từ GitHub ({dl_err})")
+                                    return None
+                            
+                            if os.path.exists(temp_path) and os.path.getsize(temp_path) > 10000:
+                                return temp_path
+                            return None
+
+                        font_path = chuan_hoa_font_roboto(
+                            "Roboto-Regular.ttf",
+                            "https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Regular.ttf"
+                        )
+                        font_bold_path = chuan_hoa_font_roboto(
+                            "Roboto-Bold.ttf",
+                            "https://raw.githubusercontent.com/PolymerElements/font-roboto-local/master/fonts/roboto/Roboto-Bold.ttf"
+                        )
+                        
+                        use_unicode_font = bool(font_path and font_bold_path)
+                        
+                        # Hàm tự động bỏ dấu tiếng Việt an toàn nếu server mất mạng hoàn toàn
+                        def txt(text_val):
+                            s = str(text_val)
+                            if use_unicode_font:
+                                return s
+                            s = s.replace('đ', 'd').replace('Đ', 'D')
+                            return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+
                         pdf = FPDF(orientation="L", unit="mm", format="A4")
                         pdf.add_page()
                         
-                        pdf.add_font("Roboto", style="", fname=font_path)
-                        pdf.add_font("Roboto", style="B", fname=font_bold_path)
+                        if use_unicode_font:
+                            pdf.add_font("Roboto", style="", fname=font_path)
+                            pdf.add_font("Roboto", style="B", fname=font_bold_path)
+                            font_family = "Roboto"
+                        else:
+                            font_family = "Helvetica"
                         
-                        pdf.set_font("Roboto", style="B", size=18)
-                        pdf.cell(0, 10, "CÔNG TY FORTUNATE HONGKONG VIỆT NAM", align="C", new_x="LMARGIN", new_y="NEXT")
-                        pdf.cell(0, 10, f"GỞI CÔNG TY: {ten_cong_ty_dai_ly}", align="C", new_x="LMARGIN", new_y="NEXT") # Gắn biến động vào PDF
+                        pdf.set_font(font_family, style="B", size=18)
+                        pdf.cell(0, 10, txt("CÔNG TY FORTUNATE HONGKONG VIỆT NAM"), align="C", new_x="LMARGIN", new_y="NEXT")
+                        pdf.cell(0, 10, txt(f"GỞI CÔNG TY: {ten_cong_ty_dai_ly}"), align="C", new_x="LMARGIN", new_y="NEXT")
                         pdf.ln(5)
                         
-                        pdf.set_font("Roboto", style="B", size=11)
+                        pdf.set_font(font_family, style="B", size=11)
                         pdf.set_fill_color(220, 220, 220)
                         
                         col_widths = [20, 100, 80, 50] 
                         headers = ['STT', 'SỐ C/O BẢN GỐC', 'TÊN NGƯỜI NHẬN', 'NGÀY NHẬN']
                         
                         for i, h in enumerate(headers):
-                            pdf.cell(col_widths[i], 8, h, border=1, align="C", fill=True)
+                            pdf.cell(col_widths[i], 8, txt(h), border=1, align="C", fill=True)
                         pdf.ln(8)
                         
-                        pdf.set_font("Roboto", style="", size=11)
+                        pdf.set_font(font_family, style="", size=11)
                         ngay_format = ngay_nhan.strftime('%d/%m/%Y')
                         
                         for r_idx in range(len(edited_df)):
@@ -791,15 +819,15 @@ with tab_ocr_co:
                             
                             if so_dong_con_lai <= 3 and (pdf.get_y() + space_needed) > 200:
                                 pdf.add_page()
-                                pdf.set_font("Roboto", style="B", size=11)
+                                pdf.set_font(font_family, style="B", size=11)
                                 for i, h in enumerate(headers):
-                                    pdf.cell(col_widths[i], 8, h, border=1, align="C", fill=True)
+                                    pdf.cell(col_widths[i], 8, txt(h), border=1, align="C", fill=True)
                                 pdf.ln(8)
-                                pdf.set_font("Roboto", style="", size=11)
+                                pdf.set_font(font_family, style="", size=11)
                             
-                            pdf.cell(col_widths[0], 8, str(edited_df.iloc[r_idx, 0]).replace('.0', ''), border=1, align="C")
-                            pdf.cell(col_widths[1], 8, str(edited_df.iloc[r_idx, 1]), border=1, align="C")
-                            pdf.cell(col_widths[2], 8, ten_dai_ly, border=1, align="C") 
+                            pdf.cell(col_widths[0], 8, txt(str(edited_df.iloc[r_idx, 0]).replace('.0', '')), border=1, align="C")
+                            pdf.cell(col_widths[1], 8, txt(str(edited_df.iloc[r_idx, 1])), border=1, align="C")
+                            pdf.cell(col_widths[2], 8, txt(ten_dai_ly), border=1, align="C") 
                             pdf.cell(col_widths[3], 8, ngay_format, border=1, align="C")
                             pdf.ln(8)
                             
@@ -811,8 +839,8 @@ with tab_ocr_co:
                                 else:
                                     pdf.ln(4)
                                     
-                                pdf.set_font("Roboto", style="B", size=10)
-                                pdf.cell(0, 6, "HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC THỰC TẾ KHI BÀN GIAO:", new_x="LMARGIN", new_y="NEXT")
+                                pdf.set_font(font_family, style="B", size=10)
+                                pdf.cell(0, 6, txt("HÌNH ẢNH ĐỐI CHỨNG CHỨNG TỪ C/O GỐC THỰC TẾ KHI BÀN GIAO:"), new_x="LMARGIN", new_y="NEXT")
                                 
                                 img_pairs = [imgs_bang_chung[i:i + 2] for i in range(0, len(imgs_bang_chung), 2)]
                                 for row_idx, pair in enumerate(img_pairs):
@@ -820,7 +848,7 @@ with tab_ocr_co:
                                     for idx_in_pair, img_file in enumerate(pair):
                                         global_idx = row_idx * 2 + idx_in_pair
                                         eb_img = PILImage.open(img_file).convert('RGB')
-                                        eb_path = os.path.join(temp_dir, f"temp_evidence_co_{global_idx}.png")
+                                        eb_path = os.path.join(tempfile.gettempdir(), f"temp_evidence_co_{global_idx}.png")
                                         eb_img.save(eb_path, format="PNG")
                                         
                                         w_img_px, h_img_px = eb_img.size
@@ -853,13 +881,13 @@ with tab_ocr_co:
                         else:
                             pdf.ln(4)
 
-                        pdf.set_font("Roboto", style="", size=9)
-                        pdf.multi_cell(0, 5, "XÁC NHẬN: Đại lý cam kết đã kiểm tra kỹ, đếm và nhận đủ các bản C/O GỐC (có mộc đỏ) ghi trong danh sách trên. Mọi sự thất lạc sau thời điểm ký nhận này hoàn toàn thuộc trách nhiệm của Đại lý.", align="L")
+                        pdf.set_font(font_family, style="", size=9)
+                        pdf.multi_cell(0, 5, txt("XÁC NHẬN: Đại lý cam kết đã kiểm tra kỹ, đếm và nhận đủ các bản C/O GỐC (có mộc đỏ) ghi trong danh sách trên. Mọi sự thất lạc sau thời điểm ký nhận này hoàn toàn thuộc trách nhiệm của Đại lý."), align="L")
                         pdf.ln(3)
 
-                        pdf.set_font("Roboto", style="B", size=12)
-                        pdf.cell(135, 8, "ĐẠI DIỆN BÀN GIAO", align="C")
-                        pdf.cell(135, 8, "ĐẠI LÝ KÍ NHẬN - ĐÃ NHẬN ĐỦ", align="C", new_x="LMARGIN", new_y="NEXT")
+                        pdf.set_font(font_family, style="B", size=12)
+                        pdf.cell(135, 8, txt("ĐẠI DIỆN BÀN GIAO"), align="C")
+                        pdf.cell(135, 8, txt("ĐẠI LÝ KÍ NHẬN - ĐÃ NHẬN ĐỦ"), align="C", new_x="LMARGIN", new_y="NEXT")
                         
                         img_temp_path = os.path.join(tempfile.gettempdir(), "temp_signature.png")
                         img_rgb.save(img_temp_path, format="PNG")
@@ -870,9 +898,9 @@ with tab_ocr_co:
                             os.remove(img_temp_path)
                             
                         pdf.ln(20)
-                        pdf.set_font("Roboto", style="B", size=11)
+                        pdf.set_font(font_family, style="B", size=11)
                         pdf.cell(135, 6, "", align="C")
-                        pdf.cell(135, 6, ten_dai_ly, align="C", new_x="LMARGIN", new_y="NEXT")
+                        pdf.cell(135, 6, txt(ten_dai_ly), align="C", new_x="LMARGIN", new_y="NEXT")
                         
                         pdf_bytes = pdf.output()
                         
