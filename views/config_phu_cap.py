@@ -1,17 +1,20 @@
 import streamlit as st
 import pandas as pd
-import io
+import io, json, time
 from hr_system_manager import update_phu_cap_matrix_transaction
 from utils_core import import_excel_phu_cap_transaction
+
 
 # --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_cached_master_data(_db_instance, query, params=None):
     return _db_instance.execute_query(query, params)
 
+
 def clear_master_cache():
     get_cached_master_data.clear()
 # ---------------------------------
+
 
 db = st.session_state.get('db')
 current_user = st.session_state.get('username') or st.session_state.get('user', 'Admin')
@@ -21,11 +24,10 @@ if not db:
     st.stop()
 
 st.markdown("### 💰 BẢNG CẤU HÌNH PHỤ CẤP SẢN LƯỢNG TÀI XẾ")
-st.toast("✅ Đang lưu số liệu bạn vui lòng đợi nha:")
 st.info("💡 Hướng dẫn: Click đúp vào ô số tiền để sửa trực tiếp (như dùng Excel). Nhấn nút LƯU ở dưới cùng để chốt dữ liệu.")
 
 # 🔄 NÚT LÀM MỚI DỮ LIỆU TỔNG THỂ (XÓA CACHE CHỦ ĐỘNG)
-col_rf1, col_rf2 = st.columns([2, 1])
+_, col_rf2 = st.columns([2, 1])
 with col_rf2:
     if st.button("🔄 Làm mới dữ liệu", use_container_width=True):
         clear_master_cache()
@@ -40,7 +42,6 @@ with tab1:
     @st.fragment
     def vung_thao_tac_config_phu_cap():
         try:
-            # Sử dụng Cache cho việc nạp ma trận phụ cấp
             df_tt = get_cached_master_data(db, "SELECT id, ten_hien_thi FROM dm_tai_trong_phu_cap ORDER BY tai_trong_min ASC")
             df_tc = get_cached_master_data(db, "SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap ORDER BY id ASC")
             df_mt = get_cached_master_data(db, "SELECT tai_trong_id, tieu_chi_id, so_tien FROM ma_tran_phu_cap")
@@ -54,59 +55,54 @@ with tab1:
                 row_dict = {"Tải Trọng Xe": tt['ten_hien_thi']}
                 for _, tc in df_tc.iterrows():
                     val = df_mt[(df_mt['tai_trong_id'] == tt['id']) & (df_mt['tieu_chi_id'] == tc['id'])] if isinstance(df_mt, pd.DataFrame) and not df_mt.empty else pd.DataFrame()
-                    
-                    # 1. ÉP KIỂU VÀ KHỬ LỖI NAN, NULL THEO CHUẨN DỰ ÁN
                     try:
                         raw_val = val.iloc[0]['so_tien'] if not val.empty else 0
-                        if pd.isna(raw_val) or str(raw_val).strip() == "" or str(raw_val).strip().lower() == "nan":
+                        if pd.isna(raw_val) or str(raw_val).strip() in ("", "nan", "None"):
                             so_tien = 0
                         else:
-                            # Chuyển đổi thành số nguyên an toàn
                             so_tien = int(float(raw_val))
                     except (ValueError, TypeError):
                         so_tien = 0
-                        
                     row_dict[tc['ten_tieu_chi']] = so_tien
                 matrix_data.append(row_dict)
 
-            df_matrix = pd.DataFrame(matrix_data)
-            df_matrix.set_index("Tải Trọng Xe", inplace=True)
-            
-            # Button Download File Phụ Cấp Excel
+            df_matrix_full = pd.DataFrame(matrix_data)
+            df_matrix_full.set_index("Tải Trọng Xe", inplace=True)
+            for col in df_matrix_full.columns:
+                df_matrix_full[col] = df_matrix_full[col].astype('Int64')
+
+            # Button Download File Phụ Cấp Excel (luôn xuất đủ ma trận gốc)
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                df_matrix.to_excel(writer, sheet_name='Ma_Tran_Phu_Cap')
+                df_matrix_full.to_excel(writer, sheet_name='Ma_Tran_Phu_Cap')
             st.download_button(
                 label="⬇️ Download file phụ cấp excel",
                 data=buffer.getvalue(),
                 file_name="Danh_Sach_Phu_Cap.xlsx",
-                mime="application/vnd.ms-excel",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="secondary"
             )
-            
+
             an_dong_trong = st.checkbox("👁️ Ẩn các mức tải trọng chưa có phụ cấp (Giúp bảng gọn gàng hơn)", value=True)
             if an_dong_trong:
-                df_matrix = df_matrix.loc[(df_matrix > 0).any(axis=1)]
+                df_matrix_view = df_matrix_full.loc[(df_matrix_full > 0).any(axis=1)].copy()
+                if df_matrix_view.empty:
+                    df_matrix_view = df_matrix_full.copy()
+            else:
+                df_matrix_view = df_matrix_full.copy()
 
-            # 2. CẤU HÌNH CỘT SỐ TIỀN VỚI ĐỊNH DẠNG HÀNG NGÀN
-            # Streamlit NumberColumn hỗ trợ truyền trực tiếp một số format printf-style hoặc None để dùng số hệ thống
             column_config = {
                 col: st.column_config.NumberColumn(
-                    col, 
-                    format="%,d ₫", # SỬ DỤNG FORMAT STRING CÓ DẤU PHẨY
+                    col,
+                    format="%,d ₫",
                     min_value=0,
-                    step=1000 
+                    step=1000
                 )
-                for col in df_matrix.columns
+                for col in df_matrix_view.columns
             }
 
-            # 3. ĐẢM BẢO CHẮC CHẮN DATAFRAME CHỨA SỐ NGUYÊN
-            for col in df_matrix.columns:
-                 # Ép kiểu Int64 của Pandas để tương thích tuyệt đối với cấu hình NumberColumn
-                 df_matrix[col] = df_matrix[col].astype('Int64')
-
             df_edited = st.data_editor(
-                df_matrix,
+                df_matrix_view,
                 column_config=column_config,
                 use_container_width=True,
                 num_rows="fixed"
@@ -115,9 +111,15 @@ with tab1:
             if st.button("💾 LƯU BẢNG PHỤ CẤP", type="primary"):
                 with st.spinner("Đang đồng bộ dữ liệu vào hệ thống..."):
                     try:
-                        is_ok, msg = update_phu_cap_matrix_transaction(db.pool, df_edited, current_user)
+                        # Gộp dữ liệu đã sửa vào ma trận đầy đủ để không mất các dòng đang bị ẩn
+                        df_to_save = df_matrix_full.copy()
+                        df_to_save.update(df_edited)
+                        for col in df_to_save.columns:
+                            df_to_save[col] = pd.to_numeric(df_to_save[col], errors='coerce').fillna(0).astype(int)
+
+                        is_ok, msg = update_phu_cap_matrix_transaction(db.pool, df_to_save, current_user)
                         if is_ok:
-                            clear_master_cache() # Xóa cache sau khi lưu thành công
+                            clear_master_cache()
                             st.success(msg)
                         else:
                             st.error(f"Lỗi: {msg}")
@@ -128,18 +130,20 @@ with tab1:
 
         with st.expander("➕ Thêm mới Tiêu chí hoặc Mức tải trọng", expanded=False):
             col1, col2 = st.columns(2)
-            
+
             with col1:
                 with st.form("form_add_tc", clear_on_submit=True):
                     new_tieu_chi = st.text_input("Thêm Tiêu chí phụ cấp mới*")
                     col_km1, col_km2 = st.columns(2)
                     new_km_min = col_km1.number_input("Cự ly Min (km)", min_value=0.0, value=0.0, step=1.0)
                     new_km_max = col_km2.number_input("Cự ly Max (km)", min_value=0.0, value=0.0, step=1.0)
-                    
+
                     if st.form_submit_button("➕ Thêm Tiêu Chí", type="primary"):
                         if new_tieu_chi.strip():
-                            conn = db.pool.get_connection()
+                            conn = None
+                            cursor = None
                             try:
+                                conn = db.pool.get_connection()
                                 conn.autocommit = False
                                 cursor = conn.cursor()
                                 cursor.execute(
@@ -147,17 +151,19 @@ with tab1:
                                     (new_tieu_chi.strip(), new_km_min, new_km_max)
                                 )
                                 conn.commit()
-                                clear_master_cache() # Làm mới cache khi thêm dữ liệu gốc
+                                clear_master_cache()
                                 st.success("✅ Thêm tiêu chí thành công!")
-                                import time
                                 time.sleep(1.2)
                                 st.rerun()
                             except Exception as e:
-                                conn.rollback()
+                                if conn:
+                                    conn.rollback()
                                 st.error(f"❌ Lỗi: {e}")
                             finally:
-                                cursor.close()
-                                conn.close()
+                                if cursor:
+                                    cursor.close()
+                                if conn:
+                                    conn.close()
                         else:
                             st.warning("⚠️ Vui lòng nhập tên tiêu chí!")
 
@@ -166,11 +172,13 @@ with tab1:
                     new_tt_name = st.text_input("Tên Mức tải trọng (VD: 15T)*")
                     new_min = st.number_input("Tải trọng Min (Tấn)", min_value=0.0)
                     new_max = st.number_input("Tải trọng Max (Tấn)", min_value=0.0)
-                    
+
                     if st.form_submit_button("➕ Thêm Mức Tải Trọng", type="primary"):
                         if new_tt_name.strip():
-                            conn = db.pool.get_connection()
+                            conn = None
+                            cursor = None
                             try:
+                                conn = db.pool.get_connection()
                                 conn.autocommit = False
                                 cursor = conn.cursor()
                                 cursor.execute(
@@ -178,165 +186,169 @@ with tab1:
                                     (new_tt_name.strip(), new_min, new_max)
                                 )
                                 conn.commit()
-                                clear_master_cache() # Làm mới cache khi thêm dữ liệu gốc
+                                clear_master_cache()
                                 st.success("✅ Thêm mức tải trọng thành công!")
-                                import time
                                 time.sleep(1.2)
                                 st.rerun()
                             except Exception as e:
-                                conn.rollback()
+                                if conn:
+                                    conn.rollback()
                                 st.error(f"❌ Lỗi: {e}")
                             finally:
-                                cursor.close()
-                                conn.close()
+                                if cursor:
+                                    cursor.close()
+                                if conn:
+                                    conn.close()
                         else:
                             st.warning("⚠️ Vui lòng nhập tên mức tải trọng!")
 
         with st.expander("✏️ Sửa Tiêu chí hoặc Mức tải trọng", expanded=False):
             @st.fragment
             def vung_thao_tac_edit_tieu_chi():
-                try:    
-                    col_edit1, col_edit2 = st.columns(2)
-                    
-                    with col_edit1:
-                        st.markdown("**1. Sửa Tiêu chí Phụ cấp**")
-                        try:
-                            # Sử dụng Cache cho danh sách sửa
-                            df_tc_edit = get_cached_master_data(db, "SELECT id, ten_tieu_chi, km_min, km_max FROM dm_tieu_chi_phu_cap ORDER BY ten_tieu_chi ASC")
-                        except Exception:
-                            df_tc_edit = pd.DataFrame()
-                        
-                        if isinstance(df_tc_edit, pd.DataFrame) and not df_tc_edit.empty:
-                            tc_edit_dict = {int(r['id']): r for _, r in df_tc_edit.iterrows()}
-                            
-                            # [CẬP NHẬT 1]: Bắt lỗi an toàn NaN khi format chuỗi hiển thị
-                            tc_format = {}
-                            for k, v in tc_edit_dict.items():
-                                val_min = float(v['km_min']) if pd.notna(v.get('km_min')) else 0.0
-                                val_max = float(v['km_max']) if pd.notna(v.get('km_max')) else 0.0
-                                tc_format[k] = f"{v['ten_tieu_chi']} ({val_min:.1f} - {val_max:.1f} km)"
-                            
-                            edit_tc_id = st.selectbox("Chọn tiêu chí cần sửa", options=list(tc_edit_dict.keys()),
-                                                    format_func=lambda x: tc_format[x], key="edit_tc_sel", index= None,placeholder="-- Vui lòng chọn tiêu chí --")
-                            
-                            if edit_tc_id:
-                                curr_tc = tc_edit_dict[edit_tc_id]
-                                edit_tc_name = st.text_input("Tên Tiêu chí mới*", value=str(curr_tc.get('ten_tieu_chi', '')), key="edit_tc_name")
-                                
-                                c_km1, c_km2 = st.columns(2)
-                                # [CẬP NHẬT 2]: Ép kiểu an toàn trước khi đưa vào number_input
-                                curr_min = float(curr_tc['km_min']) if pd.notna(curr_tc.get('km_min')) else 0.0
-                                curr_max = float(curr_tc['km_max']) if pd.notna(curr_tc.get('km_max')) else 0.0
-                                
-                                edit_km_min = c_km1.number_input("Cự ly Min mới (km)", value=curr_min, step=1.0, key="edit_km_min")
-                                edit_km_max = c_km2.number_input("Cự ly Max mới (km)", value=curr_max, step=1.0, key="edit_km_max")
-                                
-                                if st.button("✏️ Cập nhật Tiêu Chí", type="primary"):
-                                    if edit_tc_name.strip():
+                col_edit1, col_edit2 = st.columns(2)
+
+                with col_edit1:
+                    st.markdown("**1. Sửa Tiêu chí Phụ cấp**")
+                    try:
+                        df_tc_edit = get_cached_master_data(db, "SELECT id, ten_tieu_chi, km_min, km_max FROM dm_tieu_chi_phu_cap ORDER BY ten_tieu_chi ASC")
+                    except Exception:
+                        df_tc_edit = pd.DataFrame()
+
+                    if isinstance(df_tc_edit, pd.DataFrame) and not df_tc_edit.empty:
+                        tc_edit_dict = {int(r['id']): r for _, r in df_tc_edit.iterrows()}
+                        tc_format = {}
+                        for k, v in tc_edit_dict.items():
+                            val_min = float(v['km_min']) if pd.notna(v.get('km_min')) else 0.0
+                            val_max = float(v['km_max']) if pd.notna(v.get('km_max')) else 0.0
+                            tc_format[k] = f"{v['ten_tieu_chi']} ({val_min:.1f} - {val_max:.1f} km)"
+
+                        edit_tc_id = st.selectbox(
+                            "Chọn tiêu chí cần sửa",
+                            options=list(tc_edit_dict.keys()),
+                            format_func=lambda x: tc_format[x],
+                            key="edit_tc_sel",
+                            index=None,
+                            placeholder="-- Vui lòng chọn tiêu chí --"
+                        )
+
+                        if edit_tc_id:
+                            curr_tc = tc_edit_dict[edit_tc_id]
+                            edit_tc_name = st.text_input("Tên Tiêu chí mới*", value=str(curr_tc.get('ten_tieu_chi', '')), key=f"edit_tc_name_{edit_tc_id}")
+
+                            c_km1, c_km2 = st.columns(2)
+                            curr_min = float(curr_tc['km_min']) if pd.notna(curr_tc.get('km_min')) else 0.0
+                            curr_max = float(curr_tc['km_max']) if pd.notna(curr_tc.get('km_max')) else 0.0
+
+                            edit_km_min = c_km1.number_input("Cự ly Min mới (km)", value=curr_min, step=1.0, key=f"edit_km_min_{edit_tc_id}")
+                            edit_km_max = c_km2.number_input("Cự ly Max mới (km)", value=curr_max, step=1.0, key=f"edit_km_max_{edit_tc_id}")
+
+                            if st.button("✏️ Cập nhật Tiêu Chí", type="primary"):
+                                if edit_tc_name.strip():
+                                    conn = None
+                                    cursor = None
+                                    try:
                                         conn = db.pool.get_connection()
-                                        try:
-                                            conn.autocommit = False
-                                            cursor = conn.cursor()
-                                            
-                                            cursor.execute(
-                                                "UPDATE dm_tieu_chi_phu_cap SET ten_tieu_chi = %s, km_min = %s, km_max = %s WHERE id = %s",
-                                                (edit_tc_name.strip(), edit_km_min, edit_km_max, edit_tc_id)
-                                            )
-                                            
-                                            if cursor.rowcount >= 0:
-                                                import json
-                                                chi_tiet = json.dumps({"id_sua": edit_tc_id, "ten_cu": curr_tc['ten_tieu_chi'], "ten_moi": edit_tc_name.strip()}, ensure_ascii=False)
-                                                
-                                                cursor.execute("""
-                                                    INSERT INTO audit_logs (phan_he, record_id, nguoi_thuc_hien, hanh_dong, chi_tiet) 
-                                                    VALUES (%s, %s, %s, %s, %s)
-                                                """, ('QUAN_LY_PHU_CAP', edit_tc_id, current_user, 'SUA_TIEU_CHI', chi_tiet))
-                                                
-                                                conn.commit()
-                                                clear_master_cache() # Xóa cache sau khi sửa
-                                                st.success("✅ Cập nhật tiêu chí thành công!")
-                                                for k in ["edit_tc_sel", "edit_tc_name", "edit_km_min", "edit_km_max"]:
-                                                    if k in st.session_state: del st.session_state[k]
-                                                import time
-                                                time.sleep(1)
-                                                st.rerun()
-                                            else:
-                                                conn.rollback()
-                                                st.warning("⚠️ Lỗi không xác định khi cập nhật.")
-                                        except Exception as e:
+                                        conn.autocommit = False
+                                        cursor = conn.cursor()
+
+                                        cursor.execute(
+                                            "UPDATE dm_tieu_chi_phu_cap SET ten_tieu_chi = %s, km_min = %s, km_max = %s WHERE id = %s",
+                                            (edit_tc_name.strip(), edit_km_min, edit_km_max, edit_tc_id)
+                                        )
+
+                                        chi_tiet = json.dumps({"id_sua": edit_tc_id, "ten_cu": curr_tc['ten_tieu_chi'], "ten_moi": edit_tc_name.strip()}, ensure_ascii=False)
+                                        cursor.execute("""
+                                            INSERT INTO audit_logs (phan_he, record_id, nguoi_thuc_hien, hanh_dong, chi_tiet) 
+                                            VALUES (%s, %s, %s, %s, %s)
+                                        """, ('QUAN_LY_PHU_CAP', edit_tc_id, current_user, 'SUA_TIEU_CHI', chi_tiet))
+
+                                        conn.commit()
+                                        clear_master_cache()
+                                        st.success("✅ Cập nhật tiêu chí thành công!")
+                                        if "edit_tc_sel" in st.session_state:
+                                            del st.session_state["edit_tc_sel"]
+                                        time.sleep(1)
+                                        st.rerun()
+                                    except Exception as e:
+                                        if conn:
                                             conn.rollback()
-                                            st.error(f"❌ Lỗi SQL: {e}")
-                                        finally:
+                                        st.error(f"❌ Lỗi SQL: {e}")
+                                    finally:
+                                        if cursor:
                                             cursor.close()
+                                        if conn:
                                             conn.close()
-                                    else:
-                                        st.warning("⚠️ Vui lòng không để trống tên tiêu chí!")
-                        else:
-                            st.info("Chưa có dữ liệu tiêu chí để sửa.")
-                except Exception as e:
-                       st.error(f"❌ Lỗi xảy ra trong quá trình sửa tiêu chí: {e}")    
-                
+                                else:
+                                    st.warning("⚠️ Vui lòng không để trống tên tiêu chí!")
+                    else:
+                        st.info("Chưa có dữ liệu tiêu chí để sửa.")
+
                 with col_edit2:
                     st.markdown("**2. Sửa Mức Tải Trọng**")
                     try:
-                        # Sử dụng Cache cho danh sách sửa
                         df_tt_edit = get_cached_master_data(db, "SELECT id, ten_hien_thi, tai_trong_min, tai_trong_max FROM dm_tai_trong_phu_cap ORDER BY tai_trong_min ASC")
                     except Exception:
                         df_tt_edit = pd.DataFrame()
-                    
+
                     if isinstance(df_tt_edit, pd.DataFrame) and not df_tt_edit.empty:
                         tt_edit_dict = {int(r['id']): r for _, r in df_tt_edit.iterrows()}
-                        
-                        edit_tt_id = st.selectbox("Chọn tải trọng cần sửa", options=list(tt_edit_dict.keys()),
-                                                   format_func=lambda x: tt_edit_dict[x]['ten_hien_thi'], key="edit_tt_sel",index=None, placeholder="-- Vui lòng chọn tải trọng --")
-                        
+
+                        edit_tt_id = st.selectbox(
+                            "Chọn tải trọng cần sửa",
+                            options=list(tt_edit_dict.keys()),
+                            format_func=lambda x: tt_edit_dict[x]['ten_hien_thi'],
+                            key="edit_tt_sel",
+                            index=None,
+                            placeholder="-- Vui lòng chọn tải trọng --"
+                        )
+
                         if edit_tt_id:
                             curr_tt = tt_edit_dict[edit_tt_id]
-                            edit_tt_name = st.text_input("Tên Mức tải trọng mới*", value=str(curr_tt.get('ten_hien_thi', '')), key="edit_tt_name")
-                            
+                            edit_tt_name = st.text_input("Tên Mức tải trọng mới*", value=str(curr_tt.get('ten_hien_thi', '')), key=f"edit_tt_name_{edit_tt_id}")
+
                             c_tt1, c_tt2 = st.columns(2)
-                            # [CẬP NHẬT 3]: Bắt lỗi NaN an toàn cho Min/Max tải trọng
                             curr_tt_min = float(curr_tt['tai_trong_min']) if pd.notna(curr_tt.get('tai_trong_min')) else 0.0
                             curr_tt_max = float(curr_tt['tai_trong_max']) if pd.notna(curr_tt.get('tai_trong_max')) else 0.0
-                            
-                            edit_tt_min = c_tt1.number_input("Tải trọng Min mới (Tấn)", value=curr_tt_min, step=0.1, key="edit_tt_min")
-                            edit_tt_max = c_tt2.number_input("Tải trọng Max mới (Tấn)", value=curr_tt_max, step=0.1, key="edit_tt_max")
-                            
+
+                            edit_tt_min = c_tt1.number_input("Tải trọng Min mới (Tấn)", value=curr_tt_min, step=0.1, key=f"edit_tt_min_{edit_tt_id}")
+                            edit_tt_max = c_tt2.number_input("Tải trọng Max mới (Tấn)", value=curr_tt_max, step=0.1, key=f"edit_tt_max_{edit_tt_id}")
+
                             if st.button("✏️ Cập nhật Tải Trọng", type="primary"):
                                 if edit_tt_name.strip():
-                                    conn = db.pool.get_connection()
+                                    conn = None
+                                    cursor = None
                                     try:
+                                        conn = db.pool.get_connection()
                                         conn.autocommit = False
                                         cursor = conn.cursor()
-                                        
+
                                         cursor.execute(
                                             "UPDATE dm_tai_trong_phu_cap SET ten_hien_thi = %s, tai_trong_min = %s, tai_trong_max = %s WHERE id = %s",
                                             (edit_tt_name.strip(), edit_tt_min, edit_tt_max, edit_tt_id)
                                         )
-                                        
-                                        if cursor.rowcount >= 0:
-                                            import json
-                                            chi_tiet = json.dumps({"id_sua": edit_tt_id, "ten_cu": curr_tt['ten_hien_thi'], "ten_moi": edit_tt_name.strip()}, ensure_ascii=False)
-                                            
-                                            cursor.execute("""
-                                                INSERT INTO audit_logs (phan_he, record_id, nguoi_thuc_hien, hanh_dong, chi_tiet) 
-                                                VALUES (%s, %s, %s, %s, %s)
-                                            """, ('QUAN_LY_PHU_CAP', edit_tt_id, current_user, 'SUA_TAI_TRONG', chi_tiet))
-                                            
-                                            conn.commit()
-                                            clear_master_cache() # Xóa cache sau khi sửa
-                                            st.success("✅ Cập nhật mức tải trọng thành công!")
-                                            for k in ["edit_tt_sel", "edit_tt_name", "edit_tt_min", "edit_tt_max"]:
-                                                if k in st.session_state: del st.session_state[k]
-                                            import time
-                                            time.sleep(1)
-                                            st.rerun()
+
+                                        chi_tiet = json.dumps({"id_sua": edit_tt_id, "ten_cu": curr_tt['ten_hien_thi'], "ten_moi": edit_tt_name.strip()}, ensure_ascii=False)
+                                        cursor.execute("""
+                                            INSERT INTO audit_logs (phan_he, record_id, nguoi_thuc_hien, hanh_dong, chi_tiet) 
+                                            VALUES (%s, %s, %s, %s, %s)
+                                        """, ('QUAN_LY_PHU_CAP', edit_tt_id, current_user, 'SUA_TAI_TRONG', chi_tiet))
+
+                                        conn.commit()
+                                        clear_master_cache()
+                                        st.success("✅ Cập nhật mức tải trọng thành công!")
+                                        if "edit_tt_sel" in st.session_state:
+                                            del st.session_state["edit_tt_sel"]
+                                        time.sleep(1)
+                                        st.rerun()
                                     except Exception as e:
-                                        conn.rollback()
+                                        if conn:
+                                            conn.rollback()
                                         st.error(f"❌ Lỗi SQL: {e}")
                                     finally:
-                                        cursor.close()
-                                        conn.close()
+                                        if cursor:
+                                            cursor.close()
+                                        if conn:
+                                            conn.close()
                                 else:
                                     st.warning("⚠️ Vui lòng không để trống tên mức tải trọng!")
                     else:
@@ -345,113 +357,133 @@ with tab1:
 
         with st.expander("🗑️ Xóa Tiêu chí hoặc Mức tải trọng", expanded=False):
             st.warning("⚠️ Lưu ý: Khi xóa, toàn bộ dữ liệu tiền phụ cấp của Tiêu chí/Tải trọng này trong Ma trận sẽ bị xóa theo vĩnh viễn!")
+
             @st.fragment
             def vung_thao_tac_delete_tieu_chi():
                 col_del1, col_del2 = st.columns(2)
-                
+
                 with col_del1:
                     st.markdown("**1. Xóa Tiêu chí**")
                     try:
-                        # Sử dụng Cache cho việc hiển thị danh sách xóa
                         df_tc_del = get_cached_master_data(db, "SELECT id, ten_tieu_chi, km_min, km_max FROM dm_tieu_chi_phu_cap ORDER BY ten_tieu_chi ASC")
                     except Exception:
                         df_tc_del = pd.DataFrame()
-                        
+
                     if isinstance(df_tc_del, pd.DataFrame) and not df_tc_del.empty:
-                        # [CẬP NHẬT 4]: Format an toàn danh sách Xóa
                         tc_del_dict = {}
                         for _, r in df_tc_del.iterrows():
                             val_min = float(r['km_min']) if pd.notna(r.get('km_min')) else 0.0
                             val_max = float(r['km_max']) if pd.notna(r.get('km_max')) else 0.0
                             tc_del_dict[int(r['id'])] = f"{r['ten_tieu_chi']} ({val_min:.1f} - {val_max:.1f} km)"
-                        
-                        del_tc_id = st.selectbox("Chọn tiêu chí cần xóa", options=list(tc_del_dict.keys()),
-                                                 format_func=lambda x: tc_del_dict[x], key="del_tc_sel", index=None, placeholder="-- Vui lòng chọn tiêu chí --")
-                        
+
+                        del_tc_id = st.selectbox(
+                            "Chọn tiêu chí cần xóa",
+                            options=list(tc_del_dict.keys()),
+                            format_func=lambda x: tc_del_dict[x],
+                            key="del_tc_sel",
+                            index=None,
+                            placeholder="-- Vui lòng chọn tiêu chí --"
+                        )
+
                         if st.button("🗑️ Xác nhận Xóa Tiêu Chí", type="primary"):
-                            conn = db.pool.get_connection()
-                            try:
-                                conn.autocommit = False
-                                cursor = conn.cursor()
-                                
-                                cursor.execute("DELETE FROM dm_tieu_chi_phu_cap WHERE id = %s", (del_tc_id,))
-                                
-                                if cursor.rowcount > 0:
-                                    import json
-                                    chi_tiet = json.dumps({"ten_tieu_chi_bi_xoa": tc_del_dict[del_tc_id]}, ensure_ascii=False)
-                                    
-                                    cursor.execute("""
-                                        INSERT INTO audit_logs (phan_he, record_id, nguoi_thuc_hien, hanh_dong, chi_tiet) 
-                                        VALUES (%s, %s, %s, %s, %s)
-                                    """, ('QUAN_LY_PHU_CAP', del_tc_id, current_user, 'XOA_TIEU_CHI', chi_tiet))
-                                    
-                                    conn.commit()
-                                    clear_master_cache() # Xóa cache sau khi xóa dữ liệu
-                                    st.success("✅ Đã xóa tiêu chí và dọn dẹp ma trận thành công!")
-                                    if "del_tc_sel" in st.session_state: del st.session_state["del_tc_sel"]
-                                    import time
-                                    time.sleep(1)
-                                    st.rerun()
-                                else:
-                                    conn.rollback()
-                                    st.warning("⚠️ Không tìm thấy tiêu chí để xóa. Vui lòng thử lại!")
-                                    
-                            except Exception as e:
-                                conn.rollback()
-                                st.error(f"❌ Lỗi SQL: {e}")
-                            finally:
-                                cursor.close()
-                                conn.close()
+                            if del_tc_id is None:
+                                st.warning("⚠️ Vui lòng chọn tiêu chí cần xóa!")
+                            else:
+                                conn = None
+                                cursor = None
+                                try:
+                                    conn = db.pool.get_connection()
+                                    conn.autocommit = False
+                                    cursor = conn.cursor()
+
+                                    cursor.execute("DELETE FROM dm_tieu_chi_phu_cap WHERE id = %s", (del_tc_id,))
+
+                                    if cursor.rowcount > 0:
+                                        chi_tiet = json.dumps({"ten_tieu_chi_bi_xoa": tc_del_dict[del_tc_id]}, ensure_ascii=False)
+                                        cursor.execute("""
+                                            INSERT INTO audit_logs (phan_he, record_id, nguoi_thuc_hien, hanh_dong, chi_tiet) 
+                                            VALUES (%s, %s, %s, %s, %s)
+                                        """, ('QUAN_LY_PHU_CAP', del_tc_id, current_user, 'XOA_TIEU_CHI', chi_tiet))
+
+                                        conn.commit()
+                                        clear_master_cache()
+                                        st.success("✅ Đã xóa tiêu chí và dọn dẹp ma trận thành công!")
+                                        if "del_tc_sel" in st.session_state:
+                                            del st.session_state["del_tc_sel"]
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else:
+                                        conn.rollback()
+                                        st.warning("⚠️ Không tìm thấy tiêu chí để xóa. Vui lòng thử lại!")
+                                except Exception as e:
+                                    if conn:
+                                        conn.rollback()
+                                    st.error(f"❌ Lỗi SQL: {e}")
+                                finally:
+                                    if cursor:
+                                        cursor.close()
+                                    if conn:
+                                        conn.close()
                     else:
                         st.info("Chưa có dữ liệu tiêu chí.")
 
                 with col_del2:
                     st.markdown("**2. Xóa Mức Tải Trọng**")
                     try:
-                        # Sử dụng Cache cho việc hiển thị danh sách xóa
                         df_tt_del = get_cached_master_data(db, "SELECT id, ten_hien_thi FROM dm_tai_trong_phu_cap ORDER BY tai_trong_min ASC")
                     except Exception:
                         df_tt_del = pd.DataFrame()
-                        
+
                     if isinstance(df_tt_del, pd.DataFrame) and not df_tt_del.empty:
                         tt_del_dict = dict(zip(df_tt_del['id'], df_tt_del['ten_hien_thi']))
-                        del_tt_id = st.selectbox("Chọn tải trọng cần xóa", options=list(tt_del_dict.keys()),
-                                                 format_func=lambda x: tt_del_dict[x], key="del_tt_sel", index=None, placeholder="-- Vui lòng chọn tải trọng --")
-                        
+                        del_tt_id = st.selectbox(
+                            "Chọn tải trọng cần xóa",
+                            options=list(tt_del_dict.keys()),
+                            format_func=lambda x: tt_del_dict[x],
+                            key="del_tt_sel",
+                            index=None,
+                            placeholder="-- Vui lòng chọn tải trọng --"
+                        )
+
                         if st.button("🗑️ Xác nhận Xóa Tải Trọng", type="primary"):
-                            conn = db.pool.get_connection()
-                            try:
-                                conn.autocommit = False
-                                cursor = conn.cursor()
-                                
-                                cursor.execute("DELETE FROM dm_tai_trong_phu_cap WHERE id = %s", (del_tt_id,))
-                                
-                                if cursor.rowcount > 0:
-                                    import json
-                                    chi_tiet = json.dumps({"ten_tai_trong_bi_xoa": tt_del_dict[del_tt_id]}, ensure_ascii=False)
-                                    
-                                    cursor.execute("""
-                                        INSERT INTO audit_logs (phan_he, record_id, nguoi_thuc_hien, hanh_dong, chi_tiet) 
-                                        VALUES (%s, %s, %s, %s, %s)
-                                    """, ('QUAN_LY_PHU_CAP', del_tt_id, current_user, 'XOA_TAI_TRONG', chi_tiet))
-                                    
-                                    conn.commit()
-                                    clear_master_cache() # Xóa cache sau khi xóa dữ liệu
-                                    st.success("✅ Đã xóa mức tải trọng và dọn dẹp ma trận thành công!")
-                                    if "del_tt_sel" in st.session_state: del st.session_state["del_tt_sel"]
-                                    import time
-                                    time.sleep(1)
-                                    st.rerun()
-                                else:
-                                    conn.rollback()
-                                    st.warning("⚠️ Không tìm thấy mức tải trọng để xóa. Vui lòng thử lại!")
-                                    
-                            except Exception as e:
-                                conn.rollback()
-                                st.error(f"❌ Lỗi SQL: {e}")
-                            finally:
-                                cursor.close()
-                                conn.close()
+                            if del_tt_id is None:
+                                st.warning("⚠️ Vui lòng chọn mức tải trọng cần xóa!")
+                            else:
+                                conn = None
+                                cursor = None
+                                try:
+                                    conn = db.pool.get_connection()
+                                    conn.autocommit = False
+                                    cursor = conn.cursor()
+
+                                    cursor.execute("DELETE FROM dm_tai_trong_phu_cap WHERE id = %s", (del_tt_id,))
+
+                                    if cursor.rowcount > 0:
+                                        chi_tiet = json.dumps({"ten_tai_trong_bi_xoa": tt_del_dict[del_tt_id]}, ensure_ascii=False)
+                                        cursor.execute("""
+                                            INSERT INTO audit_logs (phan_he, record_id, nguoi_thuc_hien, hanh_dong, chi_tiet) 
+                                            VALUES (%s, %s, %s, %s, %s)
+                                        """, ('QUAN_LY_PHU_CAP', del_tt_id, current_user, 'XOA_TAI_TRONG', chi_tiet))
+
+                                        conn.commit()
+                                        clear_master_cache()
+                                        st.success("✅ Đã xóa mức tải trọng và dọn dẹp ma trận thành công!")
+                                        if "del_tt_sel" in st.session_state:
+                                            del st.session_state["del_tt_sel"]
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else:
+                                        conn.rollback()
+                                        st.warning("⚠️ Không tìm thấy mức tải trọng để xóa. Vui lòng thử lại!")
+                                except Exception as e:
+                                    if conn:
+                                        conn.rollback()
+                                    st.error(f"❌ Lỗi SQL: {e}")
+                                finally:
+                                    if cursor:
+                                        cursor.close()
+                                    if conn:
+                                        conn.close()
                     else:
                         st.info("Chưa có dữ liệu tải trọng.")
             vung_thao_tac_delete_tieu_chi()
@@ -463,31 +495,30 @@ with tab2:
     with st.form("form_import_phu_cap_tab2", clear_on_submit=True):
         uploaded_file = st.file_uploader("Kéo thả file Excel Ma Trận Phụ Cấp vào đây (.xlsx)", type=['xlsx'])
         is_submit = st.form_submit_button("🚀 Thực thi Import Dữ Liệu", type="primary", use_container_width=True)
-        
+
         if is_submit:
             if not uploaded_file:
                 st.warning("⚠️ Vui lòng tải lên một file Excel!")
             else:
-                # 📊 KHU VỰC HIỂN THỊ TIẾN TRÌNH CHO NGƯỜI DÙNG
                 progress_text = st.empty()
                 progress_bar = st.progress(0)
-                
+
                 try:
                     progress_text.text("⏳ Đang đọc cấu trúc file Excel...")
                     progress_bar.progress(25)
-                    
+
                     df_import = pd.read_excel(uploaded_file)
-                    
+
                     progress_text.text("⏳ Đang phân tích dữ liệu ma trận và kiểm tra Database...")
                     progress_bar.progress(50)
-                    
+
                     success, msg = import_excel_phu_cap_transaction(db.pool, df_import, current_user)
-                    
+
                     progress_bar.progress(100)
                     progress_text.text("🎉 Hoàn tất quá trình đồng bộ!")
-                    
+
                     if success:
-                        clear_master_cache() # Import thành công phải cập nhật lại cache toàn bộ bảng
+                        clear_master_cache()
                         st.success(f"✅ {msg}")
                         st.balloons()
                     else:

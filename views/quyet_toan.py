@@ -5,6 +5,7 @@ import io
 import json
 import re
 import time
+from db_config import Database
 from trip_manager import (
     settle_trip_transaction,
     delete_trip_safe,
@@ -12,17 +13,31 @@ from trip_manager import (
 )
 from utils_core import parse_money_input, tao_tieu_de_kem_nut_refresh
 
-db = st.session_state["db"]
+# Tự khởi tạo Database nếu F5 trực tiếp tại trang Quyết toán
+db = st.session_state.get("db")
+if not db:
+    db = Database()
+    st.session_state["db"] = db
 
 
-# --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
-@st.cache_data(ttl=1800, show_spinner=False)
+# --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM (CHỈ CACHE DATAFRAME HỢP LỆ) ---
+@st.cache_data(ttl=900, show_spinner=False)
+def _cached_query_df(_db_instance, query, params=None):
+    res = _db_instance.execute_query(query, params)
+    if not isinstance(res, pd.DataFrame):
+        raise RuntimeError(str(res))
+    return res
+
+
 def get_cached_master_data(query, params=None):
-    return db.execute_query(query, params)
+    try:
+        return _cached_query_df(db, query, params)
+    except Exception:
+        return pd.DataFrame()
 
 
 def clear_master_cache():
-    get_cached_master_data.clear()
+    _cached_query_df.clear()
 
 
 hide_enter_submit_css = """
@@ -44,7 +59,9 @@ hide_enter_submit_css = """
 st.markdown(hide_enter_submit_css, unsafe_allow_html=True)
 
 st.markdown("<h3 style='text-align: center; color: #0b5394;'>📝 PHÂN HỆ QUYẾT TOÁN CHUYẾN ĐI</h3>", unsafe_allow_html=True)
-st.toast("✅ Đang load số liệu bạn vui lòng đợi nha:")
+if not st.session_state.get("qt_page_toast_shown"):
+    st.toast("✅ Sẵn sàng dữ liệu phân hệ Quyết toán!")
+    st.session_state["qt_page_toast_shown"] = True
 
 tab1, tab2, tab3, tab4 = st.tabs(
     [
@@ -138,7 +155,7 @@ def tach_diem_di_den(lo_trinh: str):
     """Tách điểm đi và điểm đến ưu tiên ký tự mũi tên trước dấu gạch ngang."""
     if not lo_trinh:
         return "", ""
-    for sep in ["➡️", "➡", "➔", "➜", "->", "-"]:
+    for sep in ["➡️", "➡", "➔", "➜", "->", " - ", "-"]:
         if sep in lo_trinh:
             parts = lo_trinh.split(sep)
             if len(parts) >= 2:
@@ -754,7 +771,7 @@ with tab1:
                 for _, row in df_cd.iterrows():
                     ten_kh_rut_gon = re.sub(r"(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*", "", str(row["ten_khach_hang"])).strip()
                     lo_trinh_gon = re.sub(r"(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*", "", str(row["dia_diem_giao_nhan"])).strip()
-                    is_ngoai = int(row.get("is_thue_ngoai", 0)) == 1
+                    is_ngoai = int(row.get("is_thue_ngoai", 0) or 0) == 1
                     kieu_xe = "Thuê ngoài" if is_ngoai else "Nội bộ"
                     bien_so_hien_thi = str(row["bien_so_xe"]) if pd.notna(row["bien_so_xe"]) else "Không có BKS"
                     cg_id = row.get("chuyen_goc_id")
@@ -972,11 +989,12 @@ with tab1:
                     f_lam_hang_cang = c_f11.checkbox("📦 Có làm hàng cảng")
                     f_cang = c_f12.selectbox("⚓ Nâng hạ/Qua cảng", options=["", "Dong_Nai", "Hiep_Phuoc", "VICT", "Cai_Mep"])
 
-                    c_f13, _ = st.columns([1, 3])
+                    c_f13, c_f14, _ = st.columns([1.2, 1.2, 1.6])
                     f_cont_rong = c_f13.selectbox(
                         "🔄 Xử lý Cont rỗng",
                         options=["Không", "Lấy Cont rỗng", "Hạ Cont rỗng", "Lấy Cont rỗng trái tuyến", "Hạ Cont rỗng trái tuyến"],
                     )
+                    f_neo_xe_nha_may = c_f14.number_input("🏭 Neo xe tại Nhà máy (ngày)", min_value=0, value=None, placeholder="0", step=1)
 
                     st.divider()
                     selected_tc_ids = []
@@ -1068,6 +1086,7 @@ with tab1:
                                     "so_km_phat_sinh": f_km or 0.0,
                                     "so_diem_giao_them": f_diem or 0,
                                     "so_ngay_neo_xe": f_neo_xe or 0,
+                                    "so_ngay_neo_xe_nha_may": f_neo_xe_nha_may or 0,
                                     "so_ngay_neo_cont": f_neo_cont or 0,
                                     "is_huy_chuyen": f_huy,
                                     "is_boc_xep": f_boc,
@@ -1089,13 +1108,20 @@ with tab1:
                                 tong_phi_ai, chuoi_ghi_chu_ai = rule_engine_calc(kh_id_qt, tt_xe_tan, doanh_thu_tinh_phi, facts_dict, db)
                                 tien_phu_cap_tx, chuoi_phu_cap_tx = tinh_phu_cap_tai_xe(db, row_sel.get("xe_id"), selected_tc_ids)
 
+                                trang_thai_hien_tai = row_sel.get("trang_thai_chuyen")
                                 tienthem_raw = row_sel.get("tien_them")
                                 tien_them_hien_tai = 0.0 if pd.isna(tienthem_raw) or tienthem_raw == "" else float(tienthem_raw)
-                                tien_them_final = tien_them_hien_tai + tien_phu_cap_tx
+
+                                # Tránh nhân đôi phụ cấp nếu chuyến đã Hoàn Thành và được quyết toán lại
+                                if trang_thai_hien_tai == "Hoan_Thanh":
+                                    tien_them_final = tien_phu_cap_tx if tien_phu_cap_tx > 0 else tien_them_hien_tai
+                                else:
+                                    tien_them_final = tien_them_hien_tai + tien_phu_cap_tx
+
                                 phi_khac_final = phi_khac_nhap_tay + tong_phi_ai
 
                                 gc_final = str(edit_gc).strip()
-                                if is_chuyen_phu:
+                                if is_chuyen_phu and "[CHUYẾN PHỤ" not in gc_final:
                                     kg_hien_thi = f"{tt_xe_tan:g} Tấn" if tt_xe_tan > 0 else "0 Tấn"
                                     gc_final += f" [CHUYẾN PHỤ CỦA ĐƠN #{int(chuyen_goc_id_val)} - KL Book: {kg_hien_thi}]"
                                 if chuoi_ghi_chu_ai:
@@ -1115,30 +1141,29 @@ with tab1:
                                     "phi_boc_xep": phi_bx_nhap_tay,
                                     "phi_khac": phi_khac_final,
                                     "tien_them": tien_them_final,
-                                    "ghi_chu_quyet_toan": gc_final,
+                                    "ghi_chu_quyet_toan": gc_final.strip(),
                                     "is_hang_tra_ve": 1 if is_hang_ve_ui else 0,
                                     "ghi_chu": ghi_chu_sach,
                                 }
 
                                 with st.spinner("⏳ Đang lưu hệ thống, kế toán vui lòng đợi..."):
                                     if is_save_to_rc and doanh_thu_val > 0 and ddi_save and dden_save:
-                                        qc_moi = f"{tt_xe_tan}T"
+                                        qc_moi = f"{tt_xe_tan:g}T"
                                         sql_insert_rc = """
                                             INSERT INTO rate_cards (khach_hang_id, diem_di, diem_den, phan_loai_phuong_tien, loai_xe_quy_cach, don_gia_cuoc, gia_chuyen_tiep_noi, is_hang_tra_ve)
                                             VALUES (%s, %s, %s, %s, %s, %s, 0, %s)
                                         """
-                                        try:
-                                            flag_luu_db = 1 if is_hang_ve_ui else 0
-                                            db.execute_non_query(
-                                                sql_insert_rc,
-                                                (kh_id_qt, ddi_save, dden_save, "Hang_Le", qc_moi, doanh_thu_val, flag_luu_db),
-                                            )
+                                        flag_luu_db = 1 if is_hang_ve_ui else 0
+                                        res_rc = db.execute_query(
+                                            sql_insert_rc,
+                                            (kh_id_qt, ddi_save, dden_save, "Hang_Le", qc_moi, doanh_thu_val, flag_luu_db),
+                                        )
+                                        if isinstance(res_rc, int) and res_rc > 0:
                                             clear_master_cache()
                                             st.toast("✅ Đã thêm lộ trình mới vào Bảng giá!")
-                                        except Exception as e:
-                                            st.error(f"Lỗi lưu Bảng giá: {e}")
+                                        else:
+                                            st.warning(f"⚠️ Không lưu được vào Bảng giá: {res_rc}")
 
-                                    trang_thai_hien_tai = row_sel.get("trang_thai_chuyen")
                                     if trang_thai_hien_tai == "Hoan_Thanh":
                                         is_ok, msg = update_trip_transaction(db.pool, data_dict_thu_cong, "Hoan_Thanh", cd_id)
                                     else:
@@ -1149,7 +1174,7 @@ with tab1:
                                     if cache_key_cd in st.session_state:
                                         del st.session_state[cache_key_cd]
                                     st.session_state["reset_chuyen_form"] += 1
-                                    time.sleep(1.5)
+                                    time.sleep(1.2)
                                     st.rerun()
                                 else:
                                     st.error(f"❌ Lỗi Database: {msg}")
@@ -1193,7 +1218,7 @@ with tab2:
 
             col_filter1, col_filter2, col_filter3 = st.columns(3)
             with col_filter1:
-                ngay_tim_kiem = st.date_input("Chọn ngày chạy", value=datetime.date.today(), key="sqt_date")
+                ngay_tim_kiem = st.date_input("Chọn ngày chạy", value=datetime.date.today(), format="DD/MM/YYYY", key="sqt_date")
             with col_filter2:
                 loai_tim_kiem = st.radio(
                     "Tìm kiếm theo:",
@@ -1264,7 +1289,7 @@ with tab2:
                 if isinstance(df_trips, pd.DataFrame) and not df_trips.empty:
                     dict_trips = {}
                     for _, row in df_trips.iterrows():
-                        tag_ngoai = "[NGOÀI]" if row["is_thue_ngoai"] == 1 else "[NỘI BỘ]"
+                        tag_ngoai = "[NGOÀI]" if int(row.get("is_thue_ngoai") or 0) == 1 else "[NỘI BỘ]"
                         cg_id = row.get("chuyen_goc_id")
                         tag_phu = f"[PHỤ CỦA #{int(cg_id)}] " if pd.notna(cg_id) else "[CHÍNH] "
                         ten_kh_rut_gon = re.sub(r"(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*", "", str(row["ten_khach_hang"])).strip()
@@ -1683,7 +1708,6 @@ with tab3:
                                     if ghi_chu_goc.lower() == "nan":
                                         ghi_chu_goc = ""
 
-                                    # Chỉ bỏ qua chuyến đã Hoàn Thành nếu trong file Excel KHÔNG nhập thêm phụ cấp tài xế
                                     co_nhap_phu_cap_excel = (
                                         pd.notna(r.get("DS_PHU_CAP_TAI_XE"))
                                         and str(r.get("DS_PHU_CAP_TAI_XE")).strip() not in ["", "nan", "None"]
@@ -1750,7 +1774,6 @@ with tab3:
                                         if tong_cuoc > 0 and doanh_thu_chuyen == 0:
                                             doanh_thu_chuyen = tong_cuoc
 
-                                    # 1. TÍNH PHỤ CẤP TÀI XẾ TRƯỚC (Độc lập với việc dò doanh thu chuyến)
                                     ds_phu_cap_str = str(r.get("DS_PHU_CAP_TAI_XE", "")).strip()
                                     selected_tc_ids_excel = []
                                     if ds_phu_cap_str and ds_phu_cap_str.lower() not in ["nan", ""]:
@@ -1783,7 +1806,6 @@ with tab3:
                                             f"(Kiểm tra tải trọng thiết kế của xe hoặc cấu hình tiền tiêu chí ID {selected_tc_ids_excel} trong Ma trận phụ cấp)."
                                         )
 
-                                    # 2. KIỂM TRA DOANH THU (Cho phép lưu nếu có doanh thu, là chuyến phụ, hoặc có phụ cấp tài xế)
                                     if doanh_thu_chuyen == 0 and not is_chuyen_phu and tien_phu_cap_tx == 0:
                                         error_list.append(
                                             f"⚠️ Dòng {index + 2} (Mã {cid}): Không dò ra Doanh Thu (Khối lượng book {tai_trong_so_sanh_tan}T không khớp Rate Cards)."
@@ -1841,7 +1863,13 @@ with tab3:
 
                                     tong_phi_ai, chuoi_ghi_chu_ai = rule_engine_calc(kh_id, tai_trong_so_sanh_tan, doanh_thu_tinh_phi, facts, db)
 
-                                    tien_them_final = float(row_db.get("tien_them") or 0.0) + tien_phu_cap_tx
+                                    tien_them_db = float(row_db.get("tien_them") or 0.0)
+                                    # Tránh cộng dồn lặp lại phụ cấp nếu chuyến đã Hoàn Thành trước đó
+                                    if trang_thai == "Hoan_Thanh":
+                                        tien_them_final = tien_phu_cap_tx if tien_phu_cap_tx > 0 else tien_them_db
+                                    else:
+                                        tien_them_final = tien_them_db + tien_phu_cap_tx
+
                                     phi_khac_excel = parse_money_input(r.get("PHI_KHAC"))
                                     tong_phi_khac_final = phi_khac_excel + tong_phi_ai
 

@@ -4,37 +4,30 @@ import json
 import easyocr
 import re
 import pandas as pd
-from PIL import Image
-#import google.generativeai as genai
 from google import genai
 from datetime import datetime, date, timedelta
 import streamlit as st
 from dotenv import load_dotenv
-import shutil # Import thêm module shutil
 from openpyxl.styles import PatternFill, Border, Side, Font, Alignment
 
-# Vẫn load file .env cho môi trường Local
-load_dotenv(override=False) 
+load_dotenv(override=False)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOAD_DIR = os.path.join(BASE_DIR, "zalo_downloads")
-TEMP_FILE = os.path.join(BASE_DIR, "temp_parsing.txt")
 EXCEL_FILE = os.path.join(BASE_DIR, "Danh_Sach_Book_Xe_Tong_Hop.xlsx")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
 
 @st.cache_resource
 def load_ocr_model():
     return easyocr.Reader(['vi', 'en'], gpu=False)
 
-# Hàm khởi tạo và cấu hình model Gemini ngay tại thời điểm cần thiết để tránh lỗi scope
-def get_gemini_model():
-    # Kiểm tra xem model đã được khởi tạo trong session chưa
-    if "gemini_model" in st.session_state:
-        return st.session_state["gemini_model"]
+
+def get_gemini_client():
+    if "gemini_client" in st.session_state:
+        return st.session_state["gemini_client"]
 
     api_key = None
-
-    # Bước 1: Quét trong kho Secrets của Streamlit Cloud trước
     try:
         if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
             api_key = st.secrets["api_keys"]["gemini"]
@@ -43,53 +36,41 @@ def get_gemini_model():
     except Exception:
         pass
 
-    # Bước 2: Thử lấy từ biến môi trường của hệ điều hành (Local)
     if not api_key:
         api_key = os.getenv("GEMINI_API_KEY")
 
-    # Khởi tạo model nếu tìm thấy key
     if api_key:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-3.6-flash')
-        st.session_state["gemini_model"] = model # Lưu vào session để dùng lại
-        return model
+        client = genai.Client(api_key=api_key)
+        st.session_state["gemini_client"] = client
+        return client
     else:
         st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống! Vui lòng kiểm tra lại cấu trúc Secrets trên Cloud.")
         return None
-    
 
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-
-@st.cache_resource
-def load_ocr_model():
-    return easyocr.Reader(['vi', 'en'], gpu=False)
 
 def get_grouped_files():
     valid_extensions = ('.jpg', '.jpeg', '.png', '.txt')
     grouped_files = {}
-    for root, dirs, files in os.walk(DOWNLOAD_DIR):
+    for root, _, files in os.walk(DOWNLOAD_DIR):
         valid_files = [f for f in files if f.lower().endswith(valid_extensions)]
         if valid_files:
             group_name = os.path.basename(root)
-            if group_name == "zalo_downloads": 
+            if group_name == "zalo_downloads":
                 group_name = "Khong_Xac_Dinh"
             grouped_files[group_name] = [os.path.join(root, f) for f in valid_files]
     return grouped_files
 
 
-# [CẬP NHẬT]: Hàm dọn dẹp CHỈ XÓA FILE (Tự động chạy để dọn rác từ phiên trước)
 def clear_files_only():
     deleted_count = 0
-    # Xóa file Excel tổng hợp
     if os.path.exists(EXCEL_FILE):
         try:
             os.remove(EXCEL_FILE)
             deleted_count += 1
         except Exception:
             pass
-            
-    # Xóa tất cả các file trong DOWNLOAD_DIR và các thư mục con
-    for root, dirs, files in os.walk(DOWNLOAD_DIR):
+
+    for root, _, files in os.walk(DOWNLOAD_DIR):
         for file in files:
             file_path = os.path.join(root, file)
             try:
@@ -99,72 +80,64 @@ def clear_files_only():
                 pass
     return deleted_count
 
-# [CẬP NHẬT]: Hàm dọn dẹp TOÀN BỘ FILE & THƯ MỤC (Xóa sạch sẽ 100%)
+
 def clear_files_and_folders():
     deleted_count = 0
-    # 1. Xóa file Excel tổng hợp cũ nếu có
     if os.path.exists(EXCEL_FILE):
         try:
             os.remove(EXCEL_FILE)
             deleted_count += 1
-        except: pass
+        except Exception:
+            pass
 
-    # 2. Xóa TOÀN BỘ thư mục con và file bên trong (Dùng shutil.rmtree cho triệt để)
     for item in os.listdir(DOWNLOAD_DIR):
         item_path = os.path.join(DOWNLOAD_DIR, item)
         try:
             if os.path.isfile(item_path):
                 os.remove(item_path)
-            #elif os.path.isdir(item_path):   # không xoá folder
-            #    shutil.rmtree(item_path) # Xóa mạnh tay cả cây thư mục
-            deleted_count += 1
+                deleted_count += 1
         except Exception:
             pass
-            
-    # Reset biến preview trong session state
+
     if "zalo_form_reset_key" in st.session_state:
         st.session_state["zalo_form_reset_key"] += 1
-        
+
     return deleted_count
 
+
 def process_offline_zalo_files():
-    # [THÊM MỚI] Hàm tra cứu MST từ Database
     def get_ma_so_thue(ten_kh):
         if not ten_kh:
             return ""
         try:
-            # Lấy DB từ session (phải đảm bảo file này chạy sau khi login ERP)
             db = st.session_state.get('db')
             if not db:
                 return ""
-                
-            # Loại bỏ các từ khóa công ty để tìm kiếm LIKE chính xác hơn
             tu_khoa = re.sub(r'(?i)công ty tnhh\s*|cty tnhh\s*|công ty\s*|cty\s*', '', str(ten_kh)).strip()
-            
-            # Nếu tên quá ngắn, bỏ qua việc tìm kiếm tự động để tránh gán nhầm
             if len(tu_khoa) < 3:
                 return ""
-
-            # Tìm kiếm tương đối bằng LIKE
             sql = "SELECT ma_so_thue FROM khach_hang WHERE ten_khach_hang LIKE %s LIMIT 1"
             df_kh = db.execute_query(sql, (f"%{tu_khoa}%",))
-            
             if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
                 val = df_kh.iloc[0]['ma_so_thue']
                 return str(val).strip() if pd.notna(val) and str(val).strip() != "" else ""
-        except Exception as e: 
-            print(f"Lỗi tìm MST: {e}") # Log lỗi nội bộ nếu có
+        except Exception as e:
+            print(f"Lỗi tìm MST: {e}")
         return ""
-    
+
     today_str = datetime.today().strftime('%Y-%m-%d')
     tomorrow_str = (datetime.today() + timedelta(days=1)).strftime('%Y-%m-%d')
     today_date = date.today()
-    
+
     grouped_files = get_grouped_files()
     total_groups = len(grouped_files)
-    
+
     if total_groups == 0:
         return {"status": "info", "message": "Thư mục trống. Không có dữ liệu để xử lý."}
+
+    client = get_gemini_client()
+    if not client:
+        return {"status": "error", "message": "Thiếu API Key.", "unprocessed": []}
 
     reader = load_ocr_model()
 
@@ -172,13 +145,11 @@ def process_offline_zalo_files():
     ui_file_status = st.empty()
     ui_progress = st.progress(0)
     ui_logs = st.empty()
-    
+
     logs = []
     valid_records = []
-    unprocessed_files = [] 
-    
-    # [CẬP NHẬT] Prompt mới: Gộp các điểm đến của ô merge thành 1 chuyến duy nhất và sửa lỗi nhận diện 1T
-    # [CẬP NHẬT] Prompt mới: Tích hợp logic xử lý kho xưởng của Công ty Fortunate
+    unprocessed_files = []
+
     prompt = f"""
     Bạn là chuyên gia phân tích dữ liệu Logistics. Nhiệm vụ: Chuyển đổi văn bản thành mảng JSON chứa các chuyến đi độc lập.
 
@@ -232,49 +203,47 @@ def process_offline_zalo_files():
         ]
     }}
     """
-    
+
     group_idx = 1
     for nhom, file_paths in grouped_files.items():
         total_files_in_group = len(file_paths)
         ui_group_status.info(f"📁 Đang xử lý nhóm {group_idx}/{total_groups}: **{nhom}**")
-        
+
         for idx, filepath in enumerate(file_paths, 1):
             filename = os.path.basename(filepath)
             is_image = filename.lower().endswith(('.jpg', '.jpeg', '.png'))
-            success = False
-            
-            while not success:
+            retry_count = 0
+            max_retries = 2
+            file_done = False
+            file_failed = False
+
+            while not file_done:
                 try:
                     ui_file_status.write(f"👉 Phân tích file {idx}/{total_files_in_group}: `{filename}`...")
-                    raw_text = ""
-                    
                     if is_image:
                         ocr_result = reader.readtext(filepath, detail=0, paragraph=True)
                         raw_text = " \n".join(ocr_result)
                     else:
                         with open(filepath, 'r', encoding='utf-8') as f:
                             raw_text = f.read()
-                    
-                    # Gọi hàm khởi tạo model (an toàn và lấy key mới nhất)
-                    active_model = get_gemini_model()
-                    if not active_model:
-                        ui_file_status.error("❌ Dừng xử lý: Hệ thống không kết nối được với AI (Thiếu API Key).")
-                        return {"status": "error", "message": "Thiếu API Key.", "unprocessed": unprocessed_files}
-                    
-                    response = active_model.generate_content(prompt + f'\nNội dung cần phân tích: "{raw_text}"')
-                    
-                    clean_text = re.sub(r"^```json\s*", "", response.text.strip(), flags=re.IGNORECASE)
+
+                    response = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=prompt + f'\nNội dung cần phân tích: "{raw_text}"'
+                    )
+
+                    resp_text = (response.text or "").strip()
+                    clean_text = re.sub(r"^```json\s*", "", resp_text, flags=re.IGNORECASE)
                     clean_text = re.sub(r"\s*```$", "", re.sub(r"^```\s*", "", clean_text, flags=re.IGNORECASE))
-                    
+
                     record_count_before = len(valid_records)
                     match = re.search(r'\{.*\}', clean_text, re.DOTALL)
-                    
+
                     if match:
                         parsed = json.loads(match.group(0))
                         if parsed.get("is_booking"):
                             for xe in parsed.get("danh_sach_xe", []):
                                 xe["nhom_zalo_nguon"] = nhom
-                                # [THÊM MỚI] Gán cứng Tên khách & MST từ tên thư mục tải lên
                                 ten_kh_goc = nhom if nhom != "Khong_Xac_Dinh" else ""
                                 xe["ten_khach_hang"] = ten_kh_goc
                                 xe["ma_so_thue"] = get_ma_so_thue(ten_kh_goc)
@@ -287,74 +256,67 @@ def process_offline_zalo_files():
                                         valid_records.append(xe)
                                 except Exception:
                                     pass
-                    
-                    success = True
-                    
+
+                    file_done = True
+
                     if len(valid_records) == record_count_before:
                         logs.append(f"⚠️ Không có đơn hàng: {filename}")
-                        unprocessed_files.append(f"{nhom} / {filename} (Trống)")
+                        unprocessed_files.append(f"{nhom} / {filename} (Trống hoặc ngày quá khứ)")
                     else:
                         logs.append(f"✅ Bóc tách xong: {filename}")
-                        
-                    ui_logs.text("\n".join(logs[-4:]))
-                    
-                    if os.path.exists(filepath): 
+
+                    # Chỉ xóa file khi đã xử lý xong không lỗi
+                    if os.path.exists(filepath):
                         os.remove(filepath)
-                        
-                    ui_progress.progress(idx / total_files_in_group)
-                    
-                    if idx < total_files_in_group:
-                        ui_file_status.warning("⏳ Nghỉ 4s tránh nghẽn API...")
-                        time.sleep(4)
-                        
+
                 except Exception as e:
-                    if "429" in str(e).lower() or "quota" in str(e).lower():
-                        ui_file_status.error("⚠️ Quá tải API! Nghỉ 30s...")
+                    err_str = str(e)
+                    if ("429" in err_str.lower() or "quota" in err_str.lower()) and retry_count < max_retries:
+                        retry_count += 1
+                        ui_file_status.error(f"⚠️ Quá tải API! Nghỉ 30s (Thử lại {retry_count}/{max_retries})...")
                         time.sleep(30)
                     else:
-                        logs.append(f"❌ Lỗi: {filename}")
-                        ui_logs.text("\n".join(logs[-4:]))
-                        success = True 
-            
-            if not success:
-                unprocessed_files.append(f"{nhom} / {filename}")
-        
-        #group_path = os.path.join(DOWNLOAD_DIR, nhom)
-        #if os.path.exists(group_path) and not os.listdir(group_path):  # các dòng này xoá thư mục
-        #    os.rmdir(group_path)
-            
+                        logs.append(f"❌ Lỗi ({filename}): {err_str[:80]}")
+                        unprocessed_files.append(f"{nhom} / {filename} (Lỗi xử lý)")
+                        file_failed = True
+                        file_done = True
+
+            ui_logs.text("\n".join(logs[-4:]))
+            ui_progress.progress(idx / total_files_in_group)
+
+            if idx < total_files_in_group and not file_failed:
+                ui_file_status.warning("⏳ Nghỉ 4s tránh nghẽn API...")
+                time.sleep(4)
+
         if group_idx < total_groups:
             ui_group_status.warning(f"🛑 Xong nhóm {nhom}. Nghỉ 5s...")
             time.sleep(5)
-        
+
         group_idx += 1
-                        
+
     ui_progress.empty()
     ui_file_status.empty()
     ui_group_status.empty()
     ui_logs.empty()
-                    
+
     if valid_records:
         df_new = pd.DataFrame(valid_records)
-        
-        # CHUYỂN FORMAT NGÀY SANG DẠNG CHUỖI dd/mm/yyyy
+
         def format_date_to_dmy(date_val):
             try:
                 if pd.isna(date_val) or str(date_val).strip() == "" or "Khong_Xac_Dinh" in str(date_val):
                     return "Khong_Xac_Dinh"
-                # Phân tích chuỗi ISO (YYYY-MM-DD) do AI trả về
                 parsed_date = datetime.strptime(str(date_val)[:10], '%Y-%m-%d')
                 return parsed_date.strftime('%d/%m/%Y')
             except Exception:
                 return str(date_val)
 
         df_new['ngay_chuyen_di'] = df_new.get('ngay_chuyen_di', 'Khong_Xac_Dinh').apply(format_date_to_dmy)
-        
-        # 1. Bổ sung các cột bị thiếu (bao gồm cả cột loai_xe_yeu_cau mới)
-        for col in ['ma_so_thue', 'ten_khach_hang', 'dia_chi_kho_di', 'dia_chi_kho_den', 'khoi_luong_kg', 'the_tich_cbm', 'loai_xe_yeu_cau', 'ghi_chu']:
-            if col not in df_new.columns: df_new[col] = ""
 
-        # 2. Đổi tên cột cho khớp với file mẫu
+        for col in ['ma_so_thue', 'ten_khach_hang', 'dia_chi_kho_di', 'dia_chi_kho_den', 'khoi_luong_kg', 'the_tich_cbm', 'loai_xe_yeu_cau', 'ghi_chu']:
+            if col not in df_new.columns:
+                df_new[col] = ""
+
         df_export = df_new.rename(columns={
             'ngay_chuyen_di': 'NGAY_CHAY',
             'ma_so_thue': 'MA_SO_THUE',
@@ -367,138 +329,107 @@ def process_offline_zalo_files():
             'ghi_chu': 'GHI_CHU'
         })
 
-        # 3. Sắp xếp lại thứ tự cột chuẩn xác
         columns_order = ['NGAY_CHAY', 'MA_SO_THUE', 'TEN_KHACH_HANG', 'DIA_CHI_KHO_DI', 'DIA_CHI_KHO_DEN', 'KHOI_LUONG_KG', 'THE_TICH_CBM', 'LOAI_XE_YEU_CAU', 'GHI_CHU']
         df_export = df_export[columns_order]
 
-        
-        
-        # 4. KHÔNG GỘP DỮ LIỆU - PHIÊN NÀO KẾT THÚC PHIÊN ĐÓ
         if os.path.exists(EXCEL_FILE):
-            try: 
+            try:
                 os.remove(EXCEL_FILE)
-            except Exception: 
+            except Exception:
                 pass
-        
-        # 5. Ghi đè file Excel mới tinh (Chỉ chứa data của lần quét hiện tại)
+
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
             grouped = df_export.groupby('NGAY_CHAY')
-            
-            # Định nghĩa các style (Màu đỏ, viền mỏng)
-            header_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid") # Nền đỏ
-            header_font = Font(color="FFFFFF", bold=True) # Chữ trắng in đậm
-            thin_border = Border(left=Side(style='thin'), 
-                                 right=Side(style='thin'), 
-                                 top=Side(style='thin'), 
-                                 bottom=Side(style='thin'))
-            
-            # Định nghĩa style Wrap Text cho cột Ghi Chú
+            header_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+            header_font = Font(color="FFFFFF", bold=True)
+            thin_border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
             wrap_alignment = Alignment(wrap_text=True, vertical='top', horizontal='left')
 
             for date_str, group_df in grouped:
-                # Xử lý an toàn cho tên sheet (không chứa ký tự không hợp lệ)
-                safe_sheet_name = str(date_str).replace('/', '-').replace('\\', '-')[:31] 
+                safe_sheet_name = str(date_str).replace('/', '-').replace('\\', '-')[:31]
                 if safe_sheet_name == "Khong_Xac_Dinh":
                     safe_sheet_name = "Khong_Xac_Dinh_Ngay"
-                
-                # Bỏ qua index khi xuất ra Excel
-                group_df.to_excel(writer, sheet_name=safe_sheet_name, index=False)
-                
-                # Áp dụng định dạng cho sheet vừa tạo
-                worksheet = writer.sheets[safe_sheet_name]
-                
-                # Điều chỉnh độ rộng các cột cơ bản để dễ đọc
-                worksheet.column_dimensions['A'].width = 15 # Ngày
-                worksheet.column_dimensions['B'].width = 15 # MST
-                worksheet.column_dimensions['C'].width = 30 # Tên Khách
-                worksheet.column_dimensions['D'].width = 35 # Điểm đi
-                worksheet.column_dimensions['E'].width = 35 # Điểm đến
-                worksheet.column_dimensions['H'].width = 15 # Loại xe
-                
-                # 📌 Điều chỉnh độ rộng cột Ghi Chú (Cột thứ 9 - I)
-                worksheet.column_dimensions['I'].width = 50 
 
-                # Format Tiêu đề (Hàng 1)
-                for col_num, value in enumerate(group_df.columns.values):
+                group_df.to_excel(writer, sheet_name=safe_sheet_name, index=False)
+                worksheet = writer.sheets[safe_sheet_name]
+
+                worksheet.column_dimensions['A'].width = 15
+                worksheet.column_dimensions['B'].width = 15
+                worksheet.column_dimensions['C'].width = 30
+                worksheet.column_dimensions['D'].width = 35
+                worksheet.column_dimensions['E'].width = 35
+                worksheet.column_dimensions['H'].width = 15
+                worksheet.column_dimensions['I'].width = 50
+
+                for col_num in range(len(group_df.columns)):
                     cell = worksheet.cell(row=1, column=col_num + 1)
                     cell.fill = header_fill
                     cell.font = header_font
                     cell.border = thin_border
                     cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-                
-                # Format các ô dữ liệu (Từ hàng 2 trở đi)
+
                 for row_num in range(2, len(group_df) + 2):
-                    # Tăng chiều cao của tất cả các dòng dữ liệu để chứa nội dung Wrap Text
-                    worksheet.row_dimensions[row_num].height = 45 
-                    
+                    worksheet.row_dimensions[row_num].height = 45
                     for col_num in range(1, len(group_df.columns) + 1):
                         cell = worksheet.cell(row=row_num, column=col_num)
                         cell.border = thin_border
-                        
-                        # Cột thứ 9 (I) là cột Ghi Chú, áp dụng Wrap Text
-                        if col_num == 9: 
+                        if col_num == 9:
                             cell.alignment = wrap_alignment
                         else:
-                            cell.alignment = Alignment(vertical='top') # Căn trên cho tất cả các cột khác
-                
+                            cell.alignment = Alignment(vertical='top')
+
         return {"status": "success", "message": f"✅ Đã lưu {len(valid_records)} chuyến xe vào Excel. File sẽ tự động xóa sau khi bạn tải về.", "unprocessed": unprocessed_files}
-    
+
     return {"status": "warning", "message": "⚠️ Không tìm thấy dữ liệu hợp lệ.", "unprocessed": unprocessed_files}
+
+
 def main_app():
-    st.toast("✅ Đang lưu số liệu bạn vui lòng đợi nha:")
-    # [CẬP NHẬT]: Tự động quét và xóa file của phiên làm việc trước khi mở App
     if "auto_cleaned_files" not in st.session_state:
-        clear_files_only() # CHỈ XÓA FILE - GIỮ LẠI CÁC THƯ MỤC NHÓM
+        clear_files_only()
         st.session_state["auto_cleaned_files"] = True
 
-    # Khởi tạo bộ đếm form key để phục vụ việc reset widget file_uploader
     if "zalo_form_reset_key" not in st.session_state:
         st.session_state["zalo_form_reset_key"] = 0
-    # THÊM ĐOẠN CSS NÀY ĐỂ THU GỌN KHOẢNG CÁCH
+
     st.markdown("""
         <style>
-            /* Thu hẹp khoảng cách trên/dưới của tiêu đề chính */
             h1, h2, h3 {
                 padding-top: 0.5rem !important;
                 padding-bottom: 0rem !important;
                 margin-top: 0rem !important;
                 margin-bottom: 0.5rem !important;
             }
-            
-            /* Thu hẹp khoảng cách của các tiêu đề phụ (subheader) */
             h4, h5, h6 {
                 padding-top: 0.2rem !important;
                 padding-bottom: 0rem !important;
                 margin-top: 0rem !important;
                 margin-bottom: 0.5rem !important;
             }
-            
-            /* Thu hẹp khoảng cách của đường kẻ ngang (st.markdown("---")) */
             hr {
                 margin-top: 0.5rem !important;
                 margin-bottom: 0.5rem !important;
             }
-            
-            /* Giảm khoảng trắng bên trong form tải file */
             div[data-testid="stForm"] {
                 padding-top: 0.5rem !important;
                 padding-bottom: 0.5rem !important;
                 margin-bottom: 0.5rem !important;
             }
-            
-            /* Ép các div markdown sát lại nhau */
             [data-testid="stMarkdownContainer"] {
                 margin-bottom: -5px !important;
             }
         </style>
-    """, unsafe_allow_html=True)    
+    """, unsafe_allow_html=True)
 
     st.title("🤖 RPA - Lấy thông tin điều xe từ file Zalo")
-    
-    # 📌 KHU VỰC DỌN RÁC TỒN ĐỌNG
+
     st.subheader("🧹 Dọn dẹp dữ liệu tồn đọng")
     st.markdown("Nếu tiến trình trước đó bị lỗi hoặc dừng đột ngột, hãy dọn rác trước khi tải file mới lên để tránh quá tải AI.")
-    
+
     if st.button("🗑️ Dọn sạch toàn bộ File & Thư mục Zalo cũ", type="secondary"):
         deleted = clear_files_only()
         if deleted > 0:
@@ -508,34 +439,30 @@ def main_app():
 
     st.markdown("---")
     st.subheader("📤 Tải lên dữ liệu Zalo (Hình ảnh / File Text)")
-    
+
     existing_groups = [d for d in os.listdir(DOWNLOAD_DIR) if os.path.isdir(os.path.join(DOWNLOAD_DIR, d))]
     options = ["+ Tạo nhóm mới"] + existing_groups
-    
+
     selected_option = st.selectbox("📂 Chọn nhóm Zalo đích (hoặc tạo mới):", options, key=f"sel_group_{st.session_state['zalo_form_reset_key']}")
-    
+
     if selected_option == "+ Tạo nhóm mới":
-        group_name_input = st.text_input("Nhập tên nhóm Zalo mới:", key=f"input_new_group_{st.session_state['zalo_form_reset_key']}").strip()
+        raw_group = st.text_input("Nhập tên nhóm Zalo mới:", key=f"input_new_group_{st.session_state['zalo_form_reset_key']}").strip()
+        group_name_input = re.sub(r'[\\/:*?"<>|]', '_', raw_group).strip('. ')
     else:
         group_name_input = selected_option
-    
-    
-    # 📌 SỬ DỤNG FORM BỌC ĐỂ CHO PHÉP RESET TRẮNG WIDGET FILE_UPLOADER
+
     form_key = f"zalo_upload_form_{st.session_state['zalo_form_reset_key']}"
-    
-    # [CẬP NHẬT 1]: Thêm clear_on_submit=True để tự động dọn dẹp form khi submit
+
     with st.form(key=form_key, clear_on_submit=True):
-        
-        # [CẬP NHẬT 2]: Gắn key động trực tiếp vào file_uploader
         uploaded_files = st.file_uploader(
-            "Chọn các file ảnh (.jpg, .png) hoặc văn bản (.txt) cần xử lý:", 
-            type=["jpg", "jpeg", "png", "txt"], 
+            "Chọn các file ảnh (.jpg, .png) hoặc văn bản (.txt) cần xử lý:",
+            type=["jpg", "jpeg", "png", "txt"],
             accept_multiple_files=True,
             key=f"uploader_zalo_{st.session_state['zalo_form_reset_key']}"
         )
-        
+
         submitted_upload = st.form_submit_button("📥 Lưu file lên hệ thống Cloud", type="primary", use_container_width=True)
-        
+
         if submitted_upload:
             if not group_name_input:
                 st.error("❌ Vui lòng chọn hoặc nhập tên nhóm Zalo đích!")
@@ -543,103 +470,94 @@ def main_app():
                 st.warning("⚠️ Vui lòng chọn ít nhất một file để tải lên!")
             else:
                 target_group_dir = os.path.join(DOWNLOAD_DIR, group_name_input)
-                os.makedirs(target_group_dir, exist_ok=True) 
-                
+                os.makedirs(target_group_dir, exist_ok=True)
+
                 saved_count = 0
                 for uploaded_file in uploaded_files:
-                    file_path = os.path.join(target_group_dir, uploaded_file.name)
+                    safe_filename = os.path.basename(uploaded_file.name)
+                    file_path = os.path.join(target_group_dir, safe_filename)
                     with open(file_path, "wb") as f:
                         f.write(uploaded_file.getbuffer())
                     saved_count += 1
-                    
+
                 st.success(f"✅ Đã tải lên thành công {saved_count} file vào nhóm `{group_name_input}`.")
-                
-                # [CẬP NHẬT 3]: Tăng biến đếm và load lại trang để xóa hoàn toàn file trên UI
-               
                 time.sleep(1.2)
                 st.session_state["zalo_form_reset_key"] += 1
                 st.rerun()
 
     st.markdown("---")
     st.subheader("⚙️ Xử lý dữ liệu")
-    
+
     if st.button("🚀 Bắt đầu phân tích AI", type="primary", use_container_width=True):
         with st.spinner("Đang kết nối thư viện OCR và Gemini AI..."):
             result = process_offline_zalo_files()
             if result:
-                if result["status"] == "success": 
+                if result["status"] == "success":
                     st.success(result["message"])
-                elif result["status"] == "warning": 
+                elif result["status"] == "warning":
                     st.warning(result["message"])
-                elif result["status"] == "info": 
+                elif result["status"] == "info":
                     st.info(result["message"])
-                
+                elif result["status"] == "error":
+                    st.error(result["message"])
+
                 if result.get("unprocessed"):
                     st.error(f"🚨 Có {len(result['unprocessed'])} file hệ thống không thể xử lý:")
                     for f in result["unprocessed"]:
                         st.markdown(f"- `{f}`")
 
-        
     st.markdown("---")
     st.subheader("📥 Tải kết quả tổng hợp")
-    
+
     if os.path.exists(EXCEL_FILE):
         try:
-            # 1. Đọc TRỰC TIẾP file tạm mà hệ thống vừa sinh ra từ lần AI chạy gần nhất
-            # [FIX MỚI]: Khai báo sheet_name=None để đọc TOÀN BỘ các Sheet, sau đó gộp lại thành 1 bảng Preview duy nhất
             df_dict = pd.read_excel(EXCEL_FILE, sheet_name=None)
             df_preview = pd.concat(df_dict.values(), ignore_index=True)
-            
-            # Lọc bỏ cột GHI_CHU nếu nó bị rỗng hoàn toàn để bảng preview nhìn gọn gàng hơn
+
             if 'GHI_CHU' in df_preview.columns and df_preview['GHI_CHU'].isnull().all():
                 df_preview = df_preview.drop(columns=['GHI_CHU'])
-                
+
             st.markdown("##### 👁️‍🗨️ XEM TRƯỚC DỮ LIỆU ĐÃ BÓC TÁCH (PREVIEW)")
             st.info(f"Đã trích xuất thành công tổng cộng {len(df_preview)} chuyến đi. Vui lòng kiểm tra kỹ trước khi tải về.")
-            
-            # Nếu muốn hiển thị danh sách dài mà không bị cuộn nhỏ, anh có thể thêm height
+
             st.dataframe(df_preview, use_container_width=True, height=600)
-            
             st.markdown("<br>", unsafe_allow_html=True)
-            
-            # 2. Xử lý nút Tải về
+
             with open(EXCEL_FILE, "rb") as file:
                 file_bytes = file.read()
-                
-            # Gán biến da_tai_xong để bắt sự kiện click của người dùng
+
             da_tai_xong = st.download_button(
                 label="✅ TÔI XÁC NHẬN DỮ LIỆU ĐÚNG - TẢI XUỐNG NGAY",
                 data=file_bytes,
-                file_name=f"Book_Xe_{datetime.now().strftime('%H%M%S_%d%m%Y')}.xlsx", 
+                file_name=f"Book_Xe_{datetime.now().strftime('%H%M%S_%d%m%Y')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary",
                 use_container_width=True
             )
-            
+
             st.markdown("<br>", unsafe_allow_html=True)
-            
-            # Nút thủ công (dành cho trường hợp thấy data bị sai, muốn hủy bỏ)
+
             if st.button("❌ Xóa trắng để quét lại", type="secondary", use_container_width=True):
-                da_tai_xong = True # Ép chạy logic xóa bên dưới
-                
-            # NẾU NGƯỜI DÙNG ĐÃ BẤM TẢI XONG (HOẶC BẤM HỦY) -> LẬP TỨC DỌN SẠCH HỆ THỐNG
+                da_tai_xong = True
+
             if da_tai_xong:
                 try:
                     if os.path.exists(EXCEL_FILE):
                         os.remove(EXCEL_FILE)
-                except Exception: pass
-                
-                clear_files_only() # CHỈ XÓA FILE BÊN TRONG
-                
+                except Exception:
+                    pass
+
+                clear_files_only()
                 st.session_state["zalo_form_reset_key"] += 1
                 st.toast("🎉 Hệ thống đã tự động dọn sạch file rác của phiên làm việc này.")
                 time.sleep(1.5)
                 st.rerun()
-                
+
         except Exception as e:
             st.error(f"Lỗi hiển thị dữ liệu Preview: {e}")
     else:
         st.info("Chưa có dữ liệu Excel nào được xuất ra trên hệ thống.")
+
+
 if __name__ == "__main__":
-    st.toast("✅ Đang load số liệu bạn vui lòng đợi nha:")
     main_app()

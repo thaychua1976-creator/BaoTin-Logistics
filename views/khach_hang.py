@@ -3,87 +3,137 @@ import pandas as pd
 from audit_logger import ghi_log_he_thong
 import re, json, time
 
+
 # --- HỆ THỐNG CACHE BỘ NHỚ ĐỆM ---
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_cached_master_data(_db_instance, query, params=None):
     return _db_instance.execute_query(query, params)
 
+
 def clear_master_cache():
     get_cached_master_data.clear()
 # ---------------------------------
 
-# Khởi tạo trạng thái mặc định cho form bằng các BỘ ĐẾM (Counters)
+
 def init_session_state():
-    if 'form_reset_counter' not in st.session_state: st.session_state['form_reset_counter'] = 0
-    if 'del_reset_counter' not in st.session_state: st.session_state['del_reset_counter'] = 0
-    if 'edit_reset_counter' not in st.session_state: st.session_state['edit_reset_counter'] = 0
+    if 'form_reset_counter' not in st.session_state:
+        st.session_state['form_reset_counter'] = 0
+    if 'del_reset_counter' not in st.session_state:
+        st.session_state['del_reset_counter'] = 0
+    if 'edit_reset_counter' not in st.session_state:
+        st.session_state['edit_reset_counter'] = 0
+
 
 init_session_state()
 
-# ==========================================
-# HÀM HIỂN THỊ POPUP LỖI GIỮA MÀN HÌNH
-# ==========================================
+
 @st.dialog("⚠️ CẢNH BÁO HỆ THỐNG")
 def show_error_popup(message):
     st.error(message, icon="🚨")
-    st.info("Vui lòng kiểm tra lại danh sách hoặc sử dụng Mã số thuế khác.")
+    st.info("Vui lòng kiểm tra lại danh sách hoặc dữ liệu liên quan.")
     if st.button("Đã hiểu & Đóng", type="primary", use_container_width=True):
         st.rerun()
+
 
 def save_khach_hang_transaction(db_pool, action, kh_data, kh_id, current_user):
     connection = None
     cursor = None
     try:
         connection = db_pool.get_connection()
-        connection.autocommit = False 
+        connection.autocommit = False
         cursor = connection.cursor()
 
         if action == 'CREATE':
+            ma_kh_input = kh_data[1]
             ma_so_thue_input = kh_data[3]
+
             cursor.execute("SELECT id FROM khach_hang WHERE ma_so_thue = %s", (ma_so_thue_input,))
-            if cursor.fetchone(): raise Exception(f"Khách hàng với mã số thuế '{ma_so_thue_input}' đã tồn tại trong database.")
+            if cursor.fetchone():
+                raise Exception(f"Khách hàng với mã số thuế '{ma_so_thue_input}' đã tồn tại trong database.")
+
+            cursor.execute("SELECT id FROM khach_hang WHERE ma_khach_hang = %s", (ma_kh_input,))
+            if cursor.fetchone():
+                raise Exception(f"Mã khách hàng '{ma_kh_input}' đã tồn tại trong database.")
 
             sql = """INSERT INTO khach_hang (ten_khach_hang, ma_khach_hang, so_dien_thoai, ma_so_thue, dia_chi) VALUES (%s, %s, %s, %s, %s)"""
             cursor.execute(sql, kh_data)
-            if cursor.rowcount <= 0: raise Exception("Không thể thêm mới khách hàng vào CSDL.")
+            if cursor.rowcount <= 0:
+                raise Exception("Không thể thêm mới khách hàng vào CSDL.")
             new_id = cursor.lastrowid
-            
-            ghi_log_he_thong(cursor, phan_he="QUAN_LY_KHACH_HANG", record_id=new_id, nguoi_thuc_hien=current_user, hanh_dong="TAO_MOI", chi_tiet=json.dumps(kh_data, ensure_ascii=False))
+
+            ghi_log_he_thong(
+                cursor,
+                phan_he="QUAN_LY_KHACH_HANG",
+                record_id=new_id,
+                nguoi_thuc_hien=current_user,
+                hanh_dong="TAO_MOI",
+                chi_tiet=json.dumps(list(kh_data), ensure_ascii=False)
+            )
 
         elif action == 'UPDATE':
+            ma_kh_input = kh_data[1]
             ma_so_thue_input = kh_data[3]
+
             cursor.execute("SELECT id FROM khach_hang WHERE ma_so_thue = %s AND id != %s", (ma_so_thue_input, kh_id))
-            if cursor.fetchone(): raise Exception(f"Khách hàng với mã số thuế '{ma_so_thue_input}' đã tồn tại trong database.")
+            if cursor.fetchone():
+                raise Exception(f"Khách hàng với mã số thuế '{ma_so_thue_input}' đã tồn tại trong database.")
+
+            cursor.execute("SELECT id FROM khach_hang WHERE ma_khach_hang = %s AND id != %s", (ma_kh_input, kh_id))
+            if cursor.fetchone():
+                raise Exception(f"Mã khách hàng '{ma_kh_input}' đã tồn tại trong database.")
 
             sql = """UPDATE khach_hang SET ten_khach_hang = %s, ma_khach_hang = %s, so_dien_thoai = %s, ma_so_thue = %s, dia_chi = %s WHERE id = %s"""
             cursor.execute(sql, (*kh_data, kh_id))
-            if cursor.rowcount <= 0: raise Exception(f"Không tìm thấy khách hàng ID #{kh_id} hoặc dữ liệu không có sự thay đổi.")
-            
-            ghi_log_he_thong(cursor, phan_he="QUAN_LY_KHACH_HANG", record_id=kh_id, nguoi_thuc_hien=current_user, hanh_dong="CAP_NHAT", chi_tiet=json.dumps(kh_data, ensure_ascii=False))
+            if cursor.rowcount <= 0:
+                raise Exception(f"Không tìm thấy khách hàng ID #{kh_id} hoặc dữ liệu không có sự thay đổi.")
+
+            ghi_log_he_thong(
+                cursor,
+                phan_he="QUAN_LY_KHACH_HANG",
+                record_id=kh_id,
+                nguoi_thuc_hien=current_user,
+                hanh_dong="CAP_NHAT",
+                chi_tiet=json.dumps(list(kh_data), ensure_ascii=False)
+            )
 
         elif action == 'DELETE':
             sql = "DELETE FROM khach_hang WHERE id = %s"
             cursor.execute(sql, (kh_id,))
-            if cursor.rowcount <= 0: raise Exception(f"Không tìm thấy khách hàng ID #{kh_id} để xóa.")
-            
-            ghi_log_he_thong(cursor, phan_he="QUAN_LY_KHACH_HANG", record_id=kh_id, nguoi_thuc_hien=current_user, hanh_dong="XOA", chi_tiet=json.dumps({"message": f"Đã xóa khách hàng ID #{kh_id}"}, ensure_ascii=False))
+            if cursor.rowcount <= 0:
+                raise Exception(f"Không tìm thấy khách hàng ID #{kh_id} để xóa.")
+
+            ghi_log_he_thong(
+                cursor,
+                phan_he="QUAN_LY_KHACH_HANG",
+                record_id=kh_id,
+                nguoi_thuc_hien=current_user,
+                hanh_dong="XOA",
+                chi_tiet=json.dumps({"message": f"Đã xóa khách hàng ID #{kh_id}"}, ensure_ascii=False)
+            )
 
         connection.commit()
         return True, "Thành công"
 
     except Exception as e:
-        if connection: connection.rollback()
-        return False, str(e)
+        if connection:
+            connection.rollback()
+        err_msg = str(e)
+        if "1451" in err_msg or "foreign key constraint" in err_msg.lower():
+            return False, "Không thể xóa khách hàng này vì đã có dữ liệu Chuyến đi, Bảng giá hoặc Tờ khai hải quan liên quan!"
+        return False, err_msg
     finally:
-        if cursor: cursor.close()
-        if connection: connection.close()
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
 
 def render_quan_ly_khach_hang():
     db = st.session_state.get('db')
     current_user = st.session_state.get('username', 'Admin')
 
     if not db:
-        st.error("⚠ Lỗi kết nối Cơ sở dữ liệu.")
+        st.error("⚠️ Lỗi kết nối Cơ sở dữ liệu.")
         return
 
     st.markdown("<h3 style='text-align: center; color: #0b5394;'>🏢 PHÂN HỆ QUẢN LÝ KHÁCH HÀNG & ĐỐI TÁC VẬN TẢI</h3>", unsafe_allow_html=True)
@@ -96,64 +146,78 @@ def render_quan_ly_khach_hang():
     # ==========================================
     with tab_danh_sach:
         st.markdown("##### 📊 Bảng danh bạ khách hàng và thông tin pháp lý")
-        
+
         sql_load = "SELECT id, ma_khach_hang, ten_khach_hang, so_dien_thoai, ma_so_thue, dia_chi FROM khach_hang ORDER BY id ASC"
         df_kh = get_cached_master_data(db, sql_load)
-        
+
         if isinstance(df_kh, pd.DataFrame) and not df_kh.empty:
             for col in ['ma_khach_hang', 'ten_khach_hang', 'so_dien_thoai', 'ma_so_thue', 'dia_chi']:
-                df_kh[col] = df_kh[col].apply(lambda x: re.sub(r'\.0$', '', str(x).strip()) if pd.notna(x) and str(x).strip().lower() != 'nan' else '')
+                df_kh[col] = df_kh[col].apply(
+                    lambda x: re.sub(r'\.0$', '', str(x).strip()) if pd.notna(x) and str(x).strip().lower() not in ('nan', 'none') else ''
+                )
 
             search_query = st.text_input("🔍 Tìm kiếm nhanh theo tên hoặc mã số thuế:", placeholder="Nhập tên công ty hoặc MST...")
-            
+
             df_hien_thi = df_kh.copy()
             if search_query:
-                mask = df_hien_thi['ten_khach_hang'].str.contains(search_query, case=False, na=False) | \
-                       df_hien_thi['ma_so_thue'].str.contains(search_query, case=False, na=False) | \
-                       df_hien_thi['ma_khach_hang'].str.contains(search_query, case=False, na=False)
+                mask = (
+                    df_hien_thi['ten_khach_hang'].str.contains(search_query, case=False, na=False) |
+                    df_hien_thi['ma_so_thue'].str.contains(search_query, case=False, na=False) |
+                    df_hien_thi['ma_khach_hang'].str.contains(search_query, case=False, na=False)
+                )
                 df_hien_thi = df_hien_thi[mask]
 
-            df_display_cols = df_hien_thi.rename(columns={'id': 'ID', 'ma_khach_hang': 'Mã KH', 'ten_khach_hang': 'Tên Đơn Vị / Khách Hàng', 'so_dien_thoai': 'Số Điện Thoại', 'ma_so_thue': 'Mã Số Thuế', 'dia_chi': 'Địa Chỉ Trụ Sở'})
+            df_display_cols = df_hien_thi.rename(columns={
+                'id': 'ID',
+                'ma_khach_hang': 'Mã KH',
+                'ten_khach_hang': 'Tên Đơn Vị / Khách Hàng',
+                'so_dien_thoai': 'Số Điện Thoại',
+                'ma_so_thue': 'Mã Số Thuế',
+                'dia_chi': 'Địa Chỉ Trụ Sở'
+            })
             st.dataframe(df_display_cols, use_container_width=True, hide_index=True)
             st.caption(f"Hiển thị tổng số {len(df_display_cols)} khách hàng.")
-            
+
             st.divider()
             st.markdown("##### 🗑️ Thao tác xóa khách hàng")
-            
-            # Kỹ thuật Dynamic Key cho phần Xóa
+
             dc = st.session_state['del_reset_counter']
-            
+
             col_del1, col_del2 = st.columns([2, 1])
             with col_del1:
-                kh_options = {row['id']: f"#{row['id']} - {row['ten_khach_hang']} (MST: {row['ma_so_thue'] if pd.notna(row['ma_so_thue']) else 'Trống'})" for _, row in df_kh.iterrows()}
+                kh_options = {
+                    row['id']: f"#{row['id']} - {row['ten_khach_hang']} (MST: {row['ma_so_thue'] if row['ma_so_thue'] else 'Trống'})"
+                    for _, row in df_kh.iterrows()
+                }
                 selected_del_id = st.selectbox(
-                    "Chọn khách hàng cần xóa:", 
-                    options=list(kh_options.keys()), 
-                    format_func=lambda x: kh_options[x], 
-                    index=None, 
+                    "Chọn khách hàng cần xóa:",
+                    options=list(kh_options.keys()),
+                    format_func=lambda x: kh_options[x],
+                    index=None,
                     placeholder="-- Chọn khách hàng để xóa --",
-                    key=f"select_del_kh_{dc}" # Key động tự reset
+                    key=f"select_del_kh_{dc}"
                 )
-            
+
             with col_del2:
                 st.markdown("<br>", unsafe_allow_html=True)
-                confirm_del = st.checkbox("Xác nhận muốn xóa", value=False, key=f"chk_del_{dc}") # Key động tự reset
-                if st.button("🗑 Xóa Khách Hàng", type="primary", use_container_width=True):
-                    if not selected_del_id: st.error("⚠️ Vui lòng chọn một khách hàng từ danh sách.")
-                    elif not confirm_del: st.error("⚠️ Vui lòng tích chọn 'Xác nhận muốn xóa'.")
+                confirm_del = st.checkbox("Xác nhận muốn xóa", value=False, key=f"chk_del_{dc}")
+                if st.button("🗑️ Xóa Khách Hàng", type="primary", use_container_width=True):
+                    if not selected_del_id:
+                        st.error("⚠️ Vui lòng chọn một khách hàng từ danh sách.")
+                    elif not confirm_del:
+                        st.error("⚠️ Vui lòng tích chọn 'Xác nhận muốn xóa'.")
                     else:
                         success, msg = save_khach_hang_transaction(db.pool, 'DELETE', None, selected_del_id, current_user)
                         if success:
                             clear_master_cache()
                             st.success("✅ Đã xóa khách hàng thành công!")
-                            
-                            # Tăng biến đếm để Streamlit nạp Selectbox trắng mới
                             st.session_state['del_reset_counter'] += 1
                             time.sleep(1)
                             st.rerun()
-                        else: show_error_popup(msg)
+                        else:
+                            show_error_popup(msg)
         else:
-            st.info("ℹ Chưa có dữ liệu khách hàng nào trong hệ thống.")
+            st.info("ℹ️ Chưa có dữ liệu khách hàng nào trong hệ thống.")
 
     # ==========================================
     # TAB 2: THÊM MỚI / SỬA THÔNG TIN KHÁCH HÀNG
@@ -161,43 +225,47 @@ def render_quan_ly_khach_hang():
     with tab_form:
         st.markdown("##### 📝 Form khai báo hồ sơ đối tác khách hàng")
         mode = st.radio("Lựa chọn chế độ:", ["Thêm mới khách hàng", "Cập nhật khách hàng có sẵn"], horizontal=True)
-        
+
         if mode == "Thêm mới khách hàng":
-            
-            # --- ÁP DỤNG KỸ THUẬT DYNAMIC KEY CHO FORM THÊM MỚI ---
             rc = st.session_state['form_reset_counter']
-            
-            # Hàm Callback tự động tạo mã khách hàng
+
             def auto_gen_ma_kh():
                 mst = st.session_state.get(f"kh_mst_{rc}", "").strip()
                 st.session_state[f"kh_ma_{rc}"] = f"KH_{mst}" if mst else ""
-            
+
             c1, c2 = st.columns(2)
             ten_kh_new = c1.text_input("Tên đơn vị / Tên công ty (*)", placeholder="Bắt buộc nhập", key=f"kh_ten_{rc}")
             mst_kh_new = c2.text_input("Mã số thuế (*) (Xuất hóa đơn)", placeholder="Bắt buộc nhập", key=f"kh_mst_{rc}", on_change=auto_gen_ma_kh)
-            
+
             c3, c4 = st.columns(2)
             ma_kh_new = c3.text_input("Mã khách hàng (*)", placeholder="Hệ thống tự tạo KH_MãSốThuế", key=f"kh_ma_{rc}")
             sdt_kh_new = c4.text_input("Số điện thoại liên hệ", placeholder="VD: 0988xxxxxx", key=f"kh_sdt_{rc}")
             dia_chi_kh_new = st.text_area("Địa chỉ trụ sở đầy đủ", placeholder="Nhập địa chỉ đăng ký kinh doanh...", key=f"kh_dc_{rc}")
-            
+
             if st.button("🚀 Thêm mới hồ sơ khách hàng", type="primary", use_container_width=True):
                 missing_fields = []
-                if not mst_kh_new.strip(): missing_fields.append("Mã số thuế")
-                if not ten_kh_new.strip(): missing_fields.append("Tên đơn vị / Tên công ty")
-                if not ma_kh_new.strip(): missing_fields.append("Mã khách hàng")
-                
+                if not mst_kh_new.strip():
+                    missing_fields.append("Mã số thuế")
+                if not ten_kh_new.strip():
+                    missing_fields.append("Tên đơn vị / Tên công ty")
+                if not ma_kh_new.strip():
+                    missing_fields.append("Mã khách hàng")
+
                 if missing_fields:
                     st.error(f"⚠️ Thiếu thông tin bắt buộc! Vui lòng nhập bổ sung: **{', '.join(missing_fields)}**")
                 else:
-                    data_tuple = (ten_kh_new.strip(), ma_kh_new.strip(), sdt_kh_new.strip() if sdt_kh_new.strip() else None, mst_kh_new.strip(), dia_chi_kh_new.strip() if dia_chi_kh_new.strip() else None)
+                    data_tuple = (
+                        ten_kh_new.strip(),
+                        ma_kh_new.strip(),
+                        sdt_kh_new.strip() if sdt_kh_new.strip() else None,
+                        mst_kh_new.strip(),
+                        dia_chi_kh_new.strip() if dia_chi_kh_new.strip() else None
+                    )
                     success, msg = save_khach_hang_transaction(db.pool, 'CREATE', data_tuple, None, current_user)
                     if success:
                         clear_master_cache()
                         st.success("✅ Thêm mới hồ sơ khách hàng thành công!")
                         st.balloons()
-                        
-                        # --- KÍCH HOẠT XÓA FORM TRẮNG 100% BẰNG CÁCH TĂNG COUNTER ---
                         st.session_state['form_reset_counter'] += 1
                         time.sleep(1)
                         st.rerun()
@@ -208,64 +276,75 @@ def render_quan_ly_khach_hang():
             df_all = get_cached_master_data(db, "SELECT id, ten_khach_hang, ma_khach_hang, so_dien_thoai, ma_so_thue, dia_chi FROM khach_hang ORDER BY id DESC")
             if isinstance(df_all, pd.DataFrame) and not df_all.empty:
                 for col in ['ma_khach_hang', 'ten_khach_hang', 'so_dien_thoai', 'ma_so_thue', 'dia_chi']:
-                    df_all[col] = df_all[col].apply(lambda x: re.sub(r'\.0$', '', str(x).strip()) if pd.notna(x) and str(x).strip().lower() != 'nan' else '')
+                    df_all[col] = df_all[col].apply(
+                        lambda x: re.sub(r'\.0$', '', str(x).strip()) if pd.notna(x) and str(x).strip().lower() not in ('nan', 'none') else ''
+                    )
 
-                # Kỹ thuật Dynamic Key cho phần Cập Nhật
                 ec = st.session_state['edit_reset_counter']
 
-                edit_opts = {r['id']: f"#{r['id']} - {r['ten_khach_hang']} (MST: {r['ma_so_thue'] if r['ma_so_thue'] else 'Trống'})" for _, r in df_all.iterrows()}
+                edit_opts = {
+                    r['id']: f"#{r['id']} - {r['ten_khach_hang']} (MST: {r['ma_so_thue'] if r['ma_so_thue'] else 'Trống'})"
+                    for _, r in df_all.iterrows()
+                }
                 target_id = st.selectbox(
-                    "Chọn khách hàng cần chỉnh sửa:", 
-                    options=list(edit_opts.keys()), 
-                    format_func=lambda x: edit_opts[x], 
-                    index=None, 
+                    "Chọn khách hàng cần chỉnh sửa:",
+                    options=list(edit_opts.keys()),
+                    format_func=lambda x: edit_opts[x],
+                    index=None,
                     placeholder="-- Chọn khách hàng để chỉnh sửa --",
-                    key=f"select_edit_kh_{ec}" # Key động tự reset ẩn form
+                    key=f"select_edit_kh_{ec}"
                 )
-                
+
                 if target_id:
                     row_data = df_all[df_all['id'] == target_id].iloc[0]
+
                     def get_safe_val(key):
                         val = row_data.get(key)
-                        if pd.isna(val) or str(val).strip().lower() == 'nan': return ""
+                        if pd.isna(val) or str(val).strip().lower() in ('nan', 'none'):
+                            return ""
                         return str(val).strip()
-                    
-                    with st.form("form_update_khach_hang", clear_on_submit=True):
+
+                    with st.form(f"form_update_khach_hang_{target_id}", clear_on_submit=False):
                         c1, c2 = st.columns(2)
                         ten_kh_edit = c1.text_input("Tên đơn vị / Tên công ty (*)", value=get_safe_val('ten_khach_hang'))
                         mst_kh_edit = c2.text_input("Mã số thuế (*) (Xuất hóa đơn)", value=get_safe_val('ma_so_thue'))
-                        
+
                         c3, c4 = st.columns(2)
                         ma_kh_edit = c3.text_input("Mã khách hàng (*)", value=get_safe_val('ma_khach_hang'))
                         sdt_kh_edit = c4.text_input("Số điện thoại liên hệ", value=get_safe_val('so_dien_thoai'))
-                        
+
                         dia_chi_kh_edit = st.text_area("Địa chỉ trụ sở đầy đủ", value=get_safe_val('dia_chi'))
-                        
+
                         if st.form_submit_button("💾 Lưu thay đổi thông tin", type="primary", use_container_width=True):
                             missing_fields = []
-                            if not mst_kh_edit.strip(): missing_fields.append("Mã số thuế")
-                            if not ten_kh_edit.strip(): missing_fields.append("Tên đơn vị / Tên công ty")
-                            if not ma_kh_edit.strip(): missing_fields.append("Mã khách hàng")
-                            
-                            if missing_fields: st.error(f"⚠️ Thiếu thông tin bắt buộc! Vui lòng nhập bổ sung: **{', '.join(missing_fields)}**")
+                            if not mst_kh_edit.strip():
+                                missing_fields.append("Mã số thuế")
+                            if not ten_kh_edit.strip():
+                                missing_fields.append("Tên đơn vị / Tên công ty")
+                            if not ma_kh_edit.strip():
+                                missing_fields.append("Mã khách hàng")
+
+                            if missing_fields:
+                                st.error(f"⚠️ Thiếu thông tin bắt buộc! Vui lòng nhập bổ sung: **{', '.join(missing_fields)}**")
                             else:
-                                data_tuple = (ten_kh_edit.strip(), ma_kh_edit.strip(), sdt_kh_edit.strip() if sdt_kh_edit.strip() else None, mst_kh_edit.strip(), dia_chi_kh_edit.strip() if dia_chi_kh_edit.strip() else None)
+                                data_tuple = (
+                                    ten_kh_edit.strip(),
+                                    ma_kh_edit.strip(),
+                                    sdt_kh_edit.strip() if sdt_kh_edit.strip() else None,
+                                    mst_kh_edit.strip(),
+                                    dia_chi_kh_edit.strip() if dia_chi_kh_edit.strip() else None
+                                )
                                 success, msg = save_khach_hang_transaction(db.pool, 'UPDATE', data_tuple, target_id, current_user)
                                 if success:
                                     clear_master_cache()
                                     st.success("✅ Cập nhật hồ sơ khách hàng thành công!")
-                                    
-                                    # Tăng biến đếm để Streamlit hủy Selectbox hiện tại, tự động ĐÓNG form cập nhật
                                     st.session_state['edit_reset_counter'] += 1
-                                    
                                     time.sleep(1)
                                     st.rerun()
-                                else: show_error_popup(msg)
+                                else:
+                                    show_error_popup(msg)
             else:
                 st.warning("⚠️ Không có dữ liệu khách hàng để cập nhật.")
 
-if __name__ == "__main__":
-    st.toast("✅ Đang lưu số liệu bạn vui lòng đợi nha:")
-    render_quan_ly_khach_hang()
-else:
-    render_quan_ly_khach_hang()
+
+render_quan_ly_khach_hang()

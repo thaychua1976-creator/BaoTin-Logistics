@@ -1,200 +1,187 @@
+import datetime
+import decimal
 import json
+import pandas as pd
 from audit_logger import ghi_log_he_thong, ghi_log_thao_tac
+
 
 def handle_user_transaction_with_audit(db_pool, action, user_data, current_user):
     """
     Hàm xử lý Transaction cho hệ thống Tài khoản (Thêm/Sửa/Xóa) và ghi log Audit.
-    
-    Args:
-        db_pool: Đối tượng Connection Pool của CSDL [cite: 24]
-        action (str): Loại thao tác ("TAO_MOI", "CAP_NHAT", hoặc "XOA")
-        user_data (dict): Từ điển chứa dữ liệu user (id, username, password, ho_ten, role, trang_thai)
-        current_user (str): Tên tài khoản đang thực hiện thao tác (thường là st.session_state['username']) [cite: 27]
-        
-    Returns:
-        tuple: (bool, int/str) -> (Thành công/Thất bại, ID tài khoản hoặc câu thông báo lỗi) [cite: 27, 28]
     """
-    conn = db_pool.get_connection() 
-    cursor = conn.cursor() 
-    
+    conn = None
+    cursor = None
     try:
-        # Bắt đầu Transaction
-        conn.autocommit = False 
+        conn = db_pool.get_connection()
+        conn.autocommit = False
+        cursor = conn.cursor()
         target_user_id = user_data.get('id')
-        
-        # 1. THỰC THI CÂU LỆNH CHÍNH DỰA TRÊN HÀNH ĐỘNG
+
         if action == "TAO_MOI":
             sql = """INSERT INTO users (username, password, ho_ten, role, trang_thai, nhan_vien_id) 
-                     VALUES (%s, %s, %s, %s, %s,%s)"""
+                     VALUES (%s, %s, %s, %s, %s, %s)"""
             cursor.execute(sql, (
-                user_data['username'], user_data['password'], 
+                user_data['username'], user_data['password'],
                 user_data['ho_ten'], user_data['role'], user_data['trang_thai'], user_data.get('nhan_vien_id')
             ))
-            # Lấy ID của tài khoản vừa tạo an toàn [cite: 25]
-            target_user_id = cursor.lastrowid 
-            
+            target_user_id = cursor.lastrowid
+
         elif action == "CAP_NHAT":
             sql = """UPDATE users 
-                     SET ho_ten = %s, password = %s, role = %s, trang_thai = %s, nhan_vien_id=%s 
+                     SET ho_ten = %s, password = %s, role = %s, trang_thai = %s, nhan_vien_id = %s 
                      WHERE id = %s"""
             cursor.execute(sql, (
-                user_data['ho_ten'], user_data['password'], 
-                user_data['role'], user_data['trang_thai'],user_data.get('nhan_vien_id'), target_user_id
+                user_data['ho_ten'], user_data['password'],
+                user_data['role'], user_data['trang_thai'], user_data.get('nhan_vien_id'), target_user_id
             ))
-            
+
         elif action == "XOA":
             sql = "DELETE FROM users WHERE id = %s"
             cursor.execute(sql, (target_user_id,))
-        
+            if cursor.rowcount == 0:
+                raise Exception("Không tìm thấy tài khoản cần xóa.")
+
         else:
             raise ValueError("Hành động (action) không hợp lệ!")
 
-        # 2. GHI LOG AUDIT CÙNG TRONG TRANSACTION [cite: 26]
-        # Gom các thông tin quan trọng vào JSON để lưu xuống Database
         log_data = {
             "username_bi_tac_dong": user_data.get('username', ''),
             "ho_ten": user_data.get('ho_ten', ''),
             "quyen_han": user_data.get('role', ''),
             "trang_thai": user_data.get('trang_thai', '')
         }
-        
-        # Gọi hàm ghi log (Lưu ý: phải truyền cursor hiện tại vào để đi chung Transaction) [cite: 27]
+
         ghi_log_he_thong(
-            cursor=cursor, 
-            phan_he="QUAN_LY_TAI_KHOAN", 
-            record_id=target_user_id, 
-            nguoi_thuc_hien=current_user, 
-            hanh_dong=action, 
+            cursor=cursor,
+            phan_he="QUAN_LY_TAI_KHOAN",
+            record_id=target_user_id,
+            nguoi_thuc_hien=current_user,
+            hanh_dong=action,
             chi_tiet=json.dumps(log_data, ensure_ascii=False)
         )
-        
-        # Xác nhận lưu tất cả thay đổi [cite: 27]
-        conn.commit() 
+
+        conn.commit()
         return True, target_user_id
-        
+
     except Exception as e:
-        # Hoàn tác toàn bộ nếu có lỗi ở bất kỳ bước nào (Thêm user hoặc ghi log) [cite: 27, 28]
-        conn.rollback() 
-        return False, str(e) 
-        
+        if conn:
+            conn.rollback()
+        return False, str(e)
+
     finally:
-        # Quan trọng: Luôn luôn đóng cursor và trả kết nối về Pool [cite: 28]
-        cursor.close() 
-        conn.close() 
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 
 def save_nhan_vien_transaction(db_pool, action, nv_data=None, nv_id=None, current_user="Hệ thống"):
     """
     Hàm xử lý Thêm/Sửa/Xoá nhân viên với Transaction và Audit Log.
-    - action: 'ADD', 'UPDATE', hoặc 'DELETE' (Báo cáo nghỉ việc)
-    - nv_data: Tuple chứa thông tin (không cần truyền khi DELETE)
-    - nv_id: Bắt buộc truyền ID khi action='UPDATE' hoặc 'DELETE'
     """
-    conn = db_pool.get_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
     try:
-        conn.autocommit = False # Bắt đầu Transaction
-        
+        conn = db_pool.get_connection()
+        conn.autocommit = False
+        cursor = conn.cursor()
+
         hinh_thuc_log = ""
         chi_tiet_thay_doi = {}
         affected_id = nv_id
-        
+
         if action == 'ADD':
-            # 1. Thêm mới
             sql_add = """INSERT INTO nhan_vien 
                 (ma_nhan_vien, ho_ten, so_dien_thoai, cccd, giay_phep_lai_xe, hang_gplx, han_gplx, han_the_tap_huan, loai_nhan_vien, trang_thai) 
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'Dang_Lam_Viec')"""
             cursor.execute(sql_add, nv_data)
             affected_id = cursor.lastrowid
-            
+
             hinh_thuc_log = "THEM_MOI"
             chi_tiet_thay_doi = {"ma_nhan_vien": nv_data[0], "ho_ten": nv_data[1], "sdt": nv_data[2]}
-            
+
         elif action == 'UPDATE':
-            # 2. Cập nhật
             sql_upd = """UPDATE nhan_vien 
                 SET ma_nhan_vien=%s, ho_ten=%s, so_dien_thoai=%s, cccd=%s, giay_phep_lai_xe=%s, hang_gplx=%s, han_gplx=%s, han_the_tap_huan=%s, loai_nhan_vien=%s 
                 WHERE id=%s"""
             update_params = tuple(list(nv_data) + [nv_id])
             cursor.execute(sql_upd, update_params)
-            
+
             hinh_thuc_log = "CAP_NHAT"
             chi_tiet_thay_doi = {"ma_nhan_vien": nv_data[0], "ho_ten": nv_data[1], "sdt": nv_data[2]}
-            
+
         elif action == 'DELETE':
-            # 3. Xoá / Báo cáo nghỉ việc
             sql_del = "UPDATE nhan_vien SET trang_thai='Da_Nghi_Viec' WHERE id=%s"
             cursor.execute(sql_del, (nv_id,))
-            
+            if cursor.rowcount == 0:
+                raise Exception("Không tìm thấy nhân viên hoặc nhân viên đã nghỉ việc.")
+
             hinh_thuc_log = "XOA_NGHI_VIEC"
             chi_tiet_thay_doi = {"trang_thai_moi": "Da_Nghi_Viec"}
-            
+
         else:
             raise ValueError("Hành động không hợp lệ.")
 
-        # ==========================================
-        # GỌI HÀM GHI LOG HỆ THỐNG
-        # ==========================================
-        # Truyền chính xác cursor của giao dịch hiện tại vào hàm log
         ghi_log_he_thong(
-            cursor=cursor, 
-            phan_he='NHAN_VIEN', 
-            record_id=affected_id, 
-            nguoi_thuc_hien=current_user, 
-            hanh_dong=hinh_thuc_log, 
+            cursor=cursor,
+            phan_he='NHAN_VIEN',
+            record_id=affected_id,
+            nguoi_thuc_hien=current_user,
+            hanh_dong=hinh_thuc_log,
             chi_tiet=json.dumps(chi_tiet_thay_doi, ensure_ascii=False)
         )
-        
-        conn.commit() # Xác nhận lưu tất cả dữ liệu (Cả DB chính và Log)
+
+        conn.commit()
         return True, "Thành công"
-        
+
     except Exception as e:
-        conn.rollback() # Hoàn tác mọi thay đổi nếu có lỗi
+        if conn:
+            conn.rollback()
         return False, str(e)
-        
+
     finally:
-        cursor.close()
-        conn.close()
-##################3
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 
 def update_bonus_config_transaction(db_pool, updated_values: dict, nguoi_dung: str = "Admin"):
     """
     Cập nhật đồng loạt các tiêu chí thưởng bằng Transaction.
-    updated_values: Dictionary dạng {'GOP_CHUYEN': 100000, 'VE_KHUYA': 100000}
     """
-    conn = db_pool.get_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
     try:
-        conn.autocommit = False # Bắt đầu Giao dịch
-        
-        # 1. Chạy vòng lặp cập nhật từng tiêu chí
+        conn = db_pool.get_connection()
+        conn.autocommit = False
+        cursor = conn.cursor()
+
         sql_update = "UPDATE cau_hinh_thuong SET muc_thuong = %s WHERE ma_tieu_chi = %s"
         for ma_tc, val_num in updated_values.items():
             cursor.execute(sql_update, (val_num, ma_tc))
-            
-        # 2. Ghi log lưu vết (Audit Trail)
-        # Truyền chuyen_di_id = None vì thao tác này ảnh hưởng toàn hệ thống chứ không phải 1 chuyến cụ thể
+
         ghi_log_thao_tac(
-            cursor=cursor, 
-            chuyen_di_id=None, 
-            nguoi_dung=nguoi_dung, 
-            hanh_dong="CAP_NHAT_CAU_HINH_THUONG", 
+            cursor=cursor,
+            chuyen_di_id=None,
+            nguoi_dung=nguoi_dung,
+            hanh_dong="CAP_NHAT_CAU_HINH_THUONG",
             chi_tiet_dict=updated_values
         )
-        
-        conn.commit() # Lưu tất cả xuống ổ cứng
+
+        conn.commit()
         return True, "Cập nhật bảng định mức thưởng thành công!"
-        
+
     except Exception as e:
-        conn.rollback() # Hoàn tác nếu có lỗi
+        if conn:
+            conn.rollback()
         return False, str(e)
     finally:
-        cursor.close()
-        conn.close() # Trả kết nối về Pool
-################################
-import datetime
-import json
-import decimal
-from audit_logger import ghi_log_he_thong
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 
 def thuc_hien_sao_luu_db_python(db_pool, nguoi_thuc_hien="Admin"):
     """
@@ -203,55 +190,51 @@ def thuc_hien_sao_luu_db_python(db_pool, nguoi_thuc_hien="Admin"):
     """
     conn = None
     cursor = None
+    cursor_log = None
     try:
         conn = db_pool.get_connection() if hasattr(db_pool, 'get_connection') else db_pool.pool.get_connection()
         cursor = conn.cursor(dictionary=True)
-        
-        # 1. Lấy danh sách tất cả các bảng trong Database
+
         cursor.execute("SHOW TABLES")
         tables_result = cursor.fetchall()
         if not tables_result:
             return False, "Không tìm thấy bảng nào trong cơ sở dữ liệu.", None
-            
+
         tables = [list(row.values())[0] for row in tables_result]
-        
+
         now_time = datetime.datetime.now()
         now_str = now_time.strftime("%Y-%m-%d %H:%M:%S")
         file_time_str = now_time.strftime("%Y%m%d_%H%M%S")
         file_name = f"Backup_BaoTin_Logistics_{file_time_str}.sql"
-        
-        # Header file SQL
+
         sql_lines = [
-            f"-- ==================================================",
-            f"-- BẢN SAO LƯU CƠ SỞ DỮ LIỆU - BẢO TÍN LOGISTICS",
+            "-- ==================================================",
+            "-- BẢN SAO LƯU CƠ SỞ DỮ LIỆU - BẢO TÍN LOGISTICS",
             f"-- Thời gian tạo: {now_str}",
             f"-- Người thực hiện: {nguoi_thuc_hien}",
-            f"-- ==================================================\n",
+            "-- ==================================================\n",
             "SET FOREIGN_KEY_CHECKS = 0;\n",
             "SET SQL_MODE = 'NO_AUTO_VALUE_ON_ZERO';\n"
         ]
-        
-        # 2. Duyệt qua từng bảng để trích xuất DDL và Data
+
         for table in tables:
-            sql_lines.append(f"\n-- --------------------------------------------------")
+            sql_lines.append("\n-- --------------------------------------------------")
             sql_lines.append(f"-- Cấu trúc & Dữ liệu bảng: `{table}`")
-            sql_lines.append(f"-- --------------------------------------------------")
+            sql_lines.append("-- --------------------------------------------------")
             sql_lines.append(f"DROP TABLE IF EXISTS `{table}`;")
-            
-            # Lấy câu lệnh CREATE TABLE (DDL)
+
             cursor.execute(f"SHOW CREATE TABLE `{table}`")
             ddl_row = cursor.fetchone()
             create_sql = list(ddl_row.values())[1]
             sql_lines.append(f"{create_sql};\n")
-            
-            # Lấy toàn bộ Dữ liệu (DML)
+
             cursor.execute(f"SELECT * FROM `{table}`")
             rows = cursor.fetchall()
-            
+
             if rows:
                 cols = list(rows[0].keys())
                 col_names = ", ".join([f"`{c}`" for c in cols])
-                
+
                 val_strings = []
                 for row in rows:
                     vals = []
@@ -259,10 +242,16 @@ def thuc_hien_sao_luu_db_python(db_pool, nguoi_thuc_hien="Admin"):
                         v = row[col]
                         if v is None:
                             vals.append("NULL")
+                        elif isinstance(v, bool):
+                            vals.append("1" if v else "0")
                         elif isinstance(v, (int, float, decimal.Decimal)):
                             vals.append(str(v))
-                        elif isinstance(v, (datetime.date, datetime.datetime)):
-                            vals.append(f"'{v.strftime('%Y-%m-%d %H:%M:%S')}'" if isinstance(v, datetime.datetime) else f"'{v.strftime('%Y-%m-%d')}'")
+                        elif isinstance(v, datetime.datetime):
+                            vals.append(f"'{v.strftime('%Y-%m-%d %H:%M:%S')}'")
+                        elif isinstance(v, datetime.date):
+                            vals.append(f"'{v.strftime('%Y-%m-%d')}'")
+                        elif isinstance(v, (bytes, bytearray)):
+                            vals.append(f"0x{v.hex()}" if len(v) > 0 else "''")
                         elif isinstance(v, (dict, list)):
                             json_str = json.dumps(v, ensure_ascii=False).replace("\\", "\\\\").replace("'", "''")
                             vals.append(f"'{json_str}'")
@@ -270,15 +259,13 @@ def thuc_hien_sao_luu_db_python(db_pool, nguoi_thuc_hien="Admin"):
                             escaped_val = str(v).replace("\\", "\\\\").replace("'", "''")
                             vals.append(f"'{escaped_val}'")
                     val_strings.append(f"({', '.join(vals)})")
-                
-                # Ghép câu lệnh INSERT batch
+
                 sql_lines.append(f"INSERT INTO `{table}` ({col_names}) VALUES")
                 sql_lines.append(",\n".join(val_strings) + ";\n")
-        
+
         sql_lines.append("\nSET FOREIGN_KEY_CHECKS = 1;")
         full_sql_content = "\n".join(sql_lines)
-        
-        # 3. Ghi vết Audit Log
+
         cursor_log = conn.cursor()
         log_detail = {
             "file_name": file_name,
@@ -287,55 +274,58 @@ def thuc_hien_sao_luu_db_python(db_pool, nguoi_thuc_hien="Admin"):
         }
         ghi_log_he_thong(cursor_log, "SAO_LUU_DU_LIEU", None, nguoi_thuc_hien, "TAO_BAN_SAO_LUU", json.dumps(log_detail, ensure_ascii=False))
         conn.commit()
-        
+
         return True, full_sql_content, file_name
 
     except Exception as e:
-        if conn: conn.rollback()
+        if conn:
+            conn.rollback()
         return False, f"Lỗi trong quá trình tạo bản sao lưu: {str(e)}", None
     finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-#################################
-import json
-import pandas as pd
+        if cursor_log:
+            cursor_log.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 
 def update_phu_cap_matrix_transaction(db_pool, df_edited, current_user):
     """
     Cập nhật toàn bộ bảng ma trận phụ cấp từ giao diện Streamlit vào Database.
-    Tuân thủ quy tắc Transaction và ghi log.
     """
-    conn = db_pool.get_connection()
+    conn = None
+    cursor = None
     try:
+        conn = db_pool.get_connection()
         conn.autocommit = False
         cursor = conn.cursor(dictionary=True)
-        
-        # 1. Lấy ID mapping
+
         cursor.execute("SELECT id, ten_hien_thi FROM dm_tai_trong_phu_cap")
         tt_map = {row['ten_hien_thi']: row['id'] for row in cursor.fetchall()}
-        
+
         cursor.execute("SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap")
         tc_map = {row['ten_tieu_chi']: row['id'] for row in cursor.fetchall()}
-        
+
         cap_nhat_count = 0
-        
-        # 2. Quét ma trận và Upsert dữ liệu
+
         for tt_name, row_data in df_edited.iterrows():
             tt_id = tt_map.get(tt_name)
-            if not tt_id: continue
-            
+            if not tt_id:
+                continue
+
             for tc_name, val in row_data.items():
                 tc_id = tc_map.get(tc_name)
-                if not tc_id: continue
-                
-                # Dọn dẹp dữ liệu số
+                if not tc_id:
+                    continue
+
                 so_tien = 0.0
                 if pd.notna(val) and str(val).strip() != "":
                     try:
                         so_tien = float(str(val).replace(",", "").replace(" ", ""))
-                    except: pass
-                
-                # Cú pháp UPSERT an toàn của MySQL
+                    except Exception:
+                        so_tien = 0.0
+
                 sql_upsert = """
                     INSERT INTO ma_tran_phu_cap (tai_trong_id, tieu_chi_id, so_tien)
                     VALUES (%s, %s, %s)
@@ -343,22 +333,22 @@ def update_phu_cap_matrix_transaction(db_pool, df_edited, current_user):
                 """
                 cursor.execute(sql_upsert, (tt_id, tc_id, so_tien))
                 cap_nhat_count += 1
-                
-        # 3. Ghi vết hệ thống (Audit Log) theo chuẩn dự án
+
         chi_tiet_log = json.dumps({"so_o_cap_nhat": cap_nhat_count}, ensure_ascii=False)
         sql_log = """
             INSERT INTO audit_logs (phan_he, nguoi_thuc_hien, hanh_dong, chi_tiet)
             VALUES (%s, %s, %s, %s)
         """
         cursor.execute(sql_log, ('QUAN_LY_PHU_CAP', current_user, 'CAP_NHAT_MA_TRAN', chi_tiet_log))
-        
+
         conn.commit()
         return True, "Cập nhật thành công Bảng phụ cấp!"
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         return False, str(e)
     finally:
-        cursor.close()
-        conn.close()
-##################
-
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()

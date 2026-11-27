@@ -21,6 +21,18 @@ from audit_logger import ghi_log_he_thong
 load_dotenv()
 
 
+def _get_secret_or_env(key_name, section=None, sub_key=None):
+    """Lấy cấu hình ưu tiên từ st.secrets (Cloud), dự phòng biến môi trường .env (Local)."""
+    try:
+        if section and sub_key and section in st.secrets and sub_key in st.secrets[section]:
+            return st.secrets[section][sub_key]
+        if key_name in st.secrets:
+            return st.secrets[key_name]
+    except Exception:
+        pass
+    return os.getenv(key_name)
+
+
 class _GeminiModelAdapter:
     """Lớp bọc tương thích hàm .generate_content() cho SDK google-genai mới."""
     def __init__(self, client, model_name):
@@ -34,24 +46,12 @@ class _GeminiModelAdapter:
         )
 
 
-# HÀM KHỞI TẠO AI AN TOÀN (Không văng lỗi ở Global Scope)
 def get_gemini_model(model_name='gemini-2.5-flash'):
     cache_key = f"gemini_model_utils_{model_name}"
     if cache_key in st.session_state:
         return st.session_state[cache_key]
 
-    api_key = None
-    try:
-        if "api_keys" in st.secrets and "gemini" in st.secrets["api_keys"]:
-            api_key = st.secrets["api_keys"]["gemini"]
-        elif "GEMINI_API_KEY" in st.secrets:
-            api_key = st.secrets["GEMINI_API_KEY"]
-    except Exception:
-        pass
-
-    if not api_key:
-        api_key = os.getenv("GEMINI_API_KEY")
-
+    api_key = _get_secret_or_env("GEMINI_API_KEY", section="api_keys", sub_key="gemini")
     if api_key:
         client = genai.Client(api_key=api_key)
         model = _GeminiModelAdapter(client, model_name)
@@ -74,13 +74,43 @@ def parse_money_input(val_str):
     if not val_clean or val_clean.lower() == 'nan':
         return 0.0
 
-    # Loại bỏ dấu phẩy phân cách hàng nghìn và ký hiệu tiền tệ nếu có
     val_clean = re.sub(r'(vnđ|vnd|đ|\s)', '', val_clean, flags=re.IGNORECASE)
     val_clean = val_clean.replace(',', '')
     try:
         return float(val_clean)
     except ValueError:
         return 0.0
+
+
+def _parse_surcharge_value_and_type(raw_dg_pp, loai_ap_dung_raw):
+    """Chuẩn hóa đơn giá và loại áp dụng phụ phí (hỗ trợ cả số tiền cố định và phần trăm %)."""
+    if pd.isna(raw_dg_pp) or str(raw_dg_pp).strip() == '':
+        raw_dg_pp = 0
+
+    loai_clean = str(loai_ap_dung_raw).strip() if pd.notna(loai_ap_dung_raw) else ''
+    if not loai_clean or loai_clean.lower() == 'nan':
+        loai_clean = 'Tu_Dong'
+
+    raw_dg_str = str(raw_dg_pp).strip()
+    is_percent = (
+        '%' in loai_clean
+        or '%' in raw_dg_str
+        or loai_clean.lower() in ('phan_tram', 'phan tram', '%')
+    )
+
+    if is_percent:
+        # Ưu tiên lấy số từ cột đơn giá trước, nếu không có mới tìm trong cột loại áp dụng
+        match = re.search(r'(\d+(\.\d+)?)', raw_dg_str.replace(',', '.'))
+        if not match:
+            match = re.search(r'(\d+(\.\d+)?)', loai_clean.replace(',', '.'))
+        val = 0.0
+        if match:
+            val = float(match.group(1))
+            if 0 < val <= 1 and '%' not in raw_dg_str and '%' not in loai_clean:
+                val = val * 100.0
+        return val, '%'
+
+    return parse_money_input(raw_dg_pp), loai_clean
 
 
 def doc_anh_cay_xang(image_file):
@@ -107,8 +137,13 @@ def doc_anh_cay_xang(image_file):
         }
         """
         response = model.generate_content([prompt, img])
-        text_result = response.text.replace("```json", "").replace("```", "").strip()
-        data = json.loads(text_result)
+        raw_resp = (response.text or "").replace("```json", "").replace("```", "").strip()
+        match = re.search(r'\{.*\}', raw_resp, re.DOTALL)
+        if not match:
+            st.error("AI không trả về dữ liệu JSON hợp lệ từ ảnh trụ bơm.")
+            return None
+
+        data = json.loads(match.group(0))
 
         # 1. Chuẩn hóa dữ liệu thô từ AI
         raw_tien_str = re.sub(r"[^\d]", "", str(data.get("tong_tien_hien_thi") or data.get("tong_tien") or "0"))
@@ -127,12 +162,9 @@ def doc_anh_cay_xang(image_file):
 
         # 2. Đối chiếu chéo giữa Dòng 1 (Tiền hiển thị), Dòng 2 (Số lít) và Dòng 3 (Đơn giá)
         if don_gia > 0 and so_lit > 0:
-            # Nếu dòng tiền hiển thị bị khuyết số 0 cuối (x10 lên khớp với so_lit * don_gia)
             if tien_raw > 0 and abs((tien_raw * 10) - (so_lit * don_gia)) <= max(1000, don_gia * 0.3):
                 tien_raw = tien_raw * 10
 
-            # Nếu AI đọc nhầm dấu chấm làm số lít bị nhỏ đi 10 lần (ví dụ 130.00 đọc thành 13.0)
-            # Khi nhân số lít lên 10 lần thì khớp với tiền hiển thị (hoặc tiền hiển thị x10)
             if so_lit < 40 and tien_raw > 0:
                 if abs(tien_raw - (so_lit * 10 * don_gia)) <= max(1000, don_gia * 0.3):
                     so_lit = round(so_lit * 10, 2)
@@ -140,10 +172,8 @@ def doc_anh_cay_xang(image_file):
                     so_lit = round(so_lit * 10, 2)
                     tien_raw = tien_raw * 10
 
-            # 3. Tính Thành tiền chuẩn theo công thức: Đơn giá * Số lít
             tong_tien = int(round(so_lit * don_gia))
         else:
-            # Dự phòng nếu ảnh bị mờ không đọc được đơn giá hoặc số lít
             tong_tien = int(round(tien_raw))
 
         return {
@@ -157,8 +187,8 @@ def doc_anh_cay_xang(image_file):
 
 
 def gui_file_excel_len_telegram(excel_buffer, file_name, caption):
-    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("CHAT_ID")
+    bot_token = _get_secret_or_env("TELEGRAM_BOT_TOKEN")
+    chat_id = _get_secret_or_env("CHAT_ID")
 
     if not bot_token or not chat_id:
         return False, "Thiếu cấu hình Telegram Token hoặc Chat ID."
@@ -200,101 +230,74 @@ def kiem_tra_va_gui_bao_cao_telegram(df_danger, loai_bao_cao, buffer_excel):
 # MODULE ZALO API MỚI (THAY THẾ SEND_ZALO_MESSAGE CŨ)
 # ==========================================================
 def send_zalo_personal_message(zalo_user_id, message_text):
-    """
-    Gửi tin nhắn cá nhân cho tài xế bằng Zalo OA thông qua CS API.
-    """
-    access_token = os.getenv("ZALO_OA_ACCESS_TOKEN")
+    """Gửi tin nhắn cá nhân cho tài xế bằng Zalo OA thông qua CS API."""
+    access_token = _get_secret_or_env("ZALO_OA_ACCESS_TOKEN")
 
     if not access_token:
-        logging.error("Thiếu ZALO_OA_ACCESS_TOKEN trong file .env")
+        logging.error("Thiếu ZALO_OA_ACCESS_TOKEN trong cấu hình")
         return False, "Chưa cấu hình Token OA"
 
     api_url = "https://openapi.zalo.me/v3.0/oa/message/cs"
-
     headers = {
         "Content-Type": "application/json",
         "access_token": access_token
     }
-
     payload = {
-        "recipient": {
-            "user_id": zalo_user_id
-        },
-        "message": {
-            "text": message_text
-        }
+        "recipient": {"user_id": zalo_user_id},
+        "message": {"text": message_text}
     }
 
     try:
         response = requests.post(api_url, json=payload, headers=headers, timeout=15)
-
         if response.status_code == 200:
             result = response.json()
             if result.get("error") == 0:
                 return True, "Thành công"
-            else:
-                return False, f"Lỗi Zalo: {result.get('message', 'Không xác định')}"
-        else:
-            return False, f"Lỗi HTTP: {response.status_code}"
-
+            return False, f"Lỗi Zalo: {result.get('message', 'Không xác định')}"
+        return False, f"Lỗi HTTP: {response.status_code}"
     except Exception as e:
         return False, f"Lỗi hệ thống: {str(e)}"
 
 
 def send_zalo_gmf_message(group_id, message_text):
-    """
-    Gửi tin nhắn vào nhóm Zalo bằng Official Account (GMF API).
-    """
-    access_token = os.getenv("ZALO_OA_ACCESS_TOKEN")
+    """Gửi tin nhắn vào nhóm Zalo bằng Official Account (GMF API)."""
+    access_token = _get_secret_or_env("ZALO_OA_ACCESS_TOKEN")
 
     if not access_token:
-        logging.error("Thiếu ZALO_OA_ACCESS_TOKEN trong file .env")
+        logging.error("Thiếu ZALO_OA_ACCESS_TOKEN trong cấu hình")
         return False, "Chưa cấu hình Token"
 
     api_url = "https://openapi.zalo.me/v3.0/oa/group/message"
-
     headers = {
         "Content-Type": "application/json",
         "access_token": access_token
     }
-
     payload = {
         "group_id": group_id,
-        "message": {
-            "text": message_text
-        }
+        "message": {"text": message_text}
     }
 
     try:
         response = requests.post(api_url, json=payload, headers=headers, timeout=15)
-
         if response.status_code == 200:
             result = response.json()
             if result.get("error") == 0:
                 return True, "Thành công"
-            else:
-                return False, f"Lỗi Zalo: {result.get('message', 'Không xác định')}"
-        else:
-            return False, f"Lỗi HTTP: {response.status_code}"
-
+            return False, f"Lỗi Zalo: {result.get('message', 'Không xác định')}"
+        return False, f"Lỗi HTTP: {response.status_code}"
     except Exception as e:
         return False, f"Lỗi hệ thống: {str(e)}"
 
 
 def tao_tieu_de_kem_nut_refresh(tieu_de, key_duy_nhat):
-    """
-    Hàm tạo tiêu đề Tab kèm nút Refresh đồng bộ.
-    Đã nâng cấp: Xóa sạch Master Cache và rác Session State.
-    """
+    """Hàm tạo tiêu đề Tab kèm nút Refresh đồng bộ."""
     col_title, col_btn = st.columns([4, 1])
     with col_title:
         st.markdown(f"#### {tieu_de}")
     with col_btn:
         if st.button("🔄 Làm mới dữ liệu", key=key_duy_nhat, use_container_width=True):
-            # 1. Xóa toàn bộ Data Cache tĩnh (Bảng giá, Danh mục...)
             st.cache_data.clear()
 
-            # 2. Quét và xóa toàn bộ DataFrame đang lưu tạm trong RAM
             keys_to_clear = [
                 k for k in st.session_state.keys()
                 if k.startswith("df_") or k.startswith("cache_")
@@ -302,7 +305,6 @@ def tao_tieu_de_kem_nut_refresh(tieu_de, key_duy_nhat):
             for k in keys_to_clear:
                 del st.session_state[k]
 
-            # 3. Kích hoạt lại các Counter để reset Form trống
             for counter in ["form_reset_counter", "reset_chuyen_form", "reset_sqt", "reset_file_upload"]:
                 if counter in st.session_state:
                     st.session_state[counter] += 1
@@ -315,10 +317,7 @@ def tao_tieu_de_kem_nut_refresh(tieu_de, key_duy_nhat):
 # CÁC HÀM XỬ LÝ DỮ LIỆU & IMPORT BẢNG GIÁ / PHỤ PHÍ
 # ==========================================================
 def clean_limit_number(val):
-    """
-    Hàm làm sạch các chuỗi giới hạn như '<=6', '< 10 KGS', '<=25CBM'
-    để trích xuất ra số thực float an toàn.
-    """
+    """Làm sạch các chuỗi giới hạn như '<=6', '< 10 KGS', '<=25CBM' thành số float an toàn."""
     if val is None:
         return 0.0
     val_str = str(val).strip()
@@ -355,12 +354,10 @@ def parse_float_safe(val):
         return 0.0
 
 
-# Hàm cho lần import data đầu tiên
 def import_bang_gia_transaction(db_pool, df_rates, df_surcharges, current_user):
     """
-    Import dữ liệu Biểu cước và Phụ phí từ DataFrame vào MySQL (Bổ sung cột GHI_CHU).
-    Tích hợp tính năng TỰ ĐỘNG TÁCH DÒNG CƯỚC CHIỀU VỀ nếu có cột PHU_PHI_CHIEU_VE.
-    Tuân thủ quy tắc Transaction, Rowcount và Audit Log.
+    Import dữ liệu Biểu cước và Phụ phí từ DataFrame vào MySQL (lần đầu).
+    Tự động tách dòng cước chiều về nếu có cột PHU_PHI_CHIEU_VE.
     """
     conn = None
     cursor = None
@@ -369,20 +366,18 @@ def import_bang_gia_transaction(db_pool, df_rates, df_surcharges, current_user):
         conn.autocommit = False
         cursor = conn.cursor(dictionary=True)
 
-        # 1. Lấy danh sách khách hàng để mapping Mã/Tên sang ID
         cursor.execute("SELECT id, ma_khach_hang, ten_khach_hang FROM khach_hang")
         kh_list = cursor.fetchall()
-        kh_map_ma = {str(k['ma_khach_hang']).strip().upper(): k['id'] for k in kh_list if k['ma_khach_hang']}
-        kh_map_ten = {str(k['ten_khach_hang']).strip().upper(): k['id'] for k in kh_list if k['ten_khach_hang']}
+        kh_map_ma = {normalize_text(k['ma_khach_hang']): k['id'] for k in kh_list if k['ma_khach_hang']}
+        kh_map_ten = {normalize_text(k['ten_khach_hang']): k['id'] for k in kh_list if k['ten_khach_hang']}
 
         def find_kh_id(tu_khoa):
-            tu_khoa = str(tu_khoa).strip().upper()
-            return kh_map_ma.get(tu_khoa) or kh_map_ten.get(tu_khoa)
+            key = normalize_text(tu_khoa)
+            return kh_map_ma.get(key) or kh_map_ten.get(key)
 
         rates_inserted = 0
         surcharges_inserted = 0
 
-        # 2. IMPORT BẢNG RATE CARDS (BIỂU CƯỚC) CÓ XỬ LÝ CHIỀU ĐI / CHIỀU VỀ
         if df_rates is not None and not df_rates.empty:
             sql_insert_rate = """
                 INSERT INTO rate_cards (
@@ -392,107 +387,101 @@ def import_bang_gia_transaction(db_pool, df_rates, df_surcharges, current_user):
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             for _, row in df_rates.iterrows():
-                kh_input = row.get('KHACH_HANG')
-                kh_id = find_kh_id(kh_input)
+                kh_id = find_kh_id(row.get('KHACH_HANG'))
+                if not kh_id:
+                    continue
 
-                if kh_id:
-                    ten_bang_gia = str(row.get('TEN_BANG_GIA', '')).strip()
-                    diem_di = str(row.get('DIEM_DI', '')).strip().upper()
-                    diem_den = str(row.get('DIEM_DEN', '')).strip().upper()
-                    khoang_cach = clean_limit_number(row.get('KHOANG_CACH', 0))
-                    phan_loai = str(row.get('PHAN_LOAI_PHUONG_TIEN', '')).strip()
-                    loai_xe = str(row.get('LOAI_XE_QUY_CACH', '')).strip()
-                    gh_kg = clean_limit_number(row.get('GIOI_HAN_KG', 0))
-                    gh_cbm = clean_limit_number(row.get('GIOI_HAN_CBM', 0))
+                ten_bang_gia = str(row.get('TEN_BANG_GIA', '')).strip()
+                if ten_bang_gia.lower() == 'nan':
+                    ten_bang_gia = ''
+                diem_di = normalize_text(row.get('DIEM_DI', ''))
+                diem_den = normalize_text(row.get('DIEM_DEN', ''))
+                khoang_cach = clean_limit_number(row.get('KHOANG_CACH', 0))
+                phan_loai = str(row.get('PHAN_LOAI_PHUONG_TIEN', '')).strip()
+                loai_xe = str(row.get('LOAI_XE_QUY_CACH', '')).strip()
+                gh_kg = clean_limit_number(row.get('GIOI_HAN_KG', 0))
+                gh_cbm = clean_limit_number(row.get('GIOI_HAN_CBM', 0))
 
-                    ghi_chu_val = str(row.get('GHI_CHU', '')).strip()
-                    if ghi_chu_val.lower() == 'nan':
-                        ghi_chu_val = ''
+                ghi_chu_val = str(row.get('GHI_CHU', '')).strip()
+                if ghi_chu_val.lower() == 'nan':
+                    ghi_chu_val = ''
 
-                    # A. XỬ LÝ INSERT CƯỚC CHIỀU ĐI (is_hang_tra_ve = 0)
-                    raw_don_gia = row.get('DON_GIA', 0)
-                    don_gia_di = 0.0
+                raw_don_gia = row.get('DON_GIA', 0)
+                don_gia_di = 0.0
+                if pd.notna(raw_don_gia):
+                    if isinstance(raw_don_gia, (int, float)):
+                        don_gia_di = float(raw_don_gia)
+                    else:
+                        dg_str = str(raw_don_gia).strip()
+                        if dg_str.endswith('.0'):
+                            dg_str = dg_str[:-2]
+                        don_gia_di = parse_money_input(dg_str)
 
-                    if pd.notna(raw_don_gia):
-                        if isinstance(raw_don_gia, (int, float)):
-                            don_gia_di = float(raw_don_gia)
-                        else:
-                            dg_str = str(raw_don_gia).strip()
-                            if dg_str.endswith('.0'):
-                                dg_str = dg_str[:-2]
-                            don_gia_di = parse_money_input(dg_str)
+                raw_gia_tiep_noi = row.get('GIA_CHUYEN_TIEP_NOI', 0)
+                gia_tiep_noi_val = 0.0
+                if pd.notna(raw_gia_tiep_noi):
+                    if isinstance(raw_gia_tiep_noi, (int, float)):
+                        gia_tiep_noi_val = float(raw_gia_tiep_noi)
+                    else:
+                        gtn_str = str(raw_gia_tiep_noi).strip()
+                        if gtn_str.endswith('.0'):
+                            gtn_str = gtn_str[:-2]
+                        gia_tiep_noi_val = parse_money_input(gtn_str)
 
-                    raw_gia_tiep_noi = row.get('GIA_CHUYEN_TIEP_NOI', 0)
+                if gia_tiep_noi_val <= 1:
                     gia_tiep_noi_val = 0.0
 
-                    if pd.notna(raw_gia_tiep_noi):
-                        if isinstance(raw_gia_tiep_noi, (int, float)):
-                            gia_tiep_noi_val = float(raw_gia_tiep_noi)
+                if don_gia_di > 0:
+                    val_di = (
+                        kh_id, ten_bang_gia, diem_di, diem_den,
+                        phan_loai, loai_xe, gh_kg, gh_cbm,
+                        0, don_gia_di, gia_tiep_noi_val, khoang_cach,
+                        ghi_chu_val if ghi_chu_val else None
+                    )
+                    cursor.execute(sql_insert_rate, val_di)
+                    if cursor.rowcount > 0:
+                        rates_inserted += 1
+
+                raw_phu_phi_ve = row.get('PHU_PHI_CHIEU_VE', '')
+                gia_chieu_ve = 0.0
+                if pd.notna(raw_phu_phi_ve) and raw_phu_phi_ve != '' and raw_phu_phi_ve != 0:
+                    if isinstance(raw_phu_phi_ve, (int, float)):
+                        if 0 < raw_phu_phi_ve <= 1.0:
+                            gia_chieu_ve = don_gia_di * float(raw_phu_phi_ve)
                         else:
-                            gtn_str = str(raw_gia_tiep_noi).strip()
-                            if gtn_str.endswith('.0'):
-                                gtn_str = gtn_str[:-2]
-                            gia_tiep_noi_val = parse_money_input(gtn_str)
-
-                    if gia_tiep_noi_val <= 1:
-                        gia_tiep_noi_val = 0.0
-
-                    if don_gia_di > 0:
-                        val_di = (
-                            kh_id, ten_bang_gia, diem_di, diem_den,
-                            phan_loai, loai_xe, gh_kg, gh_cbm,
-                            0, don_gia_di, gia_tiep_noi_val, khoang_cach,
-                            ghi_chu_val if ghi_chu_val else None
-                        )
-                        cursor.execute(sql_insert_rate, val_di)
-                        if cursor.rowcount > 0:
-                            rates_inserted += 1
-
-                    # B. XỬ LÝ INSERT CƯỚC CHIỀU VỀ (is_hang_tra_ve = 1)
-                    raw_phu_phi_ve = row.get('PHU_PHI_CHIEU_VE', '')
-                    gia_chieu_ve = 0.0
-
-                    if pd.notna(raw_phu_phi_ve) and raw_phu_phi_ve != '' and raw_phu_phi_ve != 0:
-                        if isinstance(raw_phu_phi_ve, (int, float)):
-                            if 0 < raw_phu_phi_ve <= 1.0:
-                                gia_chieu_ve = don_gia_di * float(raw_phu_phi_ve)
-                            else:
-                                gia_chieu_ve = float(raw_phu_phi_ve)
+                            gia_chieu_ve = float(raw_phu_phi_ve)
+                    else:
+                        phu_phi_ve_str = str(raw_phu_phi_ve).strip().lower()
+                        if '%' in phu_phi_ve_str:
+                            clean_percent = phu_phi_ve_str.replace('%', '').strip()
+                            try:
+                                ty_le = float(clean_percent) / 100.0
+                                gia_chieu_ve = don_gia_di * ty_le
+                            except ValueError:
+                                gia_chieu_ve = 0.0
                         else:
-                            phu_phi_ve_str = str(raw_phu_phi_ve).strip().lower()
-                            if '%' in phu_phi_ve_str:
-                                clean_percent = phu_phi_ve_str.replace('%', '').strip()
-                                try:
-                                    ty_le = float(clean_percent) / 100.0
-                                    gia_chieu_ve = don_gia_di * ty_le
-                                except ValueError:
-                                    gia_chieu_ve = 0.0
-                            else:
-                                if phu_phi_ve_str.endswith('.0'):
-                                    phu_phi_ve_str = phu_phi_ve_str[:-2]
-
-                                try:
-                                    val_float = float(phu_phi_ve_str)
-                                    if 0 < val_float <= 1.0:
-                                        gia_chieu_ve = don_gia_di * val_float
-                                    else:
-                                        gia_chieu_ve = parse_money_input(phu_phi_ve_str)
-                                except ValueError:
+                            if phu_phi_ve_str.endswith('.0'):
+                                phu_phi_ve_str = phu_phi_ve_str[:-2]
+                            try:
+                                val_float = float(phu_phi_ve_str)
+                                if 0 < val_float <= 1.0:
+                                    gia_chieu_ve = don_gia_di * val_float
+                                else:
                                     gia_chieu_ve = parse_money_input(phu_phi_ve_str)
+                            except ValueError:
+                                gia_chieu_ve = parse_money_input(phu_phi_ve_str)
 
-                    if gia_chieu_ve > 0:
-                        # Đã bổ sung đủ 13 tham số khớp với sql_insert_rate (thêm khoang_cach)
-                        val_ve = (
-                            kh_id, ten_bang_gia, diem_den, diem_di,
-                            phan_loai, loai_xe, gh_kg, gh_cbm,
-                            1, gia_chieu_ve, 0.0, khoang_cach,
-                            ghi_chu_val if ghi_chu_val else None
-                        )
-                        cursor.execute(sql_insert_rate, val_ve)
-                        if cursor.rowcount > 0:
-                            rates_inserted += 1
+                if gia_chieu_ve > 0:
+                    val_ve = (
+                        kh_id, ten_bang_gia, diem_den, diem_di,
+                        phan_loai, loai_xe, gh_kg, gh_cbm,
+                        1, gia_chieu_ve, 0.0, khoang_cach,
+                        ghi_chu_val if ghi_chu_val else None
+                    )
+                    cursor.execute(sql_insert_rate, val_ve)
+                    if cursor.rowcount > 0:
+                        rates_inserted += 1
 
-        # 3. IMPORT BẢNG PHỤ PHÍ KÈM GHI CHÚ
         if df_surcharges is not None and not df_surcharges.empty:
             sql_insert_sc = """
                 INSERT INTO phu_phi_khach_hang (
@@ -501,29 +490,31 @@ def import_bang_gia_transaction(db_pool, df_rates, df_surcharges, current_user):
                 ) VALUES (%s, %s, %s, %s, %s, %s)
             """
             for _, row in df_surcharges.iterrows():
-                kh_input = row.get('KHACH_HANG')
-                kh_id = find_kh_id(kh_input)
+                kh_id = find_kh_id(row.get('KHACH_HANG'))
+                if not kh_id:
+                    continue
 
-                if kh_id:
-                    don_gia_pp = parse_money_input(str(row.get('DON_GIA', 0)))
-                    ghi_chu_pp = str(row.get('GHI_CHU', '')).strip()
-                    if ghi_chu_pp.lower() == 'nan':
-                        ghi_chu_pp = ''
+                don_gia_pp, loai_ap_dung = _parse_surcharge_value_and_type(
+                    row.get('DON_GIA', 0),
+                    row.get('LOAI_AP_DUNG', 'Tu_Dong')
+                )
+                ghi_chu_pp = str(row.get('GHI_CHU', '')).strip()
+                if ghi_chu_pp.lower() == 'nan':
+                    ghi_chu_pp = ''
 
-                    if don_gia_pp > 0:
-                        val = (
-                            kh_id,
-                            str(row.get('TEN_PHU_PHI', '')).strip(),
-                            don_gia_pp,
-                            str(row.get('DIEU_KIEN_KICH_HOAT', '')).strip().upper(),
-                            str(row.get('LOAI_AP_DUNG', '')).strip(),
-                            ghi_chu_pp if ghi_chu_pp else None
-                        )
-                        cursor.execute(sql_insert_sc, val)
-                        if cursor.rowcount > 0:
-                            surcharges_inserted += 1
+                if don_gia_pp > 0:
+                    val = (
+                        kh_id,
+                        str(row.get('TEN_PHU_PHI', '')).strip(),
+                        don_gia_pp,
+                        str(row.get('DIEU_KIEN_KICH_HOAT', '')).strip().upper(),
+                        loai_ap_dung,
+                        ghi_chu_pp if ghi_chu_pp else None
+                    )
+                    cursor.execute(sql_insert_sc, val)
+                    if cursor.rowcount > 0:
+                        surcharges_inserted += 1
 
-        # 4. GHI LOG HỆ THỐNG
         chi_tiet_log = {
             "rate_cards_inserted": rates_inserted,
             "surcharges_inserted": surcharges_inserted,
@@ -553,13 +544,9 @@ def import_bang_gia_transaction(db_pool, df_rates, df_surcharges, current_user):
             conn.close()
 
 
-# Hàm này dùng cho các lần import/update dữ liệu sau
 def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, current_user):
     """
-    Import/Update Bảng giá từ Excel.
-    - Xử lý chuẩn Unicode tiếng Việt.
-    - Quét linh hoạt cột Khoảng Cách.
-    - Chống treo giao diện khi load file > 3000 dòng.
+    Import/Update Bảng giá từ Excel (xử lý chuẩn Unicode NFC, chống trùng và cập nhật tiến độ).
     """
     conn = None
     cursor = None
@@ -594,7 +581,7 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                     col_khoang_cach = c
                     break
 
-            for index, row in df_rates.iterrows():
+            for _, row in df_rates.iterrows():
                 current_step += 1
                 if current_step % 50 == 0 or current_step == total_steps:
                     progress_bar.progress(current_step / total_steps)
@@ -620,10 +607,7 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                 diem_di = normalize_text(row.get('DIEM_DI') if pd.notna(row.get('DIEM_DI')) else row.get('DIA_CHI_KHO_DI', ''))
                 diem_den = normalize_text(row.get('DIEM_DEN') if pd.notna(row.get('DIEM_DEN')) else row.get('DIA_CHI_KHO_DEN', ''))
 
-                if col_khoang_cach:
-                    khoang_cach = parse_float_safe(row.get(col_khoang_cach, 0))
-                else:
-                    khoang_cach = parse_float_safe(row.get('KHOANG_CACH', 0))
+                khoang_cach = parse_float_safe(row.get(col_khoang_cach, 0)) if col_khoang_cach else parse_float_safe(row.get('KHOANG_CACH', 0))
 
                 if not diem_di or not diem_den or diem_di == 'NAN' or diem_den == 'NAN':
                     rates_skipped += 1
@@ -638,11 +622,8 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                 if quy_cach.lower() == 'nan':
                     quy_cach = ''
 
-                try:
-                    gh_kg = parse_float_safe(row.get('GIOI_HAN_KG', 0))
-                    gh_cbm = parse_float_safe(row.get('GIOI_HAN_CBM', 0))
-                except Exception:
-                    gh_kg, gh_cbm = 0.0, 0.0
+                gh_kg = parse_float_safe(row.get('GIOI_HAN_KG', 0))
+                gh_cbm = parse_float_safe(row.get('GIOI_HAN_CBM', 0))
 
                 is_tra_ve = 1 if str(row.get('IS_HANG_TRA_VE', '0')).strip() in ['1', '1.0', 'True', 'true'] else 0
                 ghi_chu = str(row.get('GHI_CHU', '')).strip()
@@ -715,7 +696,7 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                             val_float = float(phu_phi_ve_str)
                             gia_chieu_ve = don_gia_di * val_float if 0 < val_float <= 1.0 else parse_money_input(phu_phi_ve_str)
                         except Exception:
-                            pass
+                            gia_chieu_ve = parse_money_input(phu_phi_ve_str)
 
                 if gia_chieu_ve > 0:
                     sql_check_ve = """
@@ -746,7 +727,7 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                         ))
                         rates_inserted += 1
 
-        # 2. XỬ LÝ PHỤ PHÍ (Bỏ qua an toàn nếu file không có Sheet PHU_PHI)
+        # 2. XỬ LÝ PHỤ PHÍ
         if df_surcharges is not None and not df_surcharges.empty:
             for index, row in df_surcharges.iterrows():
                 current_step += 1
@@ -785,27 +766,7 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
                         pp_id = dup_pp['id']
 
                 raw_dg_pp = row.get('DON_GIA_PHU_PHI') if pd.notna(row.get('DON_GIA_PHU_PHI')) else row.get('DON_GIA', 0)
-                if pd.isna(raw_dg_pp) or str(raw_dg_pp).strip() == '':
-                    raw_dg_pp = 0
-
-                loai_ap_dung_raw = str(row.get('LOAI_AP_DUNG', 'Tu_Dong')).strip()
-                if loai_ap_dung_raw.lower() == 'nan' or not loai_ap_dung_raw:
-                    loai_ap_dung_raw = 'Tu_Dong'
-
-                don_gia_pp = 0.0
-                loai_ap_dung = loai_ap_dung_raw
-
-                if '%' in loai_ap_dung_raw or '%' in str(raw_dg_pp) or loai_ap_dung_raw.lower() == 'phan_tram':
-                    text_to_parse = f"{loai_ap_dung_raw} {raw_dg_pp}"
-                    match = re.search(r'(\d+(\.\d+)?)', text_to_parse)
-                    if match:
-                        val = float(match.group(1))
-                        if 0 < val <= 1 and '%' not in text_to_parse:
-                            val = val * 100
-                        don_gia_pp = val
-                    loai_ap_dung = '%'
-                else:
-                    don_gia_pp = parse_money_input(raw_dg_pp)
+                don_gia_pp, loai_ap_dung = _parse_surcharge_value_and_type(raw_dg_pp, row.get('LOAI_AP_DUNG', 'Tu_Dong'))
 
                 dk_kich_hoat = str(row.get('DIEU_KIEN_KICH_HOAT', '')).strip().upper()
                 if dk_kich_hoat.lower() == 'nan':
@@ -837,14 +798,11 @@ def import_and_update_bang_gia_transaction(db_pool, df_rates, df_surcharges, cur
         progress_bar.progress(1.0)
         status_text.success("✅ Đã ghi nhận toàn bộ dữ liệu vào hệ thống!")
 
-        try:
-            log_detail = json.dumps({
-                "rate_cards": {"new": rates_inserted, "update": rates_updated, "skipped": rates_skipped},
-                "surcharges": {"new": sc_inserted, "update": sc_updated, "skipped": sc_skipped}
-            }, ensure_ascii=False)
-            ghi_log_he_thong(cursor, "QUAN_LY_BANG_GIA", None, current_user, "IMPORT_EXCEL_CAP_NHAT", log_detail)
-        except Exception:
-            pass
+        log_detail = json.dumps({
+            "rate_cards": {"new": rates_inserted, "update": rates_updated, "skipped": rates_skipped},
+            "surcharges": {"new": sc_inserted, "update": sc_updated, "skipped": sc_skipped}
+        }, ensure_ascii=False)
+        ghi_log_he_thong(cursor, "QUAN_LY_BANG_GIA", None, current_user, "IMPORT_EXCEL_CAP_NHAT", log_detail)
 
         conn.commit()
         time.sleep(0.5)
@@ -888,7 +846,7 @@ def import_and_update_phu_phi_transaction(db_pool, df_surcharges, current_user):
         row_updated = 0
         row_skipped = 0
 
-        for index, row in df_surcharges.iterrows():
+        for _, row in df_surcharges.iterrows():
             pp_id = row.get('ID')
             if pd.isna(pp_id) or str(pp_id).strip() == '':
                 pp_id = None
@@ -912,7 +870,6 @@ def import_and_update_phu_phi_transaction(db_pool, df_surcharges, current_user):
             if not ten_phu_phi or ten_phu_phi.lower() == 'nan':
                 continue
 
-            # Kiểm tra trùng nếu file không có cột ID
             if not pp_id:
                 cursor.execute(
                     "SELECT id FROM phu_phi_khach_hang WHERE khach_hang_id = %s AND ten_phu_phi = %s LIMIT 1",
@@ -925,15 +882,12 @@ def import_and_update_phu_phi_transaction(db_pool, df_surcharges, current_user):
             raw_dg_pp = row.get('DON_GIA_PHU_PHI')
             if pd.isna(raw_dg_pp) or str(raw_dg_pp).strip() == '':
                 raw_dg_pp = row.get('DON_GIA', 0)
-            don_gia_pp = parse_money_input(str(raw_dg_pp))
+
+            don_gia_pp, loai_ap_dung = _parse_surcharge_value_and_type(raw_dg_pp, row.get('LOAI_AP_DUNG', 'Tu_Dong'))
 
             dk_kich_hoat = str(row.get('DIEU_KIEN_KICH_HOAT', '')).strip().upper()
             if dk_kich_hoat.lower() == 'nan':
                 dk_kich_hoat = ''
-
-            loai_ap_dung = str(row.get('LOAI_AP_DUNG', 'Tu_Dong')).strip()
-            if loai_ap_dung.lower() == 'nan' or not loai_ap_dung:
-                loai_ap_dung = 'Tu_Dong'
 
             ghi_chu = str(row.get('GHI_CHU', '')).strip()
             if ghi_chu.lower() == 'nan':
@@ -1214,10 +1168,7 @@ def delete_single_phu_phi_transaction(db_pool, pp_id, current_user):
 
 
 def create_single_phu_phi_transaction(db_pool, data_add_pp, current_user):
-    """
-    Hàm thêm mới 1 dòng Phụ phí vào cơ sở dữ liệu.
-    Tuân thủ nguyên tắc Transaction và Audit Log của Bảo Tín Logistics.
-    """
+    """Thêm mới 1 dòng Phụ phí vào cơ sở dữ liệu."""
     conn = None
     cursor = None
     try:
@@ -1290,7 +1241,6 @@ def tinh_tong_phu_cap_tu_dong(db_pool, xe_id, danh_sach_tieu_chi_id):
         conn = db_pool.get_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # 1. Lấy tải trọng thiết kế của xe
         cursor.execute("SELECT tai_trong_thiet_ke FROM xe WHERE id = %s", (xe_id,))
         xe_info = cursor.fetchone()
         if not xe_info or not xe_info['tai_trong_thiet_ke']:
@@ -1298,7 +1248,6 @@ def tinh_tong_phu_cap_tu_dong(db_pool, xe_id, danh_sach_tieu_chi_id):
 
         tai_trong_xe = float(xe_info['tai_trong_thiet_ke'])
 
-        # 2. Tìm Khung tải trọng (tai_trong_id) tương ứng trong danh mục
         sql_tim_khung = """
             SELECT id FROM dm_tai_trong_phu_cap
             WHERE tai_trong_min <= %s AND tai_trong_max >= %s
@@ -1312,7 +1261,6 @@ def tinh_tong_phu_cap_tu_dong(db_pool, xe_id, danh_sach_tieu_chi_id):
 
         tai_trong_id = khung_tt['id']
 
-        # 3. Tính tổng tiền từ Ma trận và lấy tên tiêu chí
         format_strings = ','.join(['%s'] * len(danh_sach_tieu_chi_id))
         sql_tinh_tien = f"""
             SELECT mt.so_tien, tc.ten_tieu_chi
@@ -1346,19 +1294,36 @@ def tinh_tong_phu_cap_tu_dong(db_pool, xe_id, danh_sach_tieu_chi_id):
 
 
 def parse_tai_trong_excel(text):
-    """Hàm AI bóc tách Tải Trọng Min/Max từ Text Excel (Ví dụ: 1<=2T, 3.5T, >15T)."""
-    text = str(text).upper().replace('T', '').replace(' ', '')
-    if '<=' in text:
-        parts = text.split('<=')
+    """Bóc tách Tải Trọng Min/Max từ Text Excel (Ví dụ: 1<=2T, 3.5T, >15T, <2T)."""
+    text_clean = str(text).upper().replace('TẤN', '').replace('TAN', '').replace('T', '').replace(' ', '')
+    if '<=' in text_clean:
+        parts = text_clean.split('<=')
         if len(parts) == 2:
             min_val = float(parts[0]) if parts[0] else 0.0
             max_val = float(parts[1]) if parts[1] else 99.0
             return min_val, max_val
-    if '-' in text:
-        parts = text.split('-')
-        return float(parts[0]), float(parts[1])
+    if '>=' in text_clean:
+        parts = text_clean.split('>=')
+        if len(parts) == 2:
+            min_val = float(parts[1]) if parts[1] else 0.0
+            return min_val, 99.0
+    if text_clean.startswith('>'):
+        nums = re.findall(r'\d+\.?\d*', text_clean)
+        if nums:
+            return float(nums[0]), 99.0
+    if text_clean.startswith('<'):
+        nums = re.findall(r'\d+\.?\d*', text_clean)
+        if nums:
+            return 0.0, float(nums[0])
+    if '-' in text_clean:
+        parts = text_clean.split('-')
+        if len(parts) == 2:
+            try:
+                return float(parts[0]), float(parts[1])
+            except ValueError:
+                pass
 
-    nums = re.findall(r'\d+\.?\d*', text)
+    nums = re.findall(r'\d+\.?\d*', text_clean)
     if nums:
         val = float(nums[0])
         return val, val
@@ -1378,23 +1343,26 @@ def import_excel_phu_cap_transaction(db_pool, df, current_user):
         tt_map = {}
         cursor.execute("SELECT id, ten_hien_thi FROM dm_tai_trong_phu_cap")
         for row in cursor.fetchall():
-            tt_map[row['ten_hien_thi']] = row['id']
+            tt_map[str(row['ten_hien_thi']).strip()] = row['id']
 
         tt_col = df.columns[0]
         for tt_name in df[tt_col].dropna().unique():
-            if tt_name not in tt_map:
-                min_val, max_val = parse_tai_trong_excel(tt_name)
+            tt_clean = str(tt_name).strip()
+            if not tt_clean:
+                continue
+            if tt_clean not in tt_map:
+                min_val, max_val = parse_tai_trong_excel(tt_clean)
                 cursor.execute(
                     "INSERT INTO dm_tai_trong_phu_cap (ten_hien_thi, tai_trong_min, tai_trong_max) VALUES (%s, %s, %s)",
-                    (str(tt_name).strip(), min_val, max_val)
+                    (tt_clean, min_val, max_val)
                 )
-                tt_map[tt_name] = cursor.lastrowid
+                tt_map[tt_clean] = cursor.lastrowid
 
         # 2. XỬ LÝ TRỤC X: BẢNG TIÊU CHÍ
         tc_map = {}
         cursor.execute("SELECT id, ten_tieu_chi FROM dm_tieu_chi_phu_cap")
         for row in cursor.fetchall():
-            tc_map[row['ten_tieu_chi']] = row['id']
+            tc_map[str(row['ten_tieu_chi']).strip()] = row['id']
 
         tieu_chi_cols = df.columns[1:]
         for tc_name in tieu_chi_cols:
@@ -1405,11 +1373,14 @@ def import_excel_phu_cap_transaction(db_pool, df, current_user):
 
         # 3. XỬ LÝ MA TRẬN & UPSERT DỮ LIỆU
         so_luong_update = 0
-        for index, row in df.iterrows():
+        for _, row in df.iterrows():
             tt_name = row[tt_col]
             if pd.isna(tt_name):
                 continue
-            tt_id = tt_map.get(tt_name)
+            tt_clean = str(tt_name).strip()
+            tt_id = tt_map.get(tt_clean)
+            if not tt_id:
+                continue
 
             for tc_name in tieu_chi_cols:
                 tc_clean = str(tc_name).strip()
