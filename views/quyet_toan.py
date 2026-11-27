@@ -1645,11 +1645,10 @@ with tab3:
 
                                 try:
                                     sql_check = """
-                                        SELECT cd.trang_thai_chuyen, cd.khach_hang_id, cd.ten_khach_hang,
-                                            cd.doanh_thu, cd.dia_diem_giao_nhan, cd.chi_phi_thue_ngoai,
+                                        SELECT cd.trang_thai_chuyen, cd.khach_hang_id, cd.ten_khach_hang, 
+                                            cd.doanh_thu, cd.tien_them, cd.cong_chuyen, cd.dia_diem_giao_nhan, cd.chi_phi_thue_ngoai, 
                                             cd.hinh_thuc_thanh_toan_ngoai, cd.ghi_chu, cd.chuyen_goc_id,
-                                            cd.ngay_chuyen_di, cd.khoi_luong_kg, cd.xe_id, cd.the_tich_cbm,
-                                            cd.loai_hinh_xe, cd.cong_chuyen, cd.tien_them,
+                                            cd.ngay_chuyen_di, cd.khoi_luong_kg, cd.xe_id, cd.the_tich_cbm, cd.loai_hinh_xe,
                                             cd.is_gop_chuyen, cd.stt_chuyen_ghep, cd.is_thue_ngoai,
                                             x.tai_trong_thiet_ke, x.loai_xe, x.quy_cach_thung
                                         FROM chuyen_di cd
@@ -1667,13 +1666,16 @@ with tab3:
 
                                     kh_id_raw = row_db.get("khach_hang_id")
                                     kh_id = int(float(kh_id_raw)) if pd.notna(kh_id_raw) and str(kh_id_raw).strip() != "" else None
-                                    if not kh_id and ten_khach_hang_db.strip():
-                                        df_find_kh = get_cached_master_data(
-                                            "SELECT id FROM khach_hang WHERE ten_khach_hang LIKE %s LIMIT 1",
-                                            (f"%{ten_khach_hang_db.strip()}%",),
-                                        )
-                                        if isinstance(df_find_kh, pd.DataFrame) and not df_find_kh.empty:
-                                            kh_id = int(df_find_kh.iloc[0]["id"])
+                                    if not kh_id and pd.notna(ten_khach_hang_db) and ten_khach_hang_db.strip():
+                                        try:
+                                            df_find_kh = get_cached_master_data(
+                                                "SELECT id FROM khach_hang WHERE ten_khach_hang LIKE %s LIMIT 1",
+                                                (f"%{ten_khach_hang_db.strip()}%",),
+                                            )
+                                            if isinstance(df_find_kh, pd.DataFrame) and not df_find_kh.empty:
+                                                kh_id = int(df_find_kh.iloc[0]["id"])
+                                        except Exception:
+                                            pass
 
                                     chuyen_goc_id_val = row_db.get("chuyen_goc_id")
                                     is_chuyen_phu = pd.notna(chuyen_goc_id_val)
@@ -1681,7 +1683,16 @@ with tab3:
                                     if ghi_chu_goc.lower() == "nan":
                                         ghi_chu_goc = ""
 
-                                    if trang_thai == "Hoan_Thanh" and float(row_db.get("doanh_thu") or 0.0) > 0:
+                                    # Chỉ bỏ qua chuyến đã Hoàn Thành nếu trong file Excel KHÔNG nhập thêm phụ cấp tài xế
+                                    co_nhap_phu_cap_excel = (
+                                        pd.notna(r.get("DS_PHU_CAP_TAI_XE"))
+                                        and str(r.get("DS_PHU_CAP_TAI_XE")).strip() not in ["", "nan", "None"]
+                                    )
+                                    if (
+                                        trang_thai == "Hoan_Thanh"
+                                        and float(row_db.get("doanh_thu", 0.0) or 0.0) > 0
+                                        and not co_nhap_phu_cap_excel
+                                    ):
                                         continue
 
                                     booked_kg = float(row_db.get("khoi_luong_kg") or 0.0)
@@ -1739,7 +1750,41 @@ with tab3:
                                         if tong_cuoc > 0 and doanh_thu_chuyen == 0:
                                             doanh_thu_chuyen = tong_cuoc
 
-                                    if doanh_thu_chuyen == 0 and not is_chuyen_phu:
+                                    # 1. TÍNH PHỤ CẤP TÀI XẾ TRƯỚC (Độc lập với việc dò doanh thu chuyến)
+                                    ds_phu_cap_str = str(r.get("DS_PHU_CAP_TAI_XE", "")).strip()
+                                    selected_tc_ids_excel = []
+                                    if ds_phu_cap_str and ds_phu_cap_str.lower() not in ["nan", ""]:
+                                        ds_phu_cap_str = re.sub(r"\.0\b", "", ds_phu_cap_str)
+                                        for item in [x.strip() for x in ds_phu_cap_str.split(",") if x.strip()]:
+                                            item_lower = item.lower()
+                                            item_unaccent = unidecode_vn(item_lower)
+                                            if item in tc_dict:
+                                                selected_tc_ids_excel.append(tc_dict[item])
+                                            elif item_lower in tc_dict:
+                                                selected_tc_ids_excel.append(tc_dict[item_lower])
+                                            else:
+                                                for k_name, v_id in tc_dict.items():
+                                                    if not k_name.isdigit() and (item_lower in k_name or item_unaccent in unidecode_vn(k_name)):
+                                                        selected_tc_ids_excel.append(v_id)
+                                                        break
+
+                                    selected_tc_ids_excel.extend(
+                                        loc_tieu_chi_phu_cap_tu_dong(matched_khoang_cach, lo_trinh_hien_tai, is_hang_ve_excel)
+                                    )
+                                    selected_tc_ids_excel = list(set(selected_tc_ids_excel))
+
+                                    tien_phu_cap_tx, chuoi_phu_cap_tx = tinh_phu_cap_tai_xe(
+                                        db, row_db.get("xe_id"), selected_tc_ids_excel
+                                    )
+
+                                    if selected_tc_ids_excel and tien_phu_cap_tx == 0:
+                                        error_list.append(
+                                            f"⚠️ Dòng {index + 2} (Mã {cid}): Đã chọn phụ cấp ID {selected_tc_ids_excel} nhưng Ma trận trả về 0đ "
+                                            f"(Kiểm tra tải trọng thiết kế của xe hoặc cấu hình tiền tiêu chí ID {selected_tc_ids_excel} trong Ma trận phụ cấp)."
+                                        )
+
+                                    # 2. KIỂM TRA DOANH THU (Cho phép lưu nếu có doanh thu, là chuyến phụ, hoặc có phụ cấp tài xế)
+                                    if doanh_thu_chuyen == 0 and not is_chuyen_phu and tien_phu_cap_tx == 0:
                                         error_list.append(
                                             f"⚠️ Dòng {index + 2} (Mã {cid}): Không dò ra Doanh Thu (Khối lượng book {tai_trong_so_sanh_tan}T không khớp Rate Cards)."
                                         )
@@ -1796,29 +1841,6 @@ with tab3:
 
                                     tong_phi_ai, chuoi_ghi_chu_ai = rule_engine_calc(kh_id, tai_trong_so_sanh_tan, doanh_thu_tinh_phi, facts, db)
 
-                                    ds_phu_cap_str = str(r.get("DS_PHU_CAP_TAI_XE", "")).strip()
-                                    selected_tc_ids_excel = []
-                                    if ds_phu_cap_str and ds_phu_cap_str.lower() not in ["nan", ""]:
-                                        ds_phu_cap_str = re.sub(r"\.0\b", "", ds_phu_cap_str)
-                                        for item in [x.strip() for x in ds_phu_cap_str.split(",") if x.strip()]:
-                                            item_lower = item.lower()
-                                            item_unaccent = unidecode_vn(item_lower)
-                                            if item in tc_dict:
-                                                selected_tc_ids_excel.append(tc_dict[item])
-                                            elif item_lower in tc_dict:
-                                                selected_tc_ids_excel.append(tc_dict[item_lower])
-                                            else:
-                                                for k_name, v_id in tc_dict.items():
-                                                    if not k_name.isdigit() and (item_lower in k_name or item_unaccent in unidecode_vn(k_name)):
-                                                        selected_tc_ids_excel.append(v_id)
-                                                        break
-
-                                    selected_tc_ids_excel.extend(
-                                        loc_tieu_chi_phu_cap_tu_dong(matched_khoang_cach, lo_trinh_hien_tai, is_hang_ve_excel)
-                                    )
-                                    selected_tc_ids_excel = list(set(selected_tc_ids_excel))
-
-                                    tien_phu_cap_tx, chuoi_phu_cap_tx = tinh_phu_cap_tai_xe(db, row_db.get("xe_id"), selected_tc_ids_excel)
                                     tien_them_final = float(row_db.get("tien_them") or 0.0) + tien_phu_cap_tx
                                     phi_khac_excel = parse_money_input(r.get("PHI_KHAC"))
                                     tong_phi_khac_final = phi_khac_excel + tong_phi_ai
@@ -1838,7 +1860,7 @@ with tab3:
                                         else float(row_db.get("cong_chuyen") or 0.0)
                                     )
 
-                                    if doanh_thu_chuyen > 0 or is_chuyen_phu:
+                                    if doanh_thu_chuyen > 0 or is_chuyen_phu or tien_phu_cap_tx > 0:
                                         db_ghi_chu_goc = str(row_db.get("ghi_chu", ""))
                                         ghi_chu_sach = db_ghi_chu_goc.replace("WAIT_QUYET_TOAN", "").strip()
 
