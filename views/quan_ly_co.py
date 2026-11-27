@@ -21,6 +21,79 @@ def get_cached_master_data(_db_instance, query, params=None):
 def clear_master_cache():
     get_cached_master_data.clear()
 
+
+# --- HÀM ĐỌC & CHUẨN HÓA FILE EXCEL C/O (HỖ TRỢ FILE THIẾU HEADER ĐẦU TRANG) ---
+def chuan_hoa_chuoi(text):
+    if pd.isna(text):
+        return ""
+    s = unicodedata.normalize("NFC", str(text)).strip().lower()
+    return " ".join(s.split())
+
+def doc_va_chuan_hoa_excel_co(uploaded_file):
+    # Đọc thô không header để tự dò dòng tiêu đề bảng (trong 10 dòng đầu)
+    df_raw = pd.read_excel(uploaded_file, header=None)
+    header_row_idx = None
+    ten_dai_ly_tu_file = ""
+
+    for idx in range(min(10, len(df_raw))):
+        row_vals = [chuan_hoa_chuoi(v) for v in df_raw.iloc[idx].tolist()]
+        # Bắt tên đại lý nếu file có dòng "GỞI CÔNG TY: ..." ở phần header phía trên
+        for cell_raw in df_raw.iloc[idx].tolist():
+            if pd.notna(cell_raw) and "gởi công ty:" in chuan_hoa_chuoi(cell_raw):
+                ten_dai_ly_tu_file = str(cell_raw).split(":", 1)[-1].strip()
+
+        if any(col in row_vals for col in ["số co", "so co", "mã co", "ma co", "số c/o bản gốc", "so c/o ban goc", "số c/o"]):
+            header_row_idx = idx
+            break
+
+    if header_row_idx is None:
+        return None, "Không tìm thấy cột 'Số CO' hoặc 'SỐ C/O BẢN GỐC' trong file Excel."
+
+    # Lấy lại bảng từ đúng dòng header vừa tìm thấy
+    uploaded_file.seek(0)
+    df = pd.read_excel(uploaded_file, header=header_row_idx)
+
+    # Map linh hoạt các biến thể tên cột về đúng chuẩn của st.data_editor Tab 3
+    rename_map = {}
+    for col in df.columns:
+        c_norm = chuan_hoa_chuoi(col)
+        if c_norm in ["stt", "số tt", "so tt"]:
+            rename_map[col] = "STT"
+        elif c_norm in ["số co", "so co", "mã co", "ma co", "số c/o bản gốc", "so c/o ban goc", "số c/o"]:
+            rename_map[col] = "SỐ C/O BẢN GỐC"
+        elif c_norm in ["ký nhận", "kí nhận", "ky nhan", "ki nhan", "tên người nhận", "ten nguoi nhan"]:
+            rename_map[col] = "KÝ NHẬN"
+        elif c_norm in ["ngày nhận", "ngay nhan"]:
+            rename_map[col] = "NGÀY NHẬN"
+
+    df = df.rename(columns=rename_map)
+
+    if "SỐ C/O BẢN GỐC" not in df.columns:
+        return None, "File thiếu cột bắt buộc: Số CO."
+
+    # Bổ sung cột còn thiếu nếu file rút gọn
+    for required_col in ["STT", "SỐ C/O BẢN GỐC", "KÝ NHẬN", "NGÀY NHẬN"]:
+        if required_col not in df.columns:
+            df[required_col] = ""
+
+    # Lọc bỏ dòng trống và đánh lại STT chuẩn
+    df = df[df["SỐ C/O BẢN GỐC"].notna() & (df["SỐ C/O BẢN GỐC"].astype(str).str.strip() != "")].copy()
+    df["SỐ C/O BẢN GỐC"] = df["SỐ C/O BẢN GỐC"].astype(str).str.strip()
+    df["STT"] = range(1, len(df) + 1)
+    df["KÝ NHẬN"] = df["KÝ NHẬN"].fillna("").astype(str)
+    df["NGÀY NHẬN"] = df["NGÀY NHẬN"].fillna("").astype(str)
+
+    # Tự động bù header mặc định nếu file tải lên không có phần đầu trang
+    has_top_header = header_row_idx > 0
+    header_info = {
+        "cong_ty": "CÔNG TY FORTUNATE HONGKONG VIỆT NAM",
+        "dai_ly": ten_dai_ly_tu_file,
+        "bo_sung_header": not has_top_header
+    }
+
+    return (df[["STT", "SỐ C/O BẢN GỐC", "KÝ NHẬN", "NGÀY NHẬN"]], header_info), None
+
+
 # --- HÀM HỖ TRỢ FONT UNICODE & TEXT AN TOÀN CHO PDF ---
 def get_roboto_font_path(font_filename, url):
     # 1. Ưu tiên lấy file font đặt sẵn cùng thư mục với quan_ly_co.py
@@ -463,13 +536,17 @@ with tab_ocr_co:
             uploaded_excel = st.file_uploader("📂 Kéo thả file Excel (Bản chưa ký) vào đây", type=["xlsx", "xls"], key=current_excel_key)
             if uploaded_excel:
                 try:
-                    df_load = pd.read_excel(uploaded_excel, skiprows=3)
-                    if 'SỐ C/O BẢN GỐC' in df_load.columns:
+                    result, err_msg = doc_va_chuan_hoa_excel_co(uploaded_excel)
+                    if err_msg:
+                        st.error(f"❌ {err_msg}")
+                    else:
+                        df_load, header_info = result
                         st.session_state["ocr_data"] = df_load.to_dict('records')
                         st.session_state["ten_file_goc"] = uploaded_excel.name
-                        st.success("✅ Đã khôi phục dữ liệu từ file Excel thành công!")
-                    else:
-                        st.error("❌ File Excel không đúng định dạng chuẩn của phần mềm.")
+                        st.session_state["tab3_header_info"] = header_info
+                        if header_info.get("bo_sung_header"):
+                            st.info("ℹ️ File chưa có tiêu đề đầu trang — hệ thống đã tự động bổ sung header chuẩn để ký và xuất PDF.")
+                        st.success(f"✅ Đã nạp thành công {len(df_load)} mã C/O từ file Excel!")
                 except Exception as e:
                     st.error(f"Lỗi đọc file Excel: {e}")
 
@@ -637,13 +714,18 @@ with tab_ocr_co:
             st.markdown("<h4 style='margin-bottom: 5px; margin-top: 0px;'>🏢 Thông tin Đại lý nhận bàn giao</h4>", unsafe_allow_html=True)
             col_dl1, col_dl2 = st.columns([2, 3])
 
+            ds_dai_ly = ["EXPEDITORS", "DSV AIR & SEA CO. LTD", "KUEHNE+NAGEL", "DHL", "KHÁC (Tự nhập tay)"]
+            dai_ly_tu_file = st.session_state.get("tab3_header_info", {}).get("dai_ly", "")
+            default_dl_idx = ds_dai_ly.index(dai_ly_tu_file) if dai_ly_tu_file in ds_dai_ly else (len(ds_dai_ly) - 1 if dai_ly_tu_file else 0)
+
             cong_ty_dai_ly_chon = col_dl1.selectbox(
                 "Chọn Công ty Đại lý:",
-                options=["EXPEDITORS", "DSV AIR & SEA CO. LTD", "KUEHNE+NAGEL", "DHL", "KHÁC (Tự nhập tay)"]
+                options=ds_dai_ly,
+                index=default_dl_idx
             )
 
             if cong_ty_dai_ly_chon == "KHÁC (Tự nhập tay)":
-                ten_cong_ty_dai_ly = col_dl2.text_input("Nhập tên công ty đại lý:", placeholder="VD: CÔNG TY LOGISTICS ABC...")
+                ten_cong_ty_dai_ly = col_dl2.text_input("Nhập tên công ty đại lý:", value=dai_ly_tu_file if dai_ly_tu_file not in ds_dai_ly else "", placeholder="VD: CÔNG TY LOGISTICS ABC...")
             else:
                 ten_cong_ty_dai_ly = cong_ty_dai_ly_chon
 
@@ -658,7 +740,7 @@ with tab_ocr_co:
                 df_current,
                 use_container_width=True,
                 num_rows="dynamic",
-                disabled=["STT", "TÊN NGƯỜI NHẬN", "NGÀY NHẬN"],
+                disabled=["STT", "KÝ NHẬN", "NGÀY NHẬN"],
                 key="co_data_editor"
             )
 
@@ -901,6 +983,7 @@ with tab_ocr_co:
             if st.button("🔄 Tải Lại Phiên Mới (Xóa Trắng)"):
                 st.session_state["ocr_data"] = []
                 st.session_state["ten_file_goc"] = ""
+                st.session_state["tab3_header_info"] = {}
                 keys_to_reset = ["upload_pdfs_ocr", "upload_excel_to_sign", "co_data_editor", "canvas_ky_ten_2"]
                 for key in keys_to_reset:
                     if key in st.session_state:
