@@ -87,25 +87,70 @@ def doc_anh_cay_xang(image_file):
     try:
         img = Image.open(image_file)
 
-        # Gọi hàm lấy model an toàn thay vì khởi tạo trực tiếp
         model = get_gemini_model('gemini-2.5-flash')
         if not model:
             st.error("Lỗi: Không tìm thấy GEMINI_API_KEY trong hệ thống!")
             return None
 
         prompt = """
-        Đây là ảnh chụp màn hình LED của trụ bơm xăng dầu.
-        Hãy đọc chính xác các con số và trả về ĐÚNG định dạng JSON sau, không kèm bất kỳ văn bản nào khác:
+        Đây là ảnh chụp màn hình LED của trụ bơm xăng dầu ở Việt Nam (gồm 3 dòng số từ trên xuống dưới).
+        Hãy đọc thật kỹ từng chữ số và vị trí dấu chấm thập phân:
+        - Dòng 1 (TỔNG TIỀN): Màn hình LED 6 số thường bị khuyết 1 số 0 ở cuối (ví dụ hiển thị "3.486.60" thực tế là 3486600 đồng). Hãy đọc đúng các chữ số hiển thị.
+        - Dòng 2 (SỐ LÍT): Luôn có 2 chữ số thập phân ở cuối (ví dụ "130.00" là 130.0 lít, KHÔNG đọc nhầm thành 13.0).
+        - Dòng 3 (ĐƠN GIÁ): Giá 1 lít xăng/dầu tính theo VNĐ (ví dụ "26820" hoặc "26.820" là 26820 đồng, thường nằm trong khoảng 15.000 - 35.000).
+
+        Trả về ĐÚNG định dạng JSON sau, không kèm bất kỳ văn bản nào khác:
         {
-            "tong_tien": <tổng số tiền - dạng số nguyên>,
-            "so_lit": <số lít - dạng số thập phân>,
-            "don_gia": <đơn giá - dạng số nguyên>
+            "tong_tien_hien_thi": <số nguyên đọc được ở dòng 1, bỏ dấu chấm ngăn cách>,
+            "so_lit": <số lít dạng số thập phân ở dòng 2>,
+            "don_gia": <đơn giá dạng số nguyên ở dòng 3>
         }
         """
         response = model.generate_content([prompt, img])
         text_result = response.text.replace("```json", "").replace("```", "").strip()
         data = json.loads(text_result)
-        return data
+
+        # 1. Chuẩn hóa dữ liệu thô từ AI
+        raw_tien_str = re.sub(r"[^\d]", "", str(data.get("tong_tien_hien_thi") or data.get("tong_tien") or "0"))
+        tien_raw = float(raw_tien_str) if raw_tien_str else 0.0
+
+        so_lit = float(str(data.get("so_lit") or 0).replace(",", "."))
+        don_gia = float(re.sub(r"[^\d.]", "", str(data.get("don_gia") or 0)))
+
+        # Chuẩn hóa đơn giá về VNĐ (tránh trường hợp AI đọc 26.82 hoặc thiếu số 0 cuối)
+        if 0 < don_gia < 100:
+            don_gia = round(don_gia * 1000)
+        elif 100 <= don_gia < 5000:
+            don_gia = round(don_gia * 10)
+        else:
+            don_gia = round(don_gia)
+
+        # 2. Đối chiếu chéo giữa Dòng 1 (Tiền hiển thị), Dòng 2 (Số lít) và Dòng 3 (Đơn giá)
+        if don_gia > 0 and so_lit > 0:
+            # Nếu dòng tiền hiển thị bị khuyết số 0 cuối (x10 lên khớp với so_lit * don_gia)
+            if tien_raw > 0 and abs((tien_raw * 10) - (so_lit * don_gia)) <= max(1000, don_gia * 0.3):
+                tien_raw = tien_raw * 10
+
+            # Nếu AI đọc nhầm dấu chấm làm số lít bị nhỏ đi 10 lần (ví dụ 130.00 đọc thành 13.0)
+            # Khi nhân số lít lên 10 lần thì khớp với tiền hiển thị (hoặc tiền hiển thị x10)
+            if so_lit < 40 and tien_raw > 0:
+                if abs(tien_raw - (so_lit * 10 * don_gia)) <= max(1000, don_gia * 0.3):
+                    so_lit = round(so_lit * 10, 2)
+                elif abs((tien_raw * 10) - (so_lit * 10 * don_gia)) <= max(1000, don_gia * 0.3):
+                    so_lit = round(so_lit * 10, 2)
+                    tien_raw = tien_raw * 10
+
+            # 3. Tính Thành tiền chuẩn theo công thức: Đơn giá * Số lít
+            tong_tien = int(round(so_lit * don_gia))
+        else:
+            # Dự phòng nếu ảnh bị mờ không đọc được đơn giá hoặc số lít
+            tong_tien = int(round(tien_raw))
+
+        return {
+            "tong_tien": tong_tien,
+            "so_lit": round(so_lit, 2),
+            "don_gia": int(don_gia)
+        }
     except Exception as e:
         st.error(f"Lỗi khi AI đọc ảnh: {e}")
         return None

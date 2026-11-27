@@ -67,13 +67,23 @@ def render_fuel_management_tab(db, current_user):
                     with st.spinner("AI đang phân tích hình ảnh..."):
                         ket_qua_ai = doc_anh_cay_xang(BytesIO(uploaded_file.getvalue()))
                         if ket_qua_ai:
-                            if ket_qua_ai.get('so_lit'): 
-                                st.session_state['ai_fuel_lit'] = float(ket_qua_ai['so_lit'])
-                            if ket_qua_ai.get('tong_tien'): 
-                                st.session_state['ai_fuel_tien'] = int(ket_qua_ai['tong_tien'])
-                            if ket_qua_ai.get('odo'): 
-                                st.session_state['ai_fuel_odo'] = float(ket_qua_ai['odo'])
-                            st.success("✅ Trích xuất thành công! Số liệu đã được nạp tạm vào bộ nhớ đệm.")
+                            lit_ai = float(ket_qua_ai.get('so_lit') or 0)
+                            gia_ai = int(ket_qua_ai.get('don_gia') or 0)
+                            tien_ai = int(ket_qua_ai.get('tong_tien') or 0)
+
+                            if lit_ai > 0:
+                                st.session_state['ai_fuel_lit'] = lit_ai
+                            if gia_ai > 0:
+                                st.session_state['ai_fuel_don_gia'] = gia_ai
+                            if tien_ai > 0:
+                                st.session_state['ai_fuel_tien'] = f"{tien_ai:,}"
+
+                            st.success(
+                                f"✅ Trích xuất thành công!\n\n"
+                                f"- **Số lít:** {lit_ai:g} L\n"
+                                f"- **Đơn giá:** {gia_ai:,} đ/L\n"
+                                f"- **Thành tiền (Đơn giá × Số lít):** {tien_ai:,} VNĐ"
+                            )
                         else:
                             st.error("❌ AI không nhận diện được dữ liệu. Vui lòng nhập thủ công.")
 
